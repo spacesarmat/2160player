@@ -36,6 +36,8 @@ import tv.p2160.core.api.Chapter
 import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.bluray.DiscSessions
 import tv.p2160.core.api.ExternalSubtitle
+import tv.p2160.core.api.NowPlaying
+import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.api.SegmentType
 import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.settings.SkipMode
@@ -518,6 +520,8 @@ class PlayerController(
 
     fun release() {
         saveProgress()
+        publishNowPlaying()
+        PlayerExtensions.publish(PlayerExtensions.nowPlaying.value?.copy(isPlaying = false))
         progressJob?.cancel()
         analyzeJob?.cancel()
         scope.cancel()
@@ -536,8 +540,24 @@ class PlayerController(
                 refresh()
                 maybeAutoSkip()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
+                if (ticks % 2 == 0) publishNowPlaying()
             }
         }
+    }
+
+    private fun publishNowPlaying() {
+        val entry = request.items.getOrNull(player.currentMediaItemIndex) ?: return
+        val s = _state.value
+        PlayerExtensions.publish(
+            NowPlaying(
+                uri = entry.uri,
+                title = s.title,
+                positionMs = s.positionMs,
+                durationMs = s.durationMs,
+                isPlaying = s.isPlaying,
+                headers = request.headers,
+            )
+        )
     }
 
     private fun maybeAutoSkip() {

@@ -73,6 +73,7 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.engine.TimeInput
 import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
@@ -450,6 +451,15 @@ private fun Controls(
                     if (state.playlistSize > 1) {
                         Text(tr("player.playlist_position", state.playlistIndex + 1, state.playlistSize), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
                     }
+                }
+                val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
+                val context = LocalContext.current
+                extraActions.forEach { action ->
+                    ControlButton(
+                        action.icon, LocalStrings.current[action.label],
+                        { action.onClick(context, PlayerExtensions.nowPlaying.value) },
+                        accent = theme.accent,
+                    )
                 }
                 ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, accent = theme.accent)
                 ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)

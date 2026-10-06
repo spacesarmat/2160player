@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContract
+import kotlinx.coroutines.flow.StateFlow
 import tv.p2160.core.Player2160Activity
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.PlayerSettings
@@ -36,6 +37,14 @@ object Player2160 {
 
     /** Настройки плеера (тема, субтитры, скорость, декодеры). */
     fun settings(context: Context): PlayerSettings = PlayerSettings.get(context)
+
+    /** Что играет сейчас (null — плеер закрыт). Обновляется примерно раз в секунду. */
+    val nowPlaying: StateFlow<NowPlaying?> get() = PlayerExtensions.nowPlaying
+
+    /** Добавить свою кнопку в верхнюю панель плеера. Повторная регистрация с тем же id заменяет кнопку. */
+    fun registerAction(action: PlayerAction) = PlayerExtensions.register(action)
+
+    fun unregisterAction(id: String) = PlayerExtensions.unregister(id)
 
     class PlayContract : ActivityResultContract<PlaybackRequest, PlaybackResult?>() {
         override fun createIntent(context: Context, input: PlaybackRequest): Intent =

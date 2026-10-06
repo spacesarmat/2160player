@@ -31,6 +31,7 @@ nextlib-media3ext = { module = "io.github.anilbeesetti:nextlib-media3ext", versi
 nextlib-mediainfo = { module = "io.github.anilbeesetti:nextlib-mediainfo", version.ref = "nextlib" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { module = "junit:junit", version = "4.13.2" }
+smbj = { module = "com.hierynomus:smbj", version = "0.15.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

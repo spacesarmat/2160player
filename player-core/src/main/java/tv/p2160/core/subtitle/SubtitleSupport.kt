@@ -6,6 +6,8 @@ import android.provider.OpenableColumns
 import androidx.media3.common.MimeTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import tv.p2160.core.source.smb.SmbConnections
+import tv.p2160.core.source.smb.SmbPath
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -63,7 +65,8 @@ object SubtitleSupport {
         }
 
     /** Ищет субтитры рядом с локальным видео: `Movie.mkv` → `Movie.srt`, `Movie.ru.srt`… */
-    fun findSidecars(videoUri: Uri): List<Uri> {
+    fun findSidecars(context: Context, videoUri: Uri): List<Uri> {
+        if (videoUri.scheme == "smb") return findSmbSidecars(context, videoUri)
         if (videoUri.scheme != "file") return emptyList()
         val video = File(videoUri.path ?: return emptyList())
         val base = video.nameWithoutExtension
@@ -74,6 +77,15 @@ object SubtitleSupport {
             .map { Uri.fromFile(it) }
     }
 
+    private fun findSmbSidecars(context: Context, videoUri: Uri): List<Uri> = runCatching {
+        val video = SmbPath.fromUri(videoUri) ?: return emptyList()
+        val dir = video.parent ?: return emptyList()
+        val base = video.name.substringBeforeLast('.')
+        SmbConnections.list(context, dir)
+            .filter { !it.isDirectory && it.name.startsWith(base) && it.name.substringAfterLast('.').lowercase() in EXTENSIONS }
+            .map { it.path.toUri() }
+    }.getOrDefault(emptyList())
+
     private fun readBytes(context: Context, uri: Uri, headers: Map<String, String>): ByteArray? {
         val limit = 8 * 1024 * 1024
         return when (uri.scheme?.lowercase()) {
@@ -83,6 +95,19 @@ object SubtitleSupport {
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 15_000
                 conn.inputStream.use { it.readNBytesCompat(limit) }
+            }
+            "smb" -> SmbPath.fromUri(uri)?.let { path ->
+                SmbConnections.openRead(context, path).use { f ->
+                    val size = minOf(f.fileInformation.standardInformation.endOfFile, limit.toLong()).toInt()
+                    val bytes = ByteArray(size)
+                    var read = 0
+                    while (read < size) {
+                        val n = f.read(bytes, read.toLong(), read, size - read)
+                        if (n <= 0) break
+                        read += n
+                    }
+                    bytes.copyOf(read)
+                }
             }
             else -> context.contentResolver.openInputStream(uri)?.use { it.readNBytesCompat(limit) }
         }

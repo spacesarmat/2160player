@@ -546,7 +546,7 @@ class PlayerController(
         val external = subtitles[index]
         // Субтитры рядом с локальным файлом подхватываем автоматически.
         if (index == request.startIndex && external.isEmpty()) {
-            SubtitleSupport.findSidecars(entry.uri).forEach { uri ->
+            withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.forEach { uri ->
                 val name = uri.lastPathSegment
                 external += ExternalSubtitle(uri, name, SubtitleSupport.languageFromName(name))
             }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import tv.p2160.core.api.Chapter
+import tv.p2160.core.source.SeekableFiles
 
 /**
  * Читает файл через FFmpeg (libavformat): главы и кадры для превью при перемотке.
@@ -19,6 +20,7 @@ internal class MediaAnalyzer(private val context: Context) {
     private val mutex = Mutex()
     private var info: MediaInfo? = null
     private var openedUri: Uri? = null
+    private var proxyFd: android.os.ParcelFileDescriptor? = null
 
     suspend fun chapters(uri: Uri): List<Chapter> = mutex.withLock {
         withContext(Dispatchers.IO) {
@@ -39,6 +41,8 @@ internal class MediaAnalyzer(private val context: Context) {
 
     fun release() {
         runCatching { info?.release() }
+        runCatching { proxyFd?.close() }
+        proxyFd = null
         info = null
         openedUri = null
     }
@@ -51,6 +55,11 @@ internal class MediaAnalyzer(private val context: Context) {
             when (uri.scheme?.lowercase()) {
                 "content", "android.resource" -> MediaInfoBuilder().from(context, uri).build()
                 "file" -> MediaInfoBuilder().from(uri.path ?: return null).build()
+                // SMB FFmpeg не умеет — отдаём ему дескриптор с произвольным доступом.
+                "smb" -> SeekableFiles.open(context, uri)?.let { fd ->
+                    proxyFd = fd
+                    MediaInfoBuilder().from(fd).build()
+                }
                 else -> MediaInfoBuilder().from(uri.toString()).build()
             }
         }.getOrNull()

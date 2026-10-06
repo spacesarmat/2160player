@@ -17,6 +17,7 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderManager
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import tv.p2160.core.settings.DecoderPreference
+import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.settings.Settings
 
 internal class BuiltPlayer(val player: ExoPlayer, val decoderManager: DecoderManager) {
@@ -70,7 +71,8 @@ internal object PlayerFactory {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        // smb:// — свой источник, остальное (file, content, http…) — стандартный.
+        val dataSourceFactory = RoutingDataSource.Factory(context, DefaultDataSource.Factory(context, httpFactory))
 
         val extractors = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)

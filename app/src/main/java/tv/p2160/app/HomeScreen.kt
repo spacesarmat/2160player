@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
@@ -67,6 +68,7 @@ fun HomeScreen(
     onOpenFile: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNetwork: () -> Unit,
     onPlayEntry: (ResumeEntry) -> Unit,
 ) {
     val changes by store.changes.collectAsState()
@@ -93,6 +95,7 @@ fun HomeScreen(
             Spacer(Modifier.height(20.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 ActionTile(Icons.Default.FolderOpen, tr("app.open_file"), onOpenFile, Modifier.focusRequester(firstFocus))
+                ActionTile(Icons.Default.Lan, tr("app.network"), onOpenNetwork)
                 ActionTile(Icons.Default.Link, tr("app.open_url"), { urlDialog = true })
                 ActionTile(Icons.Default.Settings, tr("app.settings"), onOpenSettings)
             }

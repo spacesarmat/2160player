@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.nextlib.media3ext)
     implementation(libs.nextlib.mediainfo)
+    implementation(libs.smbj)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

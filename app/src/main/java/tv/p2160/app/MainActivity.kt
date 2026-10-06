@@ -22,6 +22,9 @@ import tv.p2160.core.api.Player2160
 import tv.p2160.core.i18n.I18n
 import tv.p2160.core.i18n.LocalStrings
 import tv.p2160.core.resume.ResumeEntry
+import tv.p2160.core.source.smb.SmbEntry
+import tv.p2160.core.source.smb.SmbServers
+import androidx.compose.runtime.remember
 import tv.p2160.core.ui.P2160Theme
 import tv.p2160.core.ui.PlayerThemes
 
@@ -65,8 +68,10 @@ class MainActivity : ComponentActivity() {
             val s by settings.state.collectAsStateWithLifecycle()
             val strings by i18n.strings.collectAsStateWithLifecycle()
             var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+            var serverId by rememberSaveable { mutableStateOf<String?>(null) }
+            val servers = remember { SmbServers.get(this) }
 
-            BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
+            BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.NETWORK) { screen = Screen.HOME }
 
             CompositionLocalProvider(LocalStrings provides strings) {
                 P2160Theme(PlayerThemes.byId(s.themeId)) {
@@ -76,8 +81,28 @@ class MainActivity : ComponentActivity() {
                             onOpenFile = ::pickMedia,
                             onOpenUrl = { url -> play(Uri.parse(url.trim()), null) },
                             onOpenSettings = { screen = Screen.SETTINGS },
+                            onOpenNetwork = { screen = Screen.NETWORK },
                             onPlayEntry = ::playEntry,
                         )
+                        Screen.NETWORK -> NetworkScreen(
+                            servers = servers,
+                            onBack = { screen = Screen.HOME },
+                            onOpen = { serverId = it.id; screen = Screen.BROWSE },
+                        )
+                        Screen.BROWSE -> {
+                            val server = servers.servers.collectAsStateWithLifecycle().value.firstOrNull { it.id == serverId }
+                            if (server == null) {
+                                screen = Screen.NETWORK
+                            } else {
+                                BrowserScreen(
+                                    server = server,
+                                    store = store,
+                                    onBack = { screen = Screen.NETWORK },
+                                    onPlay = { files, index -> playSmb(files, index) },
+                                    onPlayDisc = { path -> play(path.toUri(), path.name) },
+                                )
+                            }
+                        }
                         Screen.SETTINGS -> SettingsScreen(
                             settingsStore = settings,
                             i18n = i18n,
@@ -111,7 +136,13 @@ class MainActivity : ComponentActivity() {
         Player2160.play(this, PlaybackRequest(listOf(MediaEntry(uri, title))))
     }
 
+    private fun playSmb(files: List<SmbEntry>, index: Int) {
+        if (index !in files.indices) return
+        val items = files.map { MediaEntry(it.path.toUri(), it.name.substringBeforeLast('.')) }
+        Player2160.play(this, PlaybackRequest(items, startIndex = index))
+    }
+
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE }
 }

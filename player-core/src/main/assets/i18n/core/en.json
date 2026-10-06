@@ -85,5 +85,6 @@
   "panel.mark_intro_end": "Intro ends here",
   "panel.mark_credits": "Credits start here",
   "panel.before_end": "%1$s before the end",
-  "panel.marks_clear": "Clear marks"
+  "panel.marks_clear": "Clear marks",
+  "panel.secondary_subs": "Second subtitles (shown on top)"
 }

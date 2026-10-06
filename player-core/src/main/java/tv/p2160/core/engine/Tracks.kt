@@ -20,6 +20,8 @@ data class TrackOption(
     val selected: Boolean,
     val supported: Boolean,
     val external: Boolean,
+    /** Format.id — для выбора вторых субтитров. */
+    val formatId: String? = null,
 )
 
 internal const val EXTERNAL_SUB_PREFIX = "ext:"
@@ -56,6 +58,7 @@ internal object TrackLabels {
                         selected = group.isTrackSelected(i),
                         supported = group.isTrackSupported(i, /* allowExceedsCapabilities = */ true),
                         external = f.id?.contains(EXTERNAL_SUB_PREFIX) == true,
+                        formatId = f.id,
                     )
                 )
             }

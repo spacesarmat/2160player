@@ -57,6 +57,7 @@ class PanelActions(
     val onDisableSubtitles: () -> Unit,
     val onAddSubtitle: () -> Unit,
     val onSubtitleDelay: (Long) -> Unit,
+    val onSecondarySubtitle: (TrackOption?) -> Unit,
     val onSubtitleSize: (Float) -> Unit,
     val onSpeed: (Float) -> Unit,
     val onAutoVideo: () -> Unit,
@@ -122,12 +123,28 @@ fun SidePanel(
                             modifier = Modifier.focusRequester(focus),
                         )
                     }
-                    items(state.textTracks.withIndex().toList(), key = { "t${it.index}" }) { (_, t) ->
+                    val primaryTracks = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
+                    items(primaryTracks.withIndex().toList(), key = { "t${it.index}" }) { (_, t) ->
                         PanelRow(
                             text = t.label,
                             selected = t.selected && !state.textDisabled,
                             onClick = { actions.onSelectTrack(t) },
                         )
+                    }
+                    // Вторые субтитры: показываются сверху, одновременно с основными.
+                    if (state.textTracks.size > 1) {
+                        item(key = "sec-title") { Hint(tr("panel.secondary_subs")) }
+                        item(key = "sec-off") {
+                            PanelRow(tr("panel.subs_off"), selected = state.secondaryTextId == null, onClick = { actions.onSecondarySubtitle(null) })
+                        }
+                        val candidates = state.textTracks.filter { !(it.selected && it.formatId != state.secondaryTextId) || state.textDisabled }
+                        items(candidates.withIndex().toList(), key = { "s${it.index}" }) { (_, t) ->
+                            PanelRow(
+                                text = t.label,
+                                selected = t.formatId != null && t.formatId == state.secondaryTextId,
+                                onClick = { actions.onSecondarySubtitle(t) },
+                            )
+                        }
                     }
                     item(key = "add") {
                         PanelRow(tr("panel.subs_load"), selected = false, onClick = actions.onAddSubtitle, leading = Icons.Default.UploadFile)

@@ -226,6 +226,7 @@ fun PlayerScreen(
                 },
         ) {
             VideoSurface(controller, settings.subtitleStyle, resizeMode, controlsVisible && !inPictureInPicture)
+            if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle)
 
             // Слой жестов: тап — показать/скрыть, двойной (и более) тап по краям — накопительная перемотка.
             if (!inPictureInPicture) {
@@ -392,6 +393,7 @@ fun PlayerScreen(
                             onDisableSubtitles = controller::disableSubtitles,
                             onAddSubtitle = { panel = null; onPickSubtitle() },
                             onSubtitleDelay = controller::setSubtitleDelay,
+                            onSecondarySubtitle = controller::setSecondarySubtitle,
                             onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
                             onSpeed = controller::setSpeed,
                             onAutoVideo = controller::autoVideo,
@@ -606,4 +608,39 @@ private fun digitOf(key: Key): Char? = when (key) {
 private fun commitDigits(digits: String, durationMs: Long, seekTo: (Long) -> Unit) {
     val target = if (digits.length == 1) durationMs * digits.toInt() / 10 else TimeInput.parse(digits)
     target?.takeIf { durationMs <= 0 || it <= durationMs }?.let(seekTo)
+}
+
+/** Слой вторых субтитров: те же настройки стиля, но у верхнего края и чуть мельче. */
+@OptIn(UnstableApi::class)
+@Composable
+private fun SecondarySubtitleLayer(controller: PlayerController, style: SubtitleStyle) {
+    val cues by controller.secondaryCues.collectAsStateWithLifecycle()
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { ctx -> SubtitleView(ctx) },
+        update = { view ->
+            view.setStyle(
+                CaptionStyleCompat(
+                    Color(style.textColor).toArgb(),
+                    Color(style.backgroundColor).toArgb(),
+                    AndroidColor.TRANSPARENT,
+                    when (style.edge) {
+                        SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
+                        SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                        SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                    },
+                    AndroidColor.BLACK,
+                    null,
+                )
+            )
+            view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
+            view.setApplyEmbeddedStyles(false)
+            // Текстовые реплики поднимаем наверх; картинки (PGS) оставляем на их месте.
+            view.setCues(cues.map { cue ->
+                if (cue.bitmap != null) cue
+                else cue.buildUpon().setLine(0.04f, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
+                    .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_START).build()
+            })
+        },
+    )
 }

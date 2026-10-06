@@ -15,6 +15,8 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import io.github.anilbeesetti.nextlib.media3ext.renderer.subtitleDelayMilliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +82,8 @@ data class PlayerUiState(
     val marks: ManualMarks = ManualMarks(),
     /** Временное ускорение (удержание пальца) включено. */
     val speedBoost: Boolean = false,
+    /** Format.id вторых субтитров или null. */
+    val secondaryTextId: String? = null,
 )
 
 /**
@@ -102,6 +106,8 @@ class PlayerController(
 
     private val built = PlayerFactory.build(appContext, settings.current, request.headers)
     val player: ExoPlayer get() = built.player
+    /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
+    val secondaryCues get() = built.secondarySubtitles.cues
 
     private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size))
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -139,6 +145,7 @@ class PlayerController(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) return
+            setSecondarySubtitle(null)
             onItemStarted(player.currentMediaItemIndex, explicitStart = null)
         }
 
@@ -331,6 +338,32 @@ class PlayerController(
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
+    }
+
+    /**
+     * Вторые субтитры. Выбор делается «старым» per-renderer override второго рендерера:
+     * обычный override по типу дорожки отключил бы все текстовые рендереры, кроме одного.
+     */
+    fun setSecondarySubtitle(option: TrackOption?) {
+        val secondary = built.secondarySubtitles
+        val selector = player.trackSelector as? DefaultTrackSelector ?: return
+        val rendererIndex = (0 until player.rendererCount).firstOrNull { player.getRenderer(it) === secondary.renderer } ?: return
+        val group = option?.let { player.currentTracks.groups.getOrNull(it.groupIndex) }
+        secondary.formatId = option?.formatId
+        val builder = selector.buildUponParameters().clearSelectionOverrides(rendererIndex)
+        if (option != null && group != null) {
+            builder.setRendererDisabled(rendererIndex, false)
+                .setSelectionOverride(
+                    rendererIndex,
+                    TrackGroupArray(group.mediaTrackGroup),
+                    DefaultTrackSelector.SelectionOverride(0, option.trackIndex),
+                )
+        } else {
+            builder.setRendererDisabled(rendererIndex, true)
+            secondary.clear()
+        }
+        selector.setParameters(builder)
+        _state.update { it.copy(secondaryTextId = secondary.formatId) }
     }
 
     fun setSubtitleDelay(ms: Long) {

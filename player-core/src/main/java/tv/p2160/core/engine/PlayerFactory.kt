@@ -22,7 +22,11 @@ import tv.p2160.core.settings.DecoderPreference
 import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.settings.Settings
 
-internal class BuiltPlayer(val player: ExoPlayer, val decoderManager: DecoderManager) {
+internal class BuiltPlayer(
+    val player: ExoPlayer,
+    val decoderManager: DecoderManager,
+    val secondarySubtitles: SecondarySubtitles,
+) {
     fun release() {
         decoderManager.detach()
         player.release()
@@ -48,7 +52,8 @@ internal object PlayerFactory {
             DecoderPreference.FFMPEG -> DecoderMode.FFMPEG
         }
         val decoderManager = DecoderManager(mode, mode)
-        val renderersFactory = NextRenderersFactory(context).setDecoderManager(decoderManager).apply {
+        val secondarySubtitles = SecondarySubtitles()
+        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles).setDecoderManager(decoderManager).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -103,6 +108,6 @@ internal object PlayerFactory {
             .build()
 
         decoderManager.attach(player)
-        return BuiltPlayer(player, decoderManager)
+        return BuiltPlayer(player, decoderManager, secondarySubtitles)
     }
 }

@@ -27,7 +27,20 @@ internal const val EXTERNAL_SUB_PREFIX = "ext:"
 @OptIn(UnstableApi::class)
 internal object TrackLabels {
 
-    fun collect(tracks: Tracks, type: Int, strings: Strings): List<TrackOption> = buildList {
+    fun collect(tracks: Tracks, type: Int, strings: Strings): List<TrackOption> =
+        numberDuplicates(collectRaw(tracks, type, strings))
+
+    /** Одинаковые подписи («Русский · PGS» ×3 на Blu-ray) различаем номером. */
+    private fun numberDuplicates(options: List<TrackOption>): List<TrackOption> {
+        val counts = options.groupingBy { it.label }.eachCount()
+        val seen = HashMap<String, Int>()
+        return options.map { o ->
+            if ((counts[o.label] ?: 0) < 2) o
+            else o.copy(label = "${o.label} #${seen.merge(o.label, 1, Int::plus)}")
+        }
+    }
+
+    private fun collectRaw(tracks: Tracks, type: Int, strings: Strings): List<TrackOption> = buildList {
         tracks.groups.forEachIndexed { g, group ->
             if (group.type != type) return@forEachIndexed
             for (i in 0 until group.length) {
@@ -105,7 +118,10 @@ internal object TrackLabels {
         else -> f.sampleMimeType?.substringAfter('/')?.uppercase()
     }
 
-    private fun textCodec(f: Format): String? = when (f.sampleMimeType ?: f.codecs) {
+    // Субтитры, разобранные при извлечении, приходят как media3-cues; исходный формат лежит в codecs.
+    private fun textCodec(f: Format): String? = when (
+        if (f.sampleMimeType == MimeTypes.APPLICATION_MEDIA3_CUES) f.codecs else f.sampleMimeType ?: f.codecs
+    ) {
         MimeTypes.APPLICATION_SUBRIP -> "SRT"
         MimeTypes.TEXT_SSA -> "ASS"
         MimeTypes.TEXT_VTT -> "VTT"

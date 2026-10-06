@@ -16,6 +16,8 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderManager
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
+import tv.p2160.core.bluray.DiscMediaSourceFactory
+import tv.p2160.core.m2ts.M2tsExtractorsFactory
 import tv.p2160.core.settings.DecoderPreference
 import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.settings.Settings
@@ -82,9 +84,12 @@ internal object PlayerFactory {
                     DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
             )
 
+        // M2TS (Blu-ray: 192-байтные пакеты, TrueHD/LPCM/DTS-HD/PGS) штатный Media3 не читает.
+        val m2tsExtractors = M2tsExtractorsFactory(fallback = extractors, hintsForUri = DiscMediaSourceFactory::hintsFor)
+
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, extractors))
+            .setMediaSourceFactory(DiscMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, m2tsExtractors)))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

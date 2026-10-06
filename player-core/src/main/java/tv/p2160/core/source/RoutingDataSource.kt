@@ -7,6 +7,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import tv.p2160.core.bluray.DiscDataSource
+import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.source.smb.SmbDataSource
 
 /** Выбирает источник по схеме URI: `smb://` — наш SMB, остальное — стандартный DefaultDataSource. */
@@ -17,17 +19,20 @@ class RoutingDataSource(
 ) : DataSource {
     private val listeners = mutableListOf<TransferListener>()
     private var smb: DataSource? = null
+    private var disc: DataSource? = null
     private var current: DataSource? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         listeners += transferListener
         default.addTransferListener(transferListener)
         smb?.addTransferListener(transferListener)
+        disc?.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
         val source = when (dataSpec.uri.scheme?.lowercase()) {
             "smb" -> smb ?: SmbDataSource(context).also { s -> listeners.forEach(s::addTransferListener); smb = s }
+            DiscSession.SCHEME -> disc ?: DiscDataSource().also { s -> listeners.forEach(s::addTransferListener); disc = s }
             else -> default
         }
         current = source

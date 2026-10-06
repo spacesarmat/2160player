@@ -31,6 +31,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.Bitmap
 import tv.p2160.core.api.Chapter
+import tv.p2160.core.bluray.DiscSession
+import tv.p2160.core.bluray.DiscSessions
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.SegmentType
 import tv.p2160.core.api.SkipSegment
@@ -123,6 +125,8 @@ class PlayerController(
     /** Отрезки, уже пропущенные автоматически: если пользователь вернулся назад, второй раз не прыгаем. */
     private val autoSkipped = mutableSetOf<SkipSegment>()
     private var analyzeJob: Job? = null
+    /** Открытые диски Blu-ray по индексу плейлиста. */
+    private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
 
     private val listener = object : Player.Listener {
@@ -224,7 +228,11 @@ class PlayerController(
 
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
-            val found = runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList())
+            val found = discs[index]?.let { d ->
+                // Главы диска — из плейлиста (FFmpeg в ISO не заглянет).
+                val starts = d.title.chapters
+                starts.mapIndexed { i, start -> Chapter(null, start, starts.getOrElse(i + 1) { d.title.durationMs }) }
+            } ?: runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList())
             if (player.currentMediaItemIndex != index) return@launch
             chapters = found
             // Явно переданные отрезки (Intent/медиасервер) важнее найденных по главам.
@@ -481,6 +489,8 @@ class PlayerController(
         analyzeJob?.cancel()
         scope.cancel()
         analyzer.release()
+        discs.values.forEach(DiscSessions::close)
+        discs.clear()
         player.removeListener(listener)
         built.release()
     }
@@ -561,9 +571,15 @@ class PlayerController(
                 .setLabel(name?.substringBeforeLast('.'))
                 .build()
         }
+        // ISO-образ или папка BDMV: открываем диск и играем основной фильм.
+        val disc = discs[index] ?: if (DiscSessions.isCandidate(entry.uri)) {
+            withContext(Dispatchers.IO) { runCatching { DiscSessions.open(appContext, entry.uri, request.headers) }.getOrNull() }
+                ?.also { discs[index] = it }
+        } else null
+        disc?.disc?.discTitle?.let { if (entry.title.isNullOrBlank()) titles[index] = it }
         val title = withContext(Dispatchers.IO) { titleFor(entry) }
         return MediaItem.Builder()
-            .setUri(entry.uri)
+            .setUri(disc?.titleUri ?: entry.uri)
             .setMediaId(keyAt(index) ?: entry.uri.toString())
             .setMimeType(adaptiveMime(entry))
             .setSubtitleConfigurations(configs)

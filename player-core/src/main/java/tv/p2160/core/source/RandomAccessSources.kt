@@ -64,24 +64,41 @@ class HttpRandomAccessSource(private val url: String, private val headers: Map<S
         }
     }
 
+    // Последовательное чтение идёт по одному открытому соединению (`Range: bytes=pos-`);
+    // переподключаемся только при переходе в другое место файла.
+    private var connection: HttpURLConnection? = null
+    private var stream: java.io.InputStream? = null
+    private var streamPosition = -1L
+
+    @Synchronized
     override fun read(position: Long, buffer: ByteArray, offset: Int, length: Int): Int {
         if (position >= size) return -1
-        val end = minOf(position + length, size) - 1
-        val conn = connect("bytes=$position-$end")
-        try {
-            conn.inputStream.use { input ->
-                var total = 0
-                val wanted = (end - position + 1).toInt()
-                while (total < wanted) {
-                    val n = input.read(buffer, offset + total, wanted - total)
-                    if (n < 0) break
-                    total += n
-                }
-                return total
-            }
-        } finally {
-            conn.disconnect()
+        if (stream == null || position != streamPosition) reopen(position)
+        val wanted = minOf(length.toLong(), size - position).toInt()
+        var total = 0
+        while (total < wanted) {
+            val n = stream!!.read(buffer, offset + total, wanted - total)
+            if (n < 0) break
+            total += n
         }
+        streamPosition = position + total
+        return total
+    }
+
+    private fun reopen(position: Long) {
+        disconnect()
+        val conn = connect("bytes=$position-")
+        connection = conn
+        stream = java.io.BufferedInputStream(conn.inputStream, 256 * 1024)
+        streamPosition = position
+    }
+
+    private fun disconnect() {
+        runCatching { stream?.close() }
+        connection?.disconnect()
+        stream = null
+        connection = null
+        streamPosition = -1
     }
 
     private fun connect(range: String): HttpURLConnection =
@@ -92,5 +109,6 @@ class HttpRandomAccessSource(private val url: String, private val headers: Map<S
             readTimeout = 20_000
         }
 
-    override fun close() = Unit
+    @Synchronized
+    override fun close() = disconnect()
 }

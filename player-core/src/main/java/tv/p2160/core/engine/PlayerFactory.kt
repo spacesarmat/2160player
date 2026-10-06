@@ -22,6 +22,7 @@ import tv.p2160.core.settings.DecoderPreference
 import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.settings.Settings
 
+@OptIn(UnstableApi::class)
 internal class BuiltPlayer(
     val player: ExoPlayer,
     val decoderManager: DecoderManager,

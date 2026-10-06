@@ -24,7 +24,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
 import tv.p2160.core.api.IntentApi
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.engine.PlayerController
@@ -87,7 +89,10 @@ class Player2160Activity : ComponentActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.controller?.state?.collect { s -> adjustOrientation(s.hasVideo, s.videoAspect) }
+                // Контроллер может смениться (onNewIntent) — следим за актуальным.
+                snapshotFlow { vm.controller }.collectLatest { c ->
+                    c?.state?.collect { s -> adjustOrientation(s.hasVideo, s.videoAspect) }
+                }
             }
         }
     }

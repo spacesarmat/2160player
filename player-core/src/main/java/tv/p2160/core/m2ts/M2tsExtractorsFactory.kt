@@ -49,6 +49,7 @@ class M2tsExtractorsFactory @JvmOverloads constructor(
     }
 
     @Deprecated("Media3: legacy subtitle decoding path")
+    @OptIn(androidx.media3.common.util.ExperimentalApi::class)
     override fun experimentalSetTextTrackTranscodingEnabled(textTrackTranscodingEnabled: Boolean): ExtractorsFactory {
         this.textTrackTranscodingEnabled = textTrackTranscodingEnabled
         @Suppress("DEPRECATION")

@@ -70,6 +70,11 @@ class I18n private constructor(private val context: Context) {
 
     private var selected: String = SYSTEM
 
+    init {
+        // Строки доступны сразу, даже если PlayerSettings ещё не создавался.
+        apply(context.getSharedPreferences("p2160_settings", Context.MODE_PRIVATE).getString("language", SYSTEM) ?: SYSTEM)
+    }
+
     fun available(): List<LanguagePack> {
         val builtIn = builtInCodes().map { code ->
             val meta = readMeta(loadBuiltIn(code))

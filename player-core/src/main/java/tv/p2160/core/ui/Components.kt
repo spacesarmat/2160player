@@ -109,8 +109,10 @@ fun SeekBar(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    var keyTarget by remember { mutableStateOf<Long?>(null) }
     val duration = durationMs.coerceAtLeast(1)
-    val fraction = dragFraction ?: (positionMs.toFloat() / duration).coerceIn(0f, 1f)
+    val fraction = dragFraction ?: keyTarget?.let { (it.toFloat() / duration).coerceIn(0f, 1f) }
+        ?: if (durationMs <= 0) 0f else (positionMs.toFloat() / duration).coerceIn(0f, 1f)
     val buffered = (bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
 
     Box(
@@ -119,7 +121,17 @@ fun SeekBar(
             .height(36.dp)
             .focusable(interactionSource = interaction)
             .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown || durationMs <= 0) return@onKeyEvent false
+                if (durationMs <= 0) return@onKeyEvent false
+                val arrow = e.key == Key.DirectionLeft || e.key == Key.DirectionRight
+                if (e.type == KeyEventType.KeyUp) {
+                    val target = keyTarget ?: return@onKeyEvent false
+                    if (!arrow) return@onKeyEvent false
+                    keyTarget = null
+                    onScrub(null)
+                    onSeek(target)
+                    return@onKeyEvent true
+                }
+                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                 // Удержание стрелки ускоряет перемотку: 1× → 3× → 6× шага.
                 val repeat = e.nativeKeyEvent.repeatCount
                 val step = stepMs * when {
@@ -127,11 +139,12 @@ fun SeekBar(
                     repeat < 12 -> 3
                     else -> 6
                 }
-                when (e.key) {
-                    Key.DirectionLeft -> { onSeek(positionMs - step); onInteraction(); true }
-                    Key.DirectionRight -> { onSeek(positionMs + step); onInteraction(); true }
-                    else -> false
-                }
+                if (!arrow) return@onKeyEvent false
+                val delta = if (e.key == Key.DirectionLeft) -step else step
+                keyTarget = ((keyTarget ?: positionMs) + delta).coerceIn(0, durationMs)
+                onScrub(keyTarget)
+                onInteraction()
+                true
             }
             .pointerInput(durationMs) {
                 detectTapGestures { o ->

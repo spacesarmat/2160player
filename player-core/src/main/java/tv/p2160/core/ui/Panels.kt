@@ -35,6 +35,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
+import tv.p2160.core.engine.MediaReport
+import tv.p2160.core.engine.ReportRow
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FirstPage
 import androidx.compose.material.icons.filled.LastPage
@@ -51,6 +55,7 @@ enum class Panel(val titleKey: String) {
     SPEED("player.speed"),
     VIDEO("player.video"),
     CHAPTERS("player.chapters"),
+    INFO("player.info"),
 }
 
 val SPEED_PRESETS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f)
@@ -64,6 +69,8 @@ class PanelActions(
     val onNightMode: (Boolean) -> Unit,
     /** Изменение настроек расписания ночного звука (вкл/выкл, начало, конец в минутах от полуночи). */
     val onNightSchedule: (auto: Boolean, start: Int, end: Int) -> Unit,
+    /** Сводка по файлу строится по запросу (дорого: опрос кодеков). */
+    val report: () -> MediaReport,
     val onSubtitleSize: (Float) -> Unit,
     val onSpeed: (Float) -> Unit,
     val onAutoVideo: () -> Unit,
@@ -235,6 +242,25 @@ fun SidePanel(
                     }
                 }
 
+                Panel.INFO -> {
+                    val report = actions.report()
+                    if (report.warnings.isNotEmpty()) {
+                        item(key = "warn") {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                report.warnings.forEach { w ->
+                                    Text("⚠ $w", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp))
+                                }
+                            }
+                        }
+                    }
+                    report.sections.forEachIndexed { si, section ->
+                        item(key = "sec$si") { Hint(section.title) }
+                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }) { (ri, row) ->
+                            InfoRow(row, modifier = if (si == 0 && ri == 0) Modifier.focusRequester(focus).focusable() else Modifier.focusable())
+                        }
+                    }
+                }
+
                 Panel.CHAPTERS -> {
                     if (state.chapters.isEmpty()) {
                         item(key = "no-ch") { Hint(tr("panel.no_chapters")) }
@@ -352,3 +378,23 @@ fun formatSpeed(s: Float): String =
     if (s % 1f == 0f) s.toInt().toString() else "%.2f".format(Locale.US, s).trimEnd('0').trimEnd('.')
 
 private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 1440 + 1440) % 1440
+
+@Composable
+private fun InfoRow(row: ReportRow, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        Text(row.label, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Spacer(Modifier.size(12.dp))
+        Text(
+            row.value,
+            color = when (row.level) {
+                ReportRow.Level.OK -> Color(0xFF81C784)
+                ReportRow.Level.WARN -> Color(0xFFFFB74D)
+                ReportRow.Level.INFO -> colors.onSurface
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.weight(1.2f),
+        )
+    }
+}

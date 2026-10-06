@@ -12,7 +12,6 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RendererCapabilities
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.text.TextRenderer
-import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
@@ -65,21 +64,19 @@ internal class DualTextRenderersFactory(
     context: Context,
     private val secondary: SecondarySubtitles,
     private val night: NightAudioProcessor,
-    /** Ночной режим включён при старте: отключаем passthrough, чтобы звук шёл через обработку. */
-    private val decodeAllAudio: Boolean,
+    private val passthrough: PassthroughGuard,
 ) : NextRenderersFactory(context) {
 
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParams: Boolean): AudioSink =
-        DefaultAudioSink.Builder(context)
-            // Обработка рассчитана на PCM 16 бит.
-            .setEnableFloatOutput(false)
-            .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
-            .setAudioProcessors(arrayOf(night))
-            .apply {
-                @Suppress("DEPRECATION")
-                if (decodeAllAudio) setAudioCapabilities(AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
-            }
-            .build()
+        GuardedAudioSink(
+            DefaultAudioSink.Builder(context)
+                // Обработка рассчитана на PCM 16 бит.
+                .setEnableFloatOutput(false)
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                .setAudioProcessors(arrayOf(night))
+                .build(),
+            passthrough,
+        )
 
     override fun buildTextRenderers(
         context: Context,

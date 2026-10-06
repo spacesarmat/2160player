@@ -68,6 +68,26 @@ class NightAudioProcessorTest {
     }
 
     @Test
+    fun downmixes51ToStereo() {
+        val processor = NightAudioProcessor(downmixToStereo = true).apply { enabled = true }
+        val format = processor.configure(AudioProcessor.AudioFormat(rate, 6, C.ENCODING_PCM_16BIT))
+        assertTrue("выход — стерео", format.channelCount == 2)
+        processor.flush()
+        val frames = rate
+        val input = ByteBuffer.allocateDirect(frames * 6 * 2).order(ByteOrder.nativeOrder())
+        // Голос только в центре.
+        for (n in 0 until frames) for (c in 0 until 6) input.putShort(if (c == 2) (0.3 * sin(2 * PI * 300 * n / rate) * 32767).toInt().toShort() else 0)
+        input.flip()
+        processor.queueInput(input)
+        val out = processor.output.order(ByteOrder.nativeOrder())
+        assertTrue("стерео-кадров столько же", out.remaining() == frames * 4)
+        val samples = ShortArray(out.remaining() / 2) { out.short }
+        val left = (frames / 2 until frames).maxOf { abs(samples[it * 2].toInt()) }
+        val right = (frames / 2 until frames).maxOf { abs(samples[it * 2 + 1].toInt()) }
+        assertTrue("центр слышен в обоих каналах: $left / $right", left > 3000 && abs(left - right) < 50)
+    }
+
+    @Test
     fun boostsCenterChannelIn51() {
         val frames = rate
         // Одинаковый тон во всех 6 каналах.

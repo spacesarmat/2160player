@@ -15,6 +15,8 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import io.github.anilbeesetti.nextlib.media3ext.renderer.subtitleDelayMilliseconds
@@ -90,6 +92,8 @@ data class PlayerUiState(
     /** Format.id вторых субтитров или null. */
     val secondaryTextId: String? = null,
     val nightMode: Boolean = false,
+    /** Важные предупреждения о воспроизведении (показываются при старте). */
+    val warnings: List<String> = emptyList(),
 )
 
 /**
@@ -144,6 +148,25 @@ class PlayerController(
     /** Найденные по звуку отрезки с низкой уверенностью: только кнопка, без автопропуска. */
     private val lowConfidence = mutableSetOf<SkipSegment>()
     private var introJob: Job? = null
+    private var decoders = ActiveDecoders()
+
+    /** Какие декодеры реально выбраны — для сводки по файлу. */
+    private val analytics = object : AnalyticsListener {
+        override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            decoders = decoders.copy(video = decoderName)
+        }
+
+        override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            decoders = decoders.copy(audio = decoderName, audioPassthrough = false)
+        }
+
+        override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
+            val enc = audioTrackConfig.encoding
+            val pcm = enc == C.ENCODING_PCM_16BIT || enc == C.ENCODING_PCM_FLOAT || enc == C.ENCODING_PCM_24BIT || enc == C.ENCODING_PCM_32BIT || enc == C.ENCODING_PCM_8BIT
+            decoders = decoders.copy(audioPassthrough = !pcm)
+        }
+    }
+    private var warningsShownFor = -1
     /** Открытые диски Blu-ray по индексу плейлиста. */
     private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
@@ -180,6 +203,14 @@ class PlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // ТВ заявил поддержку AC3/DTS «на выход», но открыть такой поток не смог —
+            // переходим на декодирование звука и продолжаем без ошибки.
+            if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED && !built.passthrough.disabled) {
+                built.passthrough.disabled = true
+                player.prepare()
+                player.play()
+                return
+            }
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
                 player.prepare()
@@ -193,6 +224,7 @@ class PlayerController(
 
     init {
         player.addListener(listener)
+        player.addAnalyticsListener(analytics)
         player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
         scope.launch { start() }
     }
@@ -439,8 +471,24 @@ class PlayerController(
     /** «Ночной звук» на лету. Если звук шёл на ресивер в обход декодера, режим включится со следующего запуска. */
     fun setNightMode(enabled: Boolean) {
         nightOverridden = true
+        applyNight(enabled)
+    }
+
+    private fun applyNight(enabled: Boolean) {
         built.night.enabled = enabled
+        // Звук шёл на ресивер в обход декодера — переключаемся на декодирование, чтобы обработка заработала.
+        if (enabled && decoders.audioPassthrough && !built.passthrough.disabled) {
+            built.passthrough.disabled = true
+            reinitAudio()
+        }
         _state.update { it.copy(nightMode = enabled) }
+    }
+
+    /** Переинициализация аудиорендерера: выключить и снова включить аудио-дорожку. */
+    private fun reinitAudio() {
+        val params = player.trackSelectionParameters
+        player.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+        player.trackSelectionParameters = params
     }
 
     /** Расписание изменили в плеере: снимаем ручное переключение и применяем сразу. */
@@ -453,10 +501,7 @@ class PlayerController(
     private fun applyNightSchedule() {
         if (nightOverridden) return
         val wanted = settings.current.nightModeAt(NightSchedule.nowMinute())
-        if (wanted != built.night.enabled) {
-            built.night.enabled = wanted
-            _state.update { it.copy(nightMode = wanted) }
-        }
+        if (wanted != built.night.enabled) applyNight(wanted)
     }
 
     fun setSubtitleDelay(ms: Long) {
@@ -550,6 +595,18 @@ class PlayerController(
         _state.update { it.copy(speedBoost = speedBeforeBoost != null) }
     }
 
+    /** Сводка «что внутри и как играет» для текущего файла. */
+    fun report(): MediaReport {
+        val entry = request.items.getOrNull(player.currentMediaItemIndex)
+        val container = when {
+            discs[player.currentMediaItemIndex] != null -> "Blu-ray"
+            else -> entry?.uri?.lastPathSegment?.substringAfterLast('.', "")?.uppercase()?.takeIf { it.length in 2..5 }
+        }
+        return MediaReporter.build(appContext, _state.value.title, container, player.duration.coerceAtLeast(0), player.currentTracks, decoders, i18n.current)
+    }
+
+    fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
+
     fun retry() {
         _state.update { it.copy(error = null) }
         player.prepare()
@@ -634,6 +691,12 @@ class PlayerController(
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()
+                // Через пару секунд после старта, когда декодеры выбраны, — показываем важные предупреждения.
+                if (warningsShownFor != player.currentMediaItemIndex && player.isPlaying && player.currentPosition > 2_000) {
+                    warningsShownFor = player.currentMediaItemIndex
+                    val w = runCatching { report().warnings }.getOrDefault(emptyList())
+                    if (w.isNotEmpty()) _state.update { it.copy(warnings = w) }
+                }
             }
         }
     }

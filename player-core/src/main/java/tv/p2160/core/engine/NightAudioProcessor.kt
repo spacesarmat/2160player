@@ -25,12 +25,19 @@ import kotlin.math.pow
  * Работает с PCM 16 бит — для этого в ночном режиме отключается passthrough на ресивер.
  */
 @OptIn(UnstableApi::class)
-class NightAudioProcessor : BaseAudioProcessor() {
+class NightAudioProcessor(
+    /**
+     * Сводить многоканальный звук в стерео. Включается, когда ночной режим активен при старте:
+     * ночью звук обычно идёт в динамики ТВ/наушники, а многие ТВ не принимают 6-канальный PCM.
+     */
+    private val downmixToStereo: Boolean = false,
+) : BaseAudioProcessor() {
 
     /** Включён ли ночной режим. Можно менять в любой момент. */
     @Volatile var enabled: Boolean = false
 
     private var channels = 0
+    private var downmixing = false
     private var sampleRate = 0
     private var envelope = 0f
     private var gain = 1f
@@ -45,12 +52,17 @@ class NightAudioProcessor : BaseAudioProcessor() {
         sampleRate = inputAudioFormat.sampleRate
         attack = coefficient(ATTACK_MS)
         release = coefficient(RELEASE_MS)
-        return inputAudioFormat
+        downmixing = downmixToStereo && channels > 2
+        return if (downmixing) AudioProcessor.AudioFormat(sampleRate, 2, C.ENCODING_PCM_16BIT) else inputAudioFormat
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
         if (size == 0) return
+        if (downmixing) {
+            queueDownmix(inputBuffer)
+            return
+        }
         val out = replaceOutputBuffer(size)
         if (!enabled) {
             out.put(inputBuffer)
@@ -71,10 +83,45 @@ class NightAudioProcessor : BaseAudioProcessor() {
         out.flip()
     }
 
+    private fun queueDownmix(inputBuffer: ByteBuffer) {
+        val input = inputBuffer.order(ByteOrder.nativeOrder())
+        val frames = input.remaining() / (channels * 2)
+        val out = replaceOutputBuffer(frames * 4)
+        val frame = FloatArray(channels)
+        val stereo = FloatArray(2)
+        repeat(frames) {
+            for (c in 0 until channels) frame[c] = input.short / 32768f
+            if (enabled) emphasizeDialog(frame)
+            downmix(frame, stereo)
+            if (enabled) compress(stereo)
+            for (v in stereo) out.putShort((v * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
+        }
+        input.position(input.limit())
+        out.flip()
+    }
+
+    /** ITU-подобное сведение: FL/FR + центр −3 дБ + тылы −3 дБ + немного сабвуфера; нормируем. */
+    private fun downmix(frame: FloatArray, out: FloatArray) {
+        var l = frame[0]
+        var r = frame.getOrElse(1) { frame[0] }
+        val c = frame.getOrElse(2) { 0f } * 0.707f
+        val lfe = if (channels >= 6) frame[3] * 0.3f else 0f
+        l += c + lfe
+        r += c + lfe
+        if (channels >= 6) { l += frame[4] * 0.707f; r += frame[5] * 0.707f }
+        if (channels >= 8) { l += frame[6] * 0.707f; r += frame[7] * 0.707f }
+        val norm = if (channels >= 6) 0.4f else 0.6f
+        out[0] = l * norm
+        out[1] = r * norm
+    }
+
     /** Обработка одного кадра (все каналы одного момента времени) на месте. */
     internal fun process(frame: FloatArray) {
         emphasizeDialog(frame)
+        compress(frame)
+    }
 
+    private fun compress(frame: FloatArray) {
         var peak = 0f
         for (s in frame) peak = max(peak, abs(s))
         // Огибающая: быстро растёт на громком, медленно спадает.

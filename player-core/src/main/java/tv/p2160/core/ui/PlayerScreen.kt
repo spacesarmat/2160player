@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -79,6 +81,7 @@ import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.runtime.mutableLongStateOf
@@ -119,12 +122,16 @@ fun PlayerScreen(
     var scrubBase by remember { mutableLongStateOf(0L) }
     var scrubTarget by remember { mutableStateOf<Long?>(null) }
     var scrubFrame by remember { mutableStateOf<Bitmap?>(null) }
+    // Перемотка стрелками пульта с превью: цель копится, перематываем при отпускании.
+    var keyScrubbing by remember { mutableStateOf(false) }
     // Ввод цифрами с пульта и диалог «Перейти ко времени».
     var digits by remember { mutableStateOf("") }
     var goToDialog by remember { mutableStateOf(false) }
     // Карточка «Следующая серия»: отменена для текущего элемента плейлиста.
     var nextDismissedFor by remember { mutableIntStateOf(-1) }
     val playFocus = remember { FocusRequester() }
+    // Когда панель скрыта, фокус держит сам экран — иначе пульт «теряется» и кнопки не работают.
+    val rootFocus = remember { FocusRequester() }
 
     fun poke() { interaction++ }
     fun show() { controlsVisible = true; poke() }
@@ -138,6 +145,7 @@ fun PlayerScreen(
     }
     LaunchedEffect(controlsVisible, panel) {
         if (controlsVisible && panel == null) runCatching { playFocus.requestFocus() }
+        else if (!controlsVisible && panel == null) runCatching { rootFocus.requestFocus() }
     }
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
@@ -145,6 +153,14 @@ fun PlayerScreen(
         val target = scrubTarget ?: run { scrubFrame = null; return@LaunchedEffect }
         delay(120)
         controller.frameAt(target)?.let { scrubFrame = it }
+    }
+    LaunchedEffect(scrubTarget, keyScrubbing) {
+        if (keyScrubbing) {
+            delay(1_500)
+            scrubTarget?.let(controller::seekTo)
+            scrubTarget = null
+            keyScrubbing = false
+        }
     }
     LaunchedEffect(digits) {
         if (digits.isEmpty()) return@LaunchedEffect
@@ -162,6 +178,26 @@ fun PlayerScreen(
             panel != null -> panel = null
             else -> onBack()
         }
+    }
+
+    fun keyScrub(delta: Long) {
+        if (!keyScrubbing) {
+            keyScrubbing = true
+            scrubBase = state.positionMs
+        }
+        val max = state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+        scrubTarget = ((scrubTarget ?: scrubBase) + delta).coerceIn(0, max)
+    }
+
+    fun commitKeyScrub() {
+        scrubTarget?.let(controller::seekTo)
+        scrubTarget = null
+        keyScrubbing = false
+    }
+
+    fun cancelKeyScrub() {
+        scrubTarget = null
+        keyScrubbing = false
     }
 
     fun seekWithFlash(delta: Long) {
@@ -182,8 +218,23 @@ fun PlayerScreen(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .focusRequester(rootFocus)
+                .focusable()
                 .onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyUp) {
+                        if (keyScrubbing && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) {
+                            commitKeyScrub()
+                            return@onPreviewKeyEvent true
+                        }
+                        return@onPreviewKeyEvent false
+                    }
                     if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    if (keyScrubbing) {
+                        when (e.key) {
+                            Key.Back, Key.Escape -> { cancelKeyScrub(); return@onPreviewKeyEvent true }
+                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { commitKeyScrub(); return@onPreviewKeyEvent true }
+                        }
+                    }
                     // Медиаклавиши пульта работают всегда.
                     when (e.key) {
                         Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> { controller.playPause(); show(); return@onPreviewKeyEvent true }
@@ -214,8 +265,8 @@ fun PlayerScreen(
                     val throttled = repeat > 0 && repeat % 3 != 0
                     // Управление скрыто: стрелки перематывают, OK — пауза (или «Пропустить»), вверх/вниз — показать панель.
                     when (e.key) {
-                        Key.DirectionLeft -> { if (!throttled) seekWithFlash(-step); true }
-                        Key.DirectionRight -> { if (!throttled) seekWithFlash(step); true }
+                        Key.DirectionLeft -> { if (!throttled) keyScrub(-step); true }
+                        Key.DirectionRight -> { if (!throttled) keyScrub(step); true }
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                             val seg = skippable
                             if (seg != null) controller.skip(seg) else { controller.playPause(); show() }
@@ -346,6 +397,20 @@ fun PlayerScreen(
                 )
             }
 
+            if (state.warnings.isNotEmpty() && !inPictureInPicture) {
+                LaunchedEffect(state.warnings) { delay(8_000); controller.dismissWarnings() }
+                Column(
+                    Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(start = 24.dp, top = 72.dp).widthIn(max = 520.dp)
+                        .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
+                        .clickable { panel = Panel.INFO; controller.dismissWarnings() }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
+                    Text(tr("info.more"), color = theme.accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+
             state.resumedFromMs?.let { from ->
                 if (!inPictureInPicture) {
                     Row(
@@ -396,6 +461,7 @@ fun PlayerScreen(
                             onSubtitleDelay = controller::setSubtitleDelay,
                             onSecondarySubtitle = controller::setSecondarySubtitle,
                             onNightMode = controller::setNightMode,
+                            report = controller::report,
                             onNightSchedule = { auto, start, end ->
                                 settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
                                 controller.onNightScheduleChanged()
@@ -466,6 +532,7 @@ private fun Controls(
                         accent = theme.accent,
                     )
                 }
+                ControlButton(Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) }, accent = theme.accent)
                 ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, accent = theme.accent)
                 ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
@@ -537,7 +604,7 @@ private fun Controls(
                     Text("${formatSpeed(state.speed)}×  ", color = theme.accent, style = MaterialTheme.typography.bodyMedium)
                 }
                 Text(
-                    if (state.durationMs > 0) "−${formatTime(state.durationMs - state.positionMs)} / ${formatTime(state.durationMs)}" else tr("player.live"),
+                    if (state.durationMs > 0) "−${formatTime(state.durationMs - state.positionMs)} / ${formatTime(state.durationMs)}" else if (state.isBuffering) "" else tr("player.live"),
                     color = Color.White.copy(alpha = 0.85f),
                     style = MaterialTheme.typography.bodyMedium,
                 )

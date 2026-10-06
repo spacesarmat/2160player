@@ -88,6 +88,7 @@ data class PlayerUiState(
     val speedBoost: Boolean = false,
     /** Format.id вторых субтитров или null. */
     val secondaryTextId: String? = null,
+    val nightMode: Boolean = false,
 )
 
 /**
@@ -113,7 +114,7 @@ class PlayerController(
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
 
-    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size))
+    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, nightMode = settings.current.nightMode))
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении). */
@@ -430,6 +431,13 @@ class PlayerController(
         }
         selector.setParameters(builder)
         _state.update { it.copy(secondaryTextId = secondary.formatId) }
+    }
+
+    /** «Ночной звук» на лету. Если звук шёл на ресивер в обход декодера, режим включится со следующего запуска. */
+    fun setNightMode(enabled: Boolean) {
+        built.night.enabled = enabled
+        settings.update { it.copy(nightMode = enabled) }
+        _state.update { it.copy(nightMode = enabled) }
     }
 
     fun setSubtitleDelay(ms: Long) {

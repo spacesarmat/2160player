@@ -27,6 +27,7 @@ internal class BuiltPlayer(
     val player: ExoPlayer,
     val decoderManager: DecoderManager,
     val secondarySubtitles: SecondarySubtitles,
+    val night: NightAudioProcessor,
 ) {
     fun release() {
         decoderManager.detach()
@@ -54,7 +55,9 @@ internal object PlayerFactory {
         }
         val decoderManager = DecoderManager(mode, mode)
         val secondarySubtitles = SecondarySubtitles()
-        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles).setDecoderManager(decoderManager).apply {
+        val night = NightAudioProcessor().apply { enabled = settings.nightMode }
+        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles, night, decodeAllAudio = settings.nightMode)
+            .setDecoderManager(decoderManager).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -109,6 +112,6 @@ internal object PlayerFactory {
             .build()
 
         decoderManager.attach(player)
-        return BuiltPlayer(player, decoderManager, secondarySubtitles)
+        return BuiltPlayer(player, decoderManager, secondarySubtitles, night)
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SubtitlesOff
@@ -58,6 +59,7 @@ class PanelActions(
     val onAddSubtitle: () -> Unit,
     val onSubtitleDelay: (Long) -> Unit,
     val onSecondarySubtitle: (TrackOption?) -> Unit,
+    val onNightMode: (Boolean) -> Unit,
     val onSubtitleSize: (Float) -> Unit,
     val onSpeed: (Float) -> Unit,
     val onAutoVideo: () -> Unit,
@@ -101,6 +103,15 @@ fun SidePanel(
         LazyColumn(Modifier.fillMaxWidth()) {
             when (panel) {
                 Panel.AUDIO -> {
+                    item(key = "night") {
+                        PanelRow(
+                            text = tr("panel.night_mode"),
+                            secondary = tr("panel.night_mode_hint"),
+                            selected = state.nightMode,
+                            onClick = { actions.onNightMode(!state.nightMode) },
+                            leading = Icons.Default.NightsStay,
+                        )
+                    }
                     if (state.audioTracks.isEmpty()) item { Hint(tr("panel.no_audio")) }
                     items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }) { (i, t) ->
                         PanelRow(

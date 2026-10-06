@@ -47,6 +47,8 @@ data class Settings(
     val resizeMode: ResizeMode = ResizeMode.FIT,
     val autoPlayNext: Boolean = true,
     val skipMode: SkipMode = SkipMode.BUTTON,
+    /** «Ночной звук»: сжатие динамики и выделение диалогов. */
+    val nightMode: Boolean = false,
 )
 
 /** Настройки плеера на SharedPreferences; наблюдаемы через [state]. */
@@ -93,6 +95,7 @@ class PlayerSettings private constructor(context: Context) {
             resizeMode = enumOr(prefs.getString("resize", null), d.resizeMode),
             autoPlayNext = prefs.getBoolean("auto_next", d.autoPlayNext),
             skipMode = enumOr(prefs.getString("skip_mode", null), d.skipMode),
+            nightMode = prefs.getBoolean("night_mode", d.nightMode),
         )
     }
 
@@ -115,6 +118,7 @@ class PlayerSettings private constructor(context: Context) {
             .putString("resize", s.resizeMode.name)
             .putBoolean("auto_next", s.autoPlayNext)
             .putString("skip_mode", s.skipMode.name)
+            .putBoolean("night_mode", s.nightMode)
             .apply()
     }
 

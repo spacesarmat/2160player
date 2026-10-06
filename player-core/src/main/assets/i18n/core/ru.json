@@ -86,5 +86,7 @@
   "panel.mark_credits": "Титры начинаются здесь",
   "panel.before_end": "за %1$s до конца",
   "panel.marks_clear": "Сбросить отметки",
-  "panel.secondary_subs": "Вторые субтитры (сверху)"
+  "panel.secondary_subs": "Вторые субтитры (сверху)",
+  "panel.night_mode": "Ночной звук",
+  "panel.night_mode_hint": "Тише взрывы, разборчивее диалоги"
 }

@@ -189,6 +189,7 @@ fun SettingsScreen(
             item { SectionTitle(tr("settings.section_playback")) }
             item { ToggleRow(tr("settings.auto_resume"), null, s.autoResume) { v -> update { it.copy(autoResume = v) } } }
             item { ToggleRow(tr("settings.auto_next"), null, s.autoPlayNext) { v -> update { it.copy(autoPlayNext = v) } } }
+            item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
             item {
                 val modes = listOf(
                     Choice(strings["settings.skip_off"], SkipMode.OFF),

@@ -57,6 +57,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tv.p2160.core.i18n.tr
+import tv.p2160.app.handoff.Handoff
+import tv.p2160.app.handoff.RemoteSession
+import androidx.compose.material.icons.filled.Devices
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import tv.p2160.core.resume.ResumeEntry
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.ui.formatTime
@@ -69,7 +74,19 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenNetwork: () -> Unit,
     onPlayEntry: (ResumeEntry) -> Unit,
+    onPlayRemote: (RemoteSession) -> Unit,
 ) {
+    // Что играет на других устройствах в сети — опрашиваем раз в несколько секунд.
+    val peers by Handoff.peers.collectAsState()
+    var remote by remember { mutableStateOf<List<RemoteSession>>(emptyList()) }
+    LaunchedEffect(peers) {
+        while (true) {
+            remote = withContext(Dispatchers.IO) {
+                peers.mapNotNull(Handoff::fetchSession).filter { it.durationMs > 0 && it.positionMs > 5_000 }
+            }
+            kotlinx.coroutines.delay(5_000)
+        }
+    }
     val changes by store.changes.collectAsState()
     val history = remember(changes) { store.recent(100) }
     val continueList = history.filter { !it.finished && it.positionMs > 0 }
@@ -95,6 +112,28 @@ fun HomeScreen(
                 ActionTile(Icons.Default.Lan, tr("app.network"), onOpenNetwork)
                 ActionTile(Icons.Default.Link, tr("app.open_url"), { urlDialog = true })
                 ActionTile(Icons.Default.Settings, tr("app.settings"), onOpenSettings)
+            }
+        }
+
+        if (remote.isNotEmpty()) {
+            item(key = "remote") {
+                SectionTitle(tr("handoff.other_devices"))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    items(remote, key = { "r" + it.peer.id }) { session ->
+                        FocusCard(onClick = { onPlayRemote(session) }, modifier = Modifier.width(280.dp).height(140.dp)) {
+                            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Devices, null, tint = colors.primary, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(session.peer.name, color = colors.primary, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(session.title, color = colors.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(tr("handoff.continue_from", formatTime(session.positionMs)), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
             }
         }
 

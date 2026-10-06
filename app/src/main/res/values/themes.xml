@@ -9,6 +9,14 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
+    <!-- Прозрачные диалоговые экраны поверх плеера/лаунчера -->
+    <style name="Theme.P2160.Dialog" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
     <color name="app_background">#0E0E10</color>
     <color name="ic_launcher_background">#0E0E10</color>
 </resources>

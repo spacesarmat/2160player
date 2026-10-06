@@ -3,10 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Одно приложение для телефонов и Android TV -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application
+        android:name=".App"
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
         android:banner="@drawable/tv_banner"
@@ -26,6 +30,18 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- «Продолжить на другом устройстве» -->
+        <activity
+            android:name=".handoff.HandoffReceiveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.P2160.Dialog" />
+        <activity
+            android:name=".handoff.HandoffSendActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.P2160.Dialog" />
 
         <!-- Плеер из библиотеки, открытый для других приложений (Intent API) -->
         <activity

@@ -22,6 +22,7 @@ import tv.p2160.core.api.Player2160
 import tv.p2160.core.i18n.I18n
 import tv.p2160.core.i18n.LocalStrings
 import tv.p2160.core.resume.ResumeEntry
+import tv.p2160.app.handoff.Handoff
 import tv.p2160.core.source.smb.SmbEntry
 import tv.p2160.core.source.smb.SmbServers
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onOpenNetwork = { screen = Screen.NETWORK },
                             onPlayEntry = ::playEntry,
+                            onPlayRemote = { Handoff.play(this, it) },
                         )
                         Screen.NETWORK -> NetworkScreen(
                             servers = servers,

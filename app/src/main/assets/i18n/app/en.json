@@ -109,5 +109,14 @@
   "net.no_shares": "The server has no shared folders available to this user",
   "net.enter_share": "Enter the full path: \\\\server\\share",
   "net.advanced": "More options (name, domain)",
-  "net.domain_hint": "Usually empty. Only for Windows domains/workgroups — not a folder path"
+  "net.domain_hint": "Usually empty. Only for Windows domains/workgroups — not a folder path",
+  "handoff.other_devices": "On your other devices",
+  "handoff.continue_from": "Continue from %1$s",
+  "handoff.incoming_title": "%1$s suggests continuing here",
+  "handoff.watch_here": "Watch here",
+  "handoff.send_title": "Continue on another device",
+  "handoff.searching": "Looking for devices with 2160 Player…",
+  "handoff.hint": "Open 2160 Player on the other device; both must be on the same network",
+  "handoff.sent": "Sent to %1$s",
+  "handoff.failed": "Could not send. Is 2160 Player open on that device?"
 }

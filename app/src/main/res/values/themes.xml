@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Остальные строки живут в assets/i18n (JSON-пакеты с поддержкой пользовательских переводов) -->
+    <string name="app_name" translatable="false">2160 Player</string>
+
+    <style name="Theme.P2160.App" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <color name="app_background">#0E0E10</color>
+    <color name="ic_launcher_background">#0E0E10</color>
+</resources>

@@ -1,0 +1,21 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+
+# Подпись релизов — никогда не коммитить
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Прочее
+.DS_Store
+Thumbs.db
+*.log
+.cxx/
+.externalNativeBuild/
+app/release/

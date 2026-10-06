@@ -1,0 +1,47 @@
+name: Ошибка воспроизведения / баг
+description: Файл не играет, нет звука, субтитры, вылет и т.п.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось
+      description: Что ожидали и что получили.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      placeholder: |
+        1. Открыть файл …
+        2. Выбрать дорожку …
+        3. …
+  - type: input
+    id: device
+    attributes:
+      label: Устройство и версия Android
+      placeholder: Например, Xiaomi Mi Box S, Android 9 / Pixel 8, Android 15
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Источник
+      options: [Локальный файл, Ссылка / стрим, SMB / DLNA, IPTV, Торрент, Intent из другого приложения]
+  - type: textarea
+    id: media
+    attributes:
+      label: Сведения о файле
+      description: Контейнер, видео/аудио кодеки, субтитры. Удобно вставить вывод MediaInfo.
+      render: text
+  - type: dropdown
+    id: decoder
+    attributes:
+      label: Режим декодера
+      options: [Авто, Аппаратный, FFmpeg]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи (adb logcat)
+      render: text

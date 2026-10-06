@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "2160player"
 include(":player-core")
 include(":app")
+include(":samples:embed-demo")

@@ -1,0 +1,123 @@
+# 2160 Player
+
+Медиаплеер для Android-телефонов и Android TV на Media3 (ExoPlayer) + FFmpeg с интерфейсом на
+Jetpack Compose. Играет почти всё — от IPTV-потоков до образов Blu-ray с домашнего NAS по SMB.
+Ядро плеера (`player-core`) — отдельная библиотека, которую можно встроить в своё приложение
+или вызывать из любого приложения через Intent (совместимо с MX Player и VLC).
+
+*English summary — [below](#english).*
+
+## Возможности
+
+- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MPEG-2, VC-1 там, где устройство их не умеет; passthrough на ресивер.
+- **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок.
+- **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) — автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
+- **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео, задержка, стиль, **двойные субтитры**.
+- **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
+- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению.
+- **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
+- **6 тем** оформления, **локализация** JSON-пакетами (ru, en) с импортом пользовательских переводов.
+
+## Скриншоты
+
+<!-- TODO: добавить скриншоты в docs/images/ -->
+
+| Телефон | Android TV |
+|---|---|
+| _скоро_ | _скоро_ |
+
+## Документация
+
+- [docs/EMBEDDING.md](docs/EMBEDDING.md) — встраивание за 5 минут: подключение (модуль, `includeBuild`, mavenLocal, GitHub Packages), запуск, свой экран.
+- [docs/API.md](docs/API.md) — полный справочник: Intent API, `Player2160`, `PlayerController`, `PlayerScreen`, настройки, история, SMB, отрезки, локализация, Blu-ray, ограничения.
+- [samples/embed-demo](samples/embed-demo) — пример приложения-хоста.
+
+Короткий пример:
+
+```kotlin
+// Библиотека в вашем APK
+Player2160.play(context, PlaybackRequest.single(Uri.parse("smb://nas/Movies/Film.iso"), "Фильм"))
+
+// Без библиотеки — Intent в установленный 2160 Player
+startActivity(
+    Intent(Intent.ACTION_VIEW)
+        .setDataAndType(Uri.parse("https://example.com/movie.mkv"), "video/*")
+        .setPackage("tv.p2160.player")
+        .putExtra("title", "Фильм")
+)
+```
+
+## Сборка
+
+Требуется JDK 21 (для Gradle) и Android SDK с платформой 37.
+
+```sh
+# если нет local.properties:
+echo "sdk.dir=/path/to/Android/Sdk" > local.properties
+
+./gradlew :app:assembleDebug                     # приложение (APK по ABI + universal)
+./gradlew :player-core:testDebugUnitTest         # тесты библиотеки
+./gradlew :samples:embed-demo:assembleDebug      # пример встраивания
+./gradlew :player-core:publishReleasePublicationToMavenLocal   # AAR в ~/.m2
+```
+
+APK: `app/build/outputs/apk/debug/`. applicationId: `tv.p2160.player` (release), `tv.p2160.player.debug` (debug).
+
+## Структура проекта
+
+```
+player-core/            библиотека плеера (tv.p2160.core)
+  api/                  публичный фасад: Player2160, PlaybackRequest, IntentApi, NowPlaying, PlayerAction, SkipSegment
+  engine/               PlayerController, сборка ExoPlayer, дорожки, двойные субтитры, отрезки
+  ui/                   Compose: PlayerScreen, панели, жесты, темы
+  bluray/, m2ts/        чтение ISO/UDF и BDMV, MPLS/CLPI, экстрактор M2TS
+  source/               SMB (smbj), маршрутизация источников, произвольный доступ
+  settings/, resume/, i18n/, subtitle/
+  src/main/assets/i18n/core/   языковые пакеты ядра
+app/                    приложение 2160 Player: главный экран, история, SMB-браузер, настройки
+samples/embed-demo/     пример встраивания библиотеки
+design/                 исходники логотипа и баннера
+docs/                   документация
+.github/                CI, шаблоны issue и PR
+```
+
+## Участие в разработке
+
+Issue и pull request'ы приветствуются. Пожалуйста, используйте шаблоны:
+[bug report](.github/ISSUE_TEMPLATE/bug_report.yml), [feature request](.github/ISSUE_TEMPLATE/feature_request.yml),
+[pull request](.github/PULL_REQUEST_TEMPLATE.md). Перед PR убедитесь, что проходит
+`./gradlew assembleDebug testDebugUnitTest lintDebug`, а изменения публичного API отражены в
+[docs/API.md](docs/API.md). Новые строки интерфейса добавляйте во все языковые пакеты
+(`assets/i18n/*/en.json`, `ru.json`) — это проверяет `TranslationsTest`.
+
+## Лицензия
+
+TBD.
+
+---
+
+## English
+
+**2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
+decoders and a Jetpack Compose UI. It plays local files, HTTP/HLS/DASH/RTSP streams, SMB shares
+and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
+intro/credits skipping, dual subtitles, resume with track memory, themes and JSON language packs.
+
+The `player-core` module is an embeddable library:
+
+- **Intent API** — call the standalone app (`tv.p2160.player`, debug `tv.p2160.player.debug`,
+  activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
+  `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
+  results are returned in MX Player and VLC formats.
+- **Library** — `implementation("tv.p2160:player-core:0.1.0")` (module, composite build, mavenLocal
+  or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
+  `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
+  Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for
+  results, or embed the `PlayerScreen` composable with your own `PlayerController`.
+- **Extensibility** — observe `Player2160.nowPlaying`, add toolbar buttons with
+  `Player2160.registerAction(PlayerAction(...))`, change `PlayerSettings`, read `ResumeStore`.
+
+Docs are in Russian: [docs/EMBEDDING.md](docs/EMBEDDING.md) (quick start),
+[docs/API.md](docs/API.md) (reference). Code samples are self-explanatory; see
+[samples/embed-demo](samples/embed-demo). Build with `./gradlew :app:assembleDebug` (JDK 21).
+License: TBD.

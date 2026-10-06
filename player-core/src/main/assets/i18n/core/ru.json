@@ -88,5 +88,9 @@
   "panel.marks_clear": "Сбросить отметки",
   "panel.secondary_subs": "Вторые субтитры (сверху)",
   "panel.night_mode": "Ночной звук",
-  "panel.night_mode_hint": "Тише взрывы, разборчивее диалоги"
+  "panel.night_mode_hint": "Тише взрывы, разборчивее диалоги",
+  "panel.night_auto": "По расписанию",
+  "panel.night_auto_hint": "Автоматически с %1$s до %2$s",
+  "panel.night_start": "С",
+  "panel.night_end": "До"
 }

@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.Schedule
+import tv.p2160.core.settings.NightSchedule
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SubtitlesOff
@@ -60,6 +62,8 @@ class PanelActions(
     val onSubtitleDelay: (Long) -> Unit,
     val onSecondarySubtitle: (TrackOption?) -> Unit,
     val onNightMode: (Boolean) -> Unit,
+    /** Изменение настроек расписания ночного звука (вкл/выкл, начало, конец в минутах от полуночи). */
+    val onNightSchedule: (auto: Boolean, start: Int, end: Int) -> Unit,
     val onSubtitleSize: (Float) -> Unit,
     val onSpeed: (Float) -> Unit,
     val onAutoVideo: () -> Unit,
@@ -111,6 +115,35 @@ fun SidePanel(
                             onClick = { actions.onNightMode(!state.nightMode) },
                             leading = Icons.Default.NightsStay,
                         )
+                    }
+                    item(key = "night-auto") {
+                        PanelRow(
+                            text = tr("panel.night_auto"),
+                            secondary = tr("panel.night_auto_hint", NightSchedule.format(settings.nightStartMinute), NightSchedule.format(settings.nightEndMinute)),
+                            selected = settings.nightAuto,
+                            onClick = { actions.onNightSchedule(!settings.nightAuto, settings.nightStartMinute, settings.nightEndMinute) },
+                            leading = Icons.Default.Schedule,
+                        )
+                    }
+                    if (settings.nightAuto) {
+                        item(key = "night-start") {
+                            Stepper(
+                                label = tr("panel.night_start"),
+                                value = NightSchedule.format(settings.nightStartMinute),
+                                onMinus = { actions.onNightSchedule(true, shiftMinutes(settings.nightStartMinute, -30), settings.nightEndMinute) },
+                                onPlus = { actions.onNightSchedule(true, shiftMinutes(settings.nightStartMinute, 30), settings.nightEndMinute) },
+                                onReset = { actions.onNightSchedule(true, 23 * 60, settings.nightEndMinute) },
+                            )
+                        }
+                        item(key = "night-end") {
+                            Stepper(
+                                label = tr("panel.night_end"),
+                                value = NightSchedule.format(settings.nightEndMinute),
+                                onMinus = { actions.onNightSchedule(true, settings.nightStartMinute, shiftMinutes(settings.nightEndMinute, -30)) },
+                                onPlus = { actions.onNightSchedule(true, settings.nightStartMinute, shiftMinutes(settings.nightEndMinute, 30)) },
+                                onReset = { actions.onNightSchedule(true, settings.nightStartMinute, 10 * 60) },
+                            )
+                        }
                     }
                     if (state.audioTracks.isEmpty()) item { Hint(tr("panel.no_audio")) }
                     items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }) { (i, t) ->
@@ -317,3 +350,5 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 
 fun formatSpeed(s: Float): String =
     if (s % 1f == 0f) s.toInt().toString() else "%.2f".format(Locale.US, s).trimEnd('0').trimEnd('.')
+
+private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 1440 + 1440) % 1440

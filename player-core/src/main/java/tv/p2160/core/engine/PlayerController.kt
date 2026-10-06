@@ -43,6 +43,7 @@ import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.api.SegmentType
 import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.settings.SkipMode
+import tv.p2160.core.settings.NightSchedule
 import tv.p2160.core.api.MediaEntry
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.PlaybackResult
@@ -114,7 +115,9 @@ class PlayerController(
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
 
-    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, nightMode = settings.current.nightMode))
+    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, nightMode = settings.current.nightModeAt(NightSchedule.nowMinute())))
+    /** Пользователь переключил ночной звук вручную в этом просмотре — расписание больше не вмешивается. */
+    private var nightOverridden = false
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении). */
@@ -435,9 +438,25 @@ class PlayerController(
 
     /** «Ночной звук» на лету. Если звук шёл на ресивер в обход декодера, режим включится со следующего запуска. */
     fun setNightMode(enabled: Boolean) {
+        nightOverridden = true
         built.night.enabled = enabled
-        settings.update { it.copy(nightMode = enabled) }
         _state.update { it.copy(nightMode = enabled) }
+    }
+
+    /** Расписание изменили в плеере: снимаем ручное переключение и применяем сразу. */
+    fun onNightScheduleChanged() {
+        nightOverridden = false
+        applyNightSchedule()
+    }
+
+    /** Раз в минуту: наступило/закончилось время по расписанию — переключаем на лету. */
+    private fun applyNightSchedule() {
+        if (nightOverridden) return
+        val wanted = settings.current.nightModeAt(NightSchedule.nowMinute())
+        if (wanted != built.night.enabled) {
+            built.night.enabled = wanted
+            _state.update { it.copy(nightMode = wanted) }
+        }
     }
 
     fun setSubtitleDelay(ms: Long) {
@@ -614,6 +633,7 @@ class PlayerController(
                 maybeAutoSkip()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
+                if (ticks % 120 == 0) applyNightSchedule()
             }
         }
     }

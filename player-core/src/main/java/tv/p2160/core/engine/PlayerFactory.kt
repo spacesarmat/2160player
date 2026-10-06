@@ -19,6 +19,7 @@ import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import tv.p2160.core.bluray.DiscMediaSourceFactory
 import tv.p2160.core.m2ts.M2tsExtractorsFactory
 import tv.p2160.core.settings.DecoderPreference
+import tv.p2160.core.settings.NightSchedule
 import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.settings.Settings
 
@@ -55,8 +56,9 @@ internal object PlayerFactory {
         }
         val decoderManager = DecoderManager(mode, mode)
         val secondarySubtitles = SecondarySubtitles()
-        val night = NightAudioProcessor().apply { enabled = settings.nightMode }
-        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles, night, decodeAllAudio = settings.nightMode)
+        val nightNow = settings.nightModeAt(NightSchedule.nowMinute())
+        val night = NightAudioProcessor().apply { enabled = nightNow }
+        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles, night, decodeAllAudio = nightNow)
             .setDecoderManager(decoderManager).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)

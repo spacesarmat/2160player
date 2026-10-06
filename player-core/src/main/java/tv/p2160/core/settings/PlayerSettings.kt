@@ -49,7 +49,30 @@ data class Settings(
     val skipMode: SkipMode = SkipMode.BUTTON,
     /** «Ночной звук»: сжатие динамики и выделение диалогов. */
     val nightMode: Boolean = false,
-)
+    /** Включать ночной звук автоматически в интервале [nightStartMinute, nightEndMinute). */
+    val nightAuto: Boolean = false,
+    /** Минуты от полуночи: 23:00 = 1380. */
+    val nightStartMinute: Int = 23 * 60,
+    val nightEndMinute: Int = 10 * 60,
+) {
+    /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
+    fun nightModeAt(minuteOfDay: Int): Boolean =
+        nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))
+}
+
+/** Интервал времени суток, в т.ч. через полночь (23:00–10:00). */
+object NightSchedule {
+    fun contains(start: Int, end: Int, minute: Int): Boolean = when {
+        start == end -> false
+        start < end -> minute in start until end
+        else -> minute >= start || minute < end
+    }
+
+    fun nowMinute(): Int = java.util.Calendar.getInstance().let { it.get(java.util.Calendar.HOUR_OF_DAY) * 60 + it.get(java.util.Calendar.MINUTE) }
+
+    fun format(minute: Int): String = "%02d:%02d".format(minute / 60, minute % 60)
+}
+
 
 /** Настройки плеера на SharedPreferences; наблюдаемы через [state]. */
 class PlayerSettings private constructor(context: Context) {
@@ -96,6 +119,9 @@ class PlayerSettings private constructor(context: Context) {
             autoPlayNext = prefs.getBoolean("auto_next", d.autoPlayNext),
             skipMode = enumOr(prefs.getString("skip_mode", null), d.skipMode),
             nightMode = prefs.getBoolean("night_mode", d.nightMode),
+            nightAuto = prefs.getBoolean("night_auto", d.nightAuto),
+            nightStartMinute = prefs.getInt("night_start", d.nightStartMinute),
+            nightEndMinute = prefs.getInt("night_end", d.nightEndMinute),
         )
     }
 
@@ -119,6 +145,9 @@ class PlayerSettings private constructor(context: Context) {
             .putBoolean("auto_next", s.autoPlayNext)
             .putString("skip_mode", s.skipMode.name)
             .putBoolean("night_mode", s.nightMode)
+            .putBoolean("night_auto", s.nightAuto)
+            .putInt("night_start", s.nightStartMinute)
+            .putInt("night_end", s.nightEndMinute)
             .apply()
     }
 

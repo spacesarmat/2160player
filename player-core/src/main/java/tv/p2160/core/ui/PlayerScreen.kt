@@ -396,6 +396,10 @@ fun PlayerScreen(
                             onSubtitleDelay = controller::setSubtitleDelay,
                             onSecondarySubtitle = controller::setSecondarySubtitle,
                             onNightMode = controller::setNightMode,
+                            onNightSchedule = { auto, start, end ->
+                                settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
+                                controller.onNightScheduleChanged()
+                            },
                             onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
                             onSpeed = controller::setSpeed,
                             onAutoVideo = controller::autoVideo,

@@ -88,5 +88,9 @@
   "panel.marks_clear": "Clear marks",
   "panel.secondary_subs": "Second subtitles (shown on top)",
   "panel.night_mode": "Night sound",
-  "panel.night_mode_hint": "Quieter explosions, clearer dialogue"
+  "panel.night_mode_hint": "Quieter explosions, clearer dialogue",
+  "panel.night_auto": "On a schedule",
+  "panel.night_auto_hint": "Automatically from %1$s to %2$s",
+  "panel.night_start": "From",
+  "panel.night_end": "Until"
 }

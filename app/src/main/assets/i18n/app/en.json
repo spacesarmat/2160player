@@ -119,6 +119,10 @@
   "handoff.hint": "Open 2160 Player on the other device; both must be on the same network",
   "handoff.sent": "Sent to %1$s",
   "handoff.failed": "Could not send. Is 2160 Player open on that device?",
-  "settings.night_mode": "Night sound by default",
-  "settings.night_mode_hint": "Dynamic range compression and dialogue boost. Disables passthrough to an AV receiver"
+  "settings.night_mode": "Night sound always",
+  "settings.night_mode_hint": "Dynamic range compression and dialogue boost. Disables passthrough to an AV receiver",
+  "settings.night_auto": "Night sound on a schedule",
+  "settings.night_auto_hint": "Turns on by itself from %1$s to %2$s, even mid-movie",
+  "settings.night_start": "From",
+  "settings.night_end": "Until"
 }

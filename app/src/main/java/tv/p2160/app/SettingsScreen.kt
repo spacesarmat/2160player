@@ -48,6 +48,7 @@ import tv.p2160.core.i18n.tr
 import tv.p2160.core.settings.DecoderPreference
 import tv.p2160.core.settings.PlayerSettings
 import tv.p2160.core.settings.SkipMode
+import tv.p2160.core.settings.NightSchedule
 import tv.p2160.core.settings.SubtitleEdge
 import tv.p2160.core.ui.PlayerThemes
 import tv.p2160.core.ui.SPEED_PRESETS
@@ -190,6 +191,26 @@ fun SettingsScreen(
             item { ToggleRow(tr("settings.auto_resume"), null, s.autoResume) { v -> update { it.copy(autoResume = v) } } }
             item { ToggleRow(tr("settings.auto_next"), null, s.autoPlayNext) { v -> update { it.copy(autoPlayNext = v) } } }
             item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
+            item {
+                ToggleRow(
+                    tr("settings.night_auto"),
+                    tr("settings.night_auto_hint", NightSchedule.format(s.nightStartMinute), NightSchedule.format(s.nightEndMinute)),
+                    s.nightAuto,
+                ) { v -> update { it.copy(nightAuto = v) } }
+            }
+            if (s.nightAuto) {
+                val times = (0 until 48).map { Choice(NightSchedule.format(it * 30), it * 30) }
+                item {
+                    SettingRow(tr("settings.night_start"), value = NightSchedule.format(s.nightStartMinute)) {
+                        ask(strings["settings.night_start"], times, s.nightStartMinute) { v -> update { it.copy(nightStartMinute = v) } }
+                    }
+                }
+                item {
+                    SettingRow(tr("settings.night_end"), value = NightSchedule.format(s.nightEndMinute)) {
+                        ask(strings["settings.night_end"], times, s.nightEndMinute) { v -> update { it.copy(nightEndMinute = v) } }
+                    }
+                }
+            }
             item {
                 val modes = listOf(
                     Choice(strings["settings.skip_off"], SkipMode.OFF),

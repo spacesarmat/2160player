@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,9 +85,9 @@ fun HomeScreen(
     ) {
         item(key = "header") {
             Image(
-                painter = painterResource(R.drawable.logo_header_small),
+                painter = painterResource(if (colors.background.luminance() > 0.5f) R.drawable.logo_header_light_small else R.drawable.logo_header_small),
                 contentDescription = "2160 Player",
-                modifier = Modifier.height(96.dp),
+                modifier = Modifier.height(56.dp),
             )
             Spacer(Modifier.height(20.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -19,3 +19,6 @@ Thumbs.db
 .cxx/
 .externalNativeBuild/
 app/release/
+
+# Локальные данные Claude Code (рабочие копии агентов)
+.claude/

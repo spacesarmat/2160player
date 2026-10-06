@@ -35,6 +35,8 @@ import android.graphics.Bitmap
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.bluray.DiscSessions
+import tv.p2160.core.intro.DetectionResult
+import tv.p2160.core.intro.IntroDetector
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.NowPlaying
 import tv.p2160.core.api.PlayerExtensions
@@ -133,6 +135,11 @@ class PlayerController(
     /** Отрезки, уже пропущенные автоматически: если пользователь вернулся назад, второй раз не прыгаем. */
     private val autoSkipped = mutableSetOf<SkipSegment>()
     private var analyzeJob: Job? = null
+    /** Вступление/титры, найденные по звуку, — самый низкий приоритет. */
+    private var autoSegments: List<SkipSegment> = emptyList()
+    /** Найденные по звуку отрезки с низкой уверенностью: только кнопка, без автопропуска. */
+    private val lowConfidence = mutableSetOf<SkipSegment>()
+    private var introJob: Job? = null
     /** Открытые диски Blu-ray по индексу плейлиста. */
     private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
@@ -227,6 +234,9 @@ class PlayerController(
         val entry = request.items.getOrNull(index) ?: return
         chapters = emptyList()
         autoSkipped.clear()
+        autoSegments = emptyList()
+        lowConfidence.clear()
+        introJob?.cancel()
         val title = titleAt(index)
         val fileName = SubtitleSupport.displayName(appContext, entry.uri) ?: title
         val series = SegmentDetector.seriesKey(fileName) ?: SegmentDetector.seriesKey(title)
@@ -248,13 +258,67 @@ class PlayerController(
             val explicitTypes = entry.segments.map { it.type }.toSet()
             baseSegments = entry.segments + SegmentDetector.fromChapters(found).filter { it.type !in explicitTypes }
             refresh()
+            startIntroDetection(index, series)
         }
+    }
+
+    /**
+     * Поиск вступления/титров по звуку: сравниваем с соседними сериями того же сериала.
+     * Не запускаем, если отрезки уже известны (главы, Intent, ручные отметки) или это диск Blu-ray.
+     */
+    private fun startIntroDetection(index: Int, series: String?) {
+        if (series == null || discs[index] != null) return
+        val known = (baseSegments + marks.toSegments(Long.MAX_VALUE / 4)).map { it.type }.toSet()
+        if (SegmentType.INTRO in known && SegmentType.CREDITS in known) return
+        val entry = request.items.getOrNull(index) ?: return
+        val detector = IntroDetector.get(appContext)
+
+        detector.cached(entry.uri)?.let { applyDetection(it, known); return }
+
+        val siblings = IntroDetector.pickSiblings(request.items.indices.toList(), index)
+            .map { request.items[it] }
+            .filter { sib ->
+                val name = SubtitleSupport.displayName(appContext, sib.uri) ?: sib.title
+                SegmentDetector.seriesKey(name) == series
+            }
+            .map { it.uri }
+        introJob = scope.launch {
+            // Не мешаем буферизации: на SMB/4K первые секунды — самые чувствительные.
+            delay(15_000)
+            val language = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
+                .firstOrNull { it.selected }?.language
+            val result = runCatching {
+                detector.detect(
+                    current = entry.uri,
+                    siblings = siblings,
+                    headers = request.headers,
+                    seriesKey = series,
+                    durationMs = player.duration.takeIf { it > 0 } ?: -1,
+                    preferredLanguage = language,
+                )
+            }.getOrNull() ?: return@launch
+            if (player.currentMediaItemIndex != index) return@launch
+            applyDetection(result, known)
+        }
+    }
+
+    private fun applyDetection(result: DetectionResult, known: Set<SegmentType>) {
+        val found = result.segments.filter { it.type !in known }
+        autoSegments = found
+        lowConfidence.clear()
+        found.forEach { s ->
+            val confidence = if (s.type == SegmentType.INTRO) result.introConfidence else result.creditsConfidence
+            if (confidence < 0.6f) lowConfidence += s
+        }
+        refresh()
     }
 
     private fun currentSegments(durationMs: Long): List<SkipSegment> {
         val manual = marks.toSegments(durationMs)
         val manualTypes = manual.map { it.type }.toSet()
-        return (baseSegments.filter { it.type !in manualTypes } + manual).sortedBy { it.startMs }
+        val base = baseSegments.filter { it.type !in manualTypes } + manual
+        val baseTypes = base.map { it.type }.toSet()
+        return (base + autoSegments.filter { it.type !in baseTypes }).sortedBy { it.startMs }
     }
 
     private fun applyPendingSelections(tracks: Tracks) {
@@ -524,6 +588,7 @@ class PlayerController(
         PlayerExtensions.publish(PlayerExtensions.nowPlaying.value?.copy(isPlaying = false))
         progressJob?.cancel()
         analyzeJob?.cancel()
+        introJob?.cancel()
         scope.cancel()
         analyzer.release()
         discs.values.forEach(DiscSessions::close)
@@ -564,7 +629,7 @@ class PlayerController(
         if (settings.current.skipMode != SkipMode.AUTO || !player.isPlaying) return
         val segment = _state.value.activeSegment ?: return
         // Титры с переходом к следующей серии обрабатывает UI (обратный отсчёт).
-        if (segment.type == SegmentType.CREDITS || segment in autoSkipped) return
+        if (segment.type == SegmentType.CREDITS || segment in autoSkipped || segment in lowConfidence) return
         skip(segment)
     }
 

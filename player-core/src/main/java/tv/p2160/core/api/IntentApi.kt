@@ -28,6 +28,8 @@ object IntentApi {
     const val EXTRA_VIDEO_LIST = "video_list"
     const val EXTRA_VIDEO_LIST_NAME = "video_list.name"
     const val EXTRA_TITLES = "tv.p2160.extra.TITLES"
+    /** Плейлист строками (String[] URI) — удобно из adb, веб-оболочек и скриптов. */
+    const val EXTRA_PLAYLIST = "tv.p2160.extra.PLAYLIST"
     const val EXTRA_MIME_TYPES = "tv.p2160.extra.MIME_TYPES"
     /** Отрезки для текущего файла: `intro:0-90000;credits:1320000-` (мс). */
     const val EXTRA_SEGMENTS = "tv.p2160.extra.SEGMENTS"
@@ -50,7 +52,8 @@ object IntentApi {
     fun parse(intent: Intent): PlaybackRequest? {
         val data = intent.data ?: return null
 
-        val playlist = intent.parcelableArray<Uri>(EXTRA_VIDEO_LIST)?.toList().orEmpty()
+        val playlist = intent.parcelableArray<Uri>(EXTRA_VIDEO_LIST)?.toList()
+            ?: intent.getStringArrayExtra(EXTRA_PLAYLIST)?.map(Uri::parse).orEmpty()
         val playlistNames = intent.getStringArrayExtra(EXTRA_VIDEO_LIST_NAME)
             ?: intent.getStringArrayExtra(EXTRA_TITLES)
         val mimeTypes = intent.getStringArrayExtra(EXTRA_MIME_TYPES)

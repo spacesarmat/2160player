@@ -118,6 +118,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Ключ | Тип | Значение |
 |---|---|---|
+| `tv.p2160.extra.PLAYLIST` | `String[]` | Плейлист строками URI — альтернатива `video_list` (Parcelable[]), удобная из adb (`--esa`), веб-оболочек и скриптов. `data` Intent'а задаёт стартовый элемент. |
 | `tv.p2160.extra.TITLES` | `String[]` | Заголовки плейлиста (используется, если нет `video_list.name`). |
 | `tv.p2160.extra.MIME_TYPES` | `String[]` | MIME по элементам плейлиста. Нужен для HLS/DASH без расширения в URL (`application/x-mpegURL`, `application/dash+xml`, `application/vnd.ms-sstr+xml`). Для текущего файла без плейлиста используется `Intent.type`. |
 | `tv.p2160.extra.SEGMENTS` | `String` | Пропускаемые отрезки текущего файла: `intro:0-90000;credits:1320000-` (см. [§12](#12-главы-и-пропускаемые-отрезки)). |

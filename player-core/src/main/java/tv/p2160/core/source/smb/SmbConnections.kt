@@ -13,6 +13,8 @@ import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import com.hierynomus.smbj.share.File
 import com.hierynomus.security.bc.BCSecurityProvider
+import com.rapid7.client.dcerpc.mssrvs.ServerService
+import com.rapid7.client.dcerpc.transport.SMBTransportFactories
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 
@@ -50,22 +52,25 @@ object SmbConnections {
     private val shares = HashMap<Key, DiskShare>()
     private val sessions = HashMap<Key, Session>()
 
+    @Synchronized
+    private fun session(host: String, cred: SmbServer?): Session {
+        val key = Key(host.lowercase(), "", cred?.username.orEmpty())
+        sessions[key]?.takeIf { it.connection.isConnected }?.let { return it }
+        val connection: Connection = client.connect(host)
+        val auth = when {
+            cred == null || cred.username.isBlank() -> AuthenticationContext.guest()
+            else -> AuthenticationContext(cred.username, cred.password.toCharArray(), cred.domain.ifBlank { null })
+        }
+        return connection.authenticate(auth).also { sessions[key] = it }
+    }
+
     /** Открытая share с учётными данными из [SmbServers] (или явными [credentials]). */
     @Synchronized
     fun share(context: Context, host: String, share: String, credentials: SmbServer? = null): DiskShare {
         val cred = credentials ?: SmbServers.get(context).credentialsFor(host, share)
         val key = Key(host.lowercase(), share.lowercase(), cred?.username.orEmpty())
         shares[key]?.takeIf { it.isConnected }?.let { return it }
-
-        val session = sessions[key]?.takeIf { it.connection.isConnected } ?: run {
-            val connection: Connection = client.connect(host)
-            val auth = when {
-                cred == null || cred.username.isBlank() -> AuthenticationContext.guest()
-                else -> AuthenticationContext(cred.username, cred.password.toCharArray(), cred.domain.ifBlank { null })
-            }
-            connection.authenticate(auth).also { sessions[key] = it }
-        }
-        val disk = session.connectShare(share) as? DiskShare
+        val disk = session(host, cred).connectShare(share) as? DiskShare
             ?: throw IllegalStateException("\\\\$host\\$share is not a disk share")
         shares[key] = disk
         return disk
@@ -100,6 +105,19 @@ object SmbConnections {
             }
             .sortedWith(compareBy<SmbEntry> { !it.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
             .toList()
+
+    /**
+     * Общие дисковые папки сервера (без служебных `C$`, `IPC$`…).
+     * [credentials] — логин/пароль, share в нём не важен.
+     */
+    fun listShares(host: String, credentials: SmbServer?): List<String> {
+        val transport = SMBTransportFactories.SRVSVC.getTransport(session(host, credentials))
+        return ServerService(transport).shares1
+            .filter { it.type and 0xFFFF == 0 }            // STYPE_DISKTREE
+            .map { it.netName }
+            .filter { !it.endsWith("$") }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
 
     /** Проверка подключения (для диалога «Добавить сервер»). */
     fun test(context: Context, server: SmbServer) {

@@ -26,6 +26,10 @@ data class SmbServer(
     val rootUri: Uri get() = SmbPath(host, share, path).toUri()
 
     companion object {
+        /** Только хост из адреса: `\\nas`, `smb://nas/`, `192.168.1.10`. */
+        fun parseHost(raw: String): String? =
+            raw.trim().removePrefix("smb:").replace('\\', '/').trim('/').split('/').firstOrNull { it.isNotBlank() }
+
         /**
          * Разбор адреса в любом привычном виде:
          * `\\192.168.1.191\NAS\data`, `//nas/NAS`, `smb://nas/NAS/movies`, `192.168.1.191/NAS`.

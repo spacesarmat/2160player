@@ -40,6 +40,8 @@ dependencies {
     implementation(libs.nextlib.media3ext)
     implementation(libs.nextlib.mediainfo)
     implementation(libs.smbj)
+    // Список общих папок сервера (SRVSVC NetShareEnum)
+    implementation(libs.smbj.rpc)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -32,6 +32,7 @@ nextlib-mediainfo = { module = "io.github.anilbeesetti:nextlib-mediainfo", versi
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { module = "junit:junit", version = "4.13.2" }
 smbj = { module = "com.hierynomus:smbj", version = "0.15.0" }
+smbj-rpc = { module = "com.rapid7.client:dcerpc", version = "0.12.13" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

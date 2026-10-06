@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -177,40 +178,64 @@ private fun ServerDialog(initial: SmbServer?, initialAddress: String?, servers: 
     var address by remember {
         mutableStateOf(
             initial?.let { "\\\\${it.host}\\${it.share}" + if (it.path.isNotEmpty()) "\\" + it.path.replace('/', '\\') else "" }
-                ?: initialAddress.orEmpty()
+                ?: initialAddress.orEmpty().trimEnd('\\', '/')
         )
     }
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var user by remember { mutableStateOf(initial?.username.orEmpty()) }
     var password by remember { mutableStateOf(initial?.password.orEmpty()) }
     var domain by remember { mutableStateOf(initial?.domain.orEmpty()) }
-    var checking by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(initial?.domain?.isNotEmpty() == true) }
+    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Шаг 2: список общих папок сервера, если в адресе указан только сервер.
+    var shares by remember { mutableStateOf<List<String>?>(null) }
 
-    fun submit() {
-        val parsed = SmbServer.parseAddress(address) ?: run { error = strings["net.bad_address"]; return }
-        val server = SmbServer(
-            id = initial?.id ?: java.util.UUID.randomUUID().toString(),
-            name = name.trim(),
-            host = parsed.host, share = parsed.share, path = parsed.path,
-            username = user.trim(), password = password, domain = domain.trim(),
-        )
-        checking = true
+    fun describe(e: Throwable): String {
+        val msg = e.message.orEmpty()
+        return when {
+            "STATUS_LOGON_FAILURE" in msg || "STATUS_ACCESS_DENIED" in msg -> strings["net.err_login"]
+            "STATUS_BAD_NETWORK_NAME" in msg -> strings["net.err_share"]
+            "STATUS_OBJECT_NAME_NOT_FOUND" in msg || "STATUS_OBJECT_PATH_NOT_FOUND" in msg -> strings["net.err_path"]
+            e is java.net.UnknownHostException || e is java.net.ConnectException || e is java.net.SocketTimeoutException -> strings["net.err_host"]
+            else -> strings.format("net.error", msg.ifBlank { e.javaClass.simpleName })
+        }
+    }
+
+    fun credentials(host: String, share: String = "", path: String = "") = SmbServer(
+        id = initial?.id ?: java.util.UUID.randomUUID().toString(),
+        name = name.trim().ifEmpty { share },
+        host = host, share = share, path = path,
+        username = user.trim(), password = password,
+        // Частая ошибка — вписать путь в поле домена; путь доменом быть не может.
+        domain = domain.trim().takeUnless { '\\' in it || '/' in it }.orEmpty(),
+    )
+
+    fun saveChecked(server: SmbServer) {
+        busy = true
         error = null
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { SmbConnections.test(context, server) } }
-            checking = false
-            result.onSuccess { servers.save(server); onDismiss() }
-                .onFailure { e ->
-                    val msg = e.message.orEmpty()
-                    error = when {
-                        "STATUS_LOGON_FAILURE" in msg || "STATUS_ACCESS_DENIED" in msg -> strings["net.err_login"]
-                        "STATUS_BAD_NETWORK_NAME" in msg -> strings["net.err_share"]
-                        "STATUS_OBJECT_NAME_NOT_FOUND" in msg || "STATUS_OBJECT_PATH_NOT_FOUND" in msg -> strings["net.err_path"]
-                        e is java.net.UnknownHostException || e is java.net.ConnectException || e is java.net.SocketTimeoutException -> strings["net.err_host"]
-                        else -> strings.format("net.error", msg.ifBlank { e.javaClass.simpleName })
-                    }
-                }
+            busy = false
+            result.onSuccess { servers.save(server); onDismiss() }.onFailure { error = describe(it) }
+        }
+    }
+
+    fun connect() {
+        val full = SmbServer.parseAddress(address)
+        if (full != null) {
+            saveChecked(credentials(full.host, full.share, full.path))
+            return
+        }
+        val host = SmbServer.parseHost(address) ?: run { error = strings["net.bad_address"]; return }
+        busy = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { SmbConnections.listShares(host, credentials(host)) } }
+            busy = false
+            result.onSuccess { list ->
+                if (list.isEmpty()) error = strings["net.no_shares"] else shares = list
+            }.onFailure { error = describe(it) + "\n" + strings["net.enter_share"] }
         }
     }
 
@@ -219,20 +244,53 @@ private fun ServerDialog(initial: SmbServer?, initialAddress: String?, servers: 
         title = { Text(tr(if (initial == null) "net.add" else "net.edit")) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { OutlinedTextField(address, { address = it }, label = { Text(tr("net.address")) }, placeholder = { Text("\\\\192.168.1.10\\Video") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(name, { name = it }, label = { Text(tr("net.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(user, { user = it }, label = { Text(tr("net.user")) }, supportingText = { Text(tr("net.guest")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item {
-                    OutlinedTextField(
-                        password, { password = it }, label = { Text(tr("net.password")) }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                val shareList = shares
+                if (shareList != null) {
+                    item { Text(tr("net.pick_share"), style = MaterialTheme.typography.bodyMedium) }
+                    items(shareList) { share ->
+                        FocusCard(
+                            onClick = {
+                                val host = SmbServer.parseHost(address) ?: return@FocusCard
+                                address = "\\\\$host\\$share"
+                                saveChecked(credentials(host, share))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(12.dp))
+                                Text(share)
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        OutlinedTextField(
+                            address, { address = it; error = null },
+                            label = { Text(tr("net.address")) },
+                            placeholder = { Text("\\\\192.168.1.10") },
+                            supportingText = { Text(tr("net.address_hint")) },
+                            singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    item { OutlinedTextField(user, { user = it }, label = { Text(tr("net.user")) }, supportingText = { Text(tr("net.guest")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item {
+                        OutlinedTextField(
+                            password, { password = it }, label = { Text(tr("net.password")) }, singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (advanced) {
+                        item { OutlinedTextField(name, { name = it }, label = { Text(tr("net.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                        item { OutlinedTextField(domain, { domain = it }, label = { Text(tr("net.domain")) }, supportingText = { Text(tr("net.domain_hint")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    } else {
+                        item { TextButton(onClick = { advanced = true }) { Text(tr("net.advanced")) } }
+                    }
                 }
-                item { OutlinedTextField(domain, { domain = it }, label = { Text(tr("net.domain")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 error?.let { item { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) } }
-                if (checking) {
+                if (busy) {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -243,10 +301,13 @@ private fun ServerDialog(initial: SmbServer?, initialAddress: String?, servers: 
                 }
             }
         },
-        confirmButton = { TextButton(onClick = ::submit, enabled = !checking) { Text(tr("net.save")) } },
+        confirmButton = {
+            if (shares == null) TextButton(onClick = ::connect, enabled = !busy && address.isNotBlank()) { Text(tr("net.connect")) }
+        },
         dismissButton = {
             Row {
-                if (initial != null) {
+                if (shares != null) TextButton(onClick = { shares = null }) { Text(tr("player.back")) }
+                if (initial != null && shares == null) {
                     TextButton(onClick = { servers.delete(initial.id); onDismiss() }) { Text(tr("net.delete"), color = MaterialTheme.colorScheme.error) }
                 }
                 TextButton(onClick = onDismiss) { Text(tr("app.cancel")) }

@@ -94,7 +94,7 @@
   "net.save": "Check and save",
   "net.checking": "Connecting…",
   "net.error": "Cannot connect: %1$s",
-  "net.bad_address": "Enter an address like \\\\server\\share",
+  "net.bad_address": "Enter an address like \\\\server or \\\\server\\share",
   "browse.empty": "No videos here",
   "browse.error": "Error: %1$s",
   "browse.bluray": "Blu-ray disc",
@@ -102,5 +102,12 @@
   "net.err_login": "Wrong user name or password",
   "net.err_share": "Share not found or it requires a login. Check the folder name and enter your user name",
   "net.err_path": "Folder not found on the server",
-  "net.err_host": "Server is not reachable. Check the address and that the device is on the same network"
+  "net.err_host": "Server is not reachable. Check the address and that the device is on the same network",
+  "net.address_hint": "Server only, e.g. \\\\192.168.1.10 — shares will be listed. Or a full path \\\\server\\share\\folder",
+  "net.connect": "Connect",
+  "net.pick_share": "Choose a shared folder:",
+  "net.no_shares": "The server has no shared folders available to this user",
+  "net.enter_share": "Enter the full path: \\\\server\\share",
+  "net.advanced": "More options (name, domain)",
+  "net.domain_hint": "Usually empty. Only for Windows domains/workgroups — not a folder path"
 }

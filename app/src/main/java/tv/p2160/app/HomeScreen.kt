@@ -2,7 +2,9 @@ package tv.p2160.app
 
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,12 +52,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.resume.ResumeEntry
@@ -85,12 +83,10 @@ fun HomeScreen(
         contentPadding = PaddingValues(horizontal = 32.dp, vertical = 24.dp),
     ) {
         item(key = "header") {
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.Black)) { append("2160") }
-                    withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.Light)) { append(" Player") }
-                },
-                style = MaterialTheme.typography.headlineLarge,
+            Image(
+                painter = painterResource(R.drawable.logo_header_small),
+                contentDescription = "2160 Player",
+                modifier = Modifier.height(96.dp),
             )
             Spacer(Modifier.height(20.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

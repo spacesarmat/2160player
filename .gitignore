@@ -22,3 +22,7 @@ app/release/
 
 # Локальные данные Claude Code (рабочие копии агентов)
 .claude/
+
+# Промежуточные рендеры логотипа
+design/logo-v2/_shots/
+design/logo-v2/final/_src/

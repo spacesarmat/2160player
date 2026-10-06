@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Чтобы проверить, установлено ли отдельное приложение 2160 Player (Android 11+). -->
+    <queries>
+        <package android:name="tv.p2160.player" />
+        <package android:name="tv.p2160.player.debug" />
+    </queries>
+
+    <application
+        android:name=".SampleApp"
+        android:allowBackup="false"
+        android:label="2160 Embed Demo"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Своя Activity с встроенным PlayerScreen. Тема и configChanges — как у Player2160Activity. -->
+        <activity
+            android:name=".EmbeddedPlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.P2160.Player" />
+    </application>
+</manifest>

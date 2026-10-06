@@ -1,7 +1,12 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
+    `maven-publish`
 }
+
+// Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
+group = "tv.p2160"
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.1.0")
 
 android {
     namespace = "tv.p2160.core"
@@ -24,6 +29,12 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
 }
 
 kotlin {
@@ -44,16 +55,51 @@ dependencies {
     implementation(libs.smbj.rpc)
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.compose)
+    // Типы из этих библиотек видны в публичном API (ActivityResultContract, StateFlow,
+    // @Composable, ImageVector, ColorScheme) — поэтому api, а не implementation.
+    api(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.kotlinx.coroutines.android)
+    api(libs.kotlinx.coroutines.android)
 
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
+    api(platform(libs.compose.bom))
+    api(libs.compose.ui)
+    api(libs.compose.material3)
     implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
+}
+
+// Публикация: mavenLocal (./gradlew :player-core:publishReleasePublicationToMavenLocal)
+// и GitHub Packages (./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository).
+// Учётные данные — только из gradle-свойств (gpr.user / gpr.key) или окружения (GITHUB_ACTOR / GITHUB_TOKEN).
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                groupId = "tv.p2160"
+                artifactId = "player-core"
+                version = project.version.toString()
+                pom {
+                    name.set("2160 Player core")
+                    description.set("Embeddable Android media player: Media3 + FFmpeg, Blu-ray ISO/BDMV, SMB, Compose UI.")
+                    url.set("https://github.com/spacesarmat/2160player")
+                }
+            }
+        }
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/spacesarmat/2160player")
+                credentials {
+                    username = providers.gradleProperty("gpr.user")
+                        .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                    password = providers.gradleProperty("gpr.key")
+                        .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+                }
+            }
+        }
+    }
 }

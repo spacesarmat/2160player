@@ -6,20 +6,12 @@ import java.util.concurrent.TimeUnit
 /** Пути к тестовым данным. Всё, чего нет на машине, тесты пропускают через Assume. */
 object Fixtures {
 
-    val fallen = File(
-        System.getenv("P2160_FALLEN_M2TS")
-            ?: """Y:\data\media\movies\Fallen (1998)\Fallen (1998) Remux-1080p.m2ts""",
-    )
+    // Реальные файлы задаются переменными окружения; без них тесты пропускаются.
+    val fallen = File(System.getenv("P2160_FALLEN_M2TS") ?: "")
 
-    val aquamanIso = File(
-        System.getenv("P2160_AQUAMAN_ISO")
-            ?: """Y:\data\media\movies\Aquaman (2018)\Aquaman (2018) Remux-1080p.iso""",
-    )
+    val aquamanIso = File(System.getenv("P2160_AQUAMAN_ISO") ?: System.getenv("BLURAY_TEST_ISO") ?: "")
 
-    private val ffmpeg: File? = listOfNotNull(
-        System.getenv("P2160_FFMPEG"),
-        """C:\Users\ANDYBUM\AppData\Local\Temp\claude\C--Users-ANDYBUM-2160player\d1139f05-89a9-4600-8149-aefb48847fd9\scratchpad\pylib\imageio_ffmpeg\binaries\ffmpeg-win-x86_64-v7.1.exe""",
-    ).map(::File).firstOrNull { it.isFile }
+    private val ffmpeg: File? = System.getenv("P2160_FFMPEG")?.let(::File)?.takeIf { it.isFile }
 
     private val workDir = File(System.getProperty("java.io.tmpdir"), "p2160-m2ts-tests").apply { mkdirs() }
 

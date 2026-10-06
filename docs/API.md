@@ -899,7 +899,7 @@ data class SmbServer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val host: String,
-    val share: String,        // \\192.168.1.191\NAS → "NAS"
+    val share: String,        // \\192.168.1.10\NAS → "NAS"
     val path: String = "",    // стартовая подпапка
     val username: String = "",
     val password: String = "",
@@ -908,7 +908,7 @@ data class SmbServer(
     val rootUri: Uri          // smb://host/share/path
     companion object {
         fun parseHost(raw: String): String?        // "\\nas", "smb://nas/", "192.168.1.10" → хост
-        fun parseAddress(raw: String): SmbPath?   // "\\192.168.1.191\NAS\data", "//nas/NAS", "smb://nas/NAS/movies"
+        fun parseAddress(raw: String): SmbPath?   // "\\192.168.1.10\NAS\data", "//nas/NAS", "smb://nas/NAS/movies"
     }
 }
 ```

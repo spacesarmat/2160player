@@ -13,7 +13,7 @@ import java.io.File
  */
 class RealIsoTest {
 
-    private val iso = File(System.getenv("BLURAY_TEST_ISO") ?: "Y:\\data\\media\\movies\\Aquaman (2018)\\Aquaman (2018) Remux-1080p.iso")
+    private val iso = File(System.getenv("BLURAY_TEST_ISO") ?: "")
 
     @Test
     fun aquamanIso() {

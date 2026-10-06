@@ -26,9 +26,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: 2160player-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/app-universal-debug.apk
+          retention-days: 14
       - name: Upload library AAR
         uses: actions/upload-artifact@v4
         with:
           name: player-core
           path: player-core/build/outputs/aar/*.aar
+          retention-days: 14

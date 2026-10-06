@@ -14,7 +14,7 @@ data class SmbServer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val host: String,
-    /** Имя общей папки, например `NAS` для `\\192.168.1.191\NAS`. */
+    /** Имя общей папки, например `NAS` для `\\192.168.1.10\NAS`. */
     val share: String,
     /** Стартовая подпапка внутри share. */
     val path: String = "",
@@ -32,7 +32,7 @@ data class SmbServer(
 
         /**
          * Разбор адреса в любом привычном виде:
-         * `\\192.168.1.191\NAS\data`, `//nas/NAS`, `smb://nas/NAS/movies`, `192.168.1.191/NAS`.
+         * `\\192.168.1.10\NAS\data`, `//nas/NAS`, `smb://nas/NAS/movies`, `192.168.1.10/NAS`.
          */
         fun parseAddress(raw: String): SmbPath? {
             val cleaned = raw.trim()

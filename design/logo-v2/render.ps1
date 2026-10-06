@@ -1,5 +1,5 @@
 param([string]$what = "all", [int]$h = 3000)
-$dir = "C:\Users\ANDYBUM\2160player\design\logo-v2"
+$dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 $shots = Join-Path $dir "_shots"
 New-Item -ItemType Directory -Force $shots | Out-Null

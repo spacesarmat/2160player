@@ -71,6 +71,8 @@ class MainActivity : ComponentActivity() {
             var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
             var serverId by rememberSaveable { mutableStateOf<String?>(null) }
             val servers = remember { SmbServers.get(this) }
+            var dlnaUdn by rememberSaveable { mutableStateOf<String?>(null) }
+            val dlnaServers = remember { tv.p2160.core.source.dlna.DlnaServers.get(this) }
 
             BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.NETWORK) { screen = Screen.HOME }
 
@@ -90,7 +92,17 @@ class MainActivity : ComponentActivity() {
                             servers = servers,
                             onBack = { screen = Screen.HOME },
                             onOpen = { serverId = it.id; screen = Screen.BROWSE },
+                            onOpenDlna = { dlnaUdn = it.udn; screen = Screen.DLNA },
                         )
+                        Screen.DLNA -> {
+                            val server = dlnaUdn?.let(dlnaServers::find)
+                            if (server == null) screen = Screen.NETWORK
+                            else DlnaBrowserScreen(
+                                server = server, store = store,
+                                onBack = { screen = Screen.NETWORK },
+                                onPlay = { items, index -> playDlna(this, items, index) },
+                            )
+                        }
                         Screen.BROWSE -> {
                             val server = servers.servers.collectAsStateWithLifecycle().value.firstOrNull { it.id == serverId }
                             if (server == null) {
@@ -146,5 +158,5 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA }
 }

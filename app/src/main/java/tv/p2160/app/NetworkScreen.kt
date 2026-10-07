@@ -72,6 +72,7 @@ fun NetworkScreen(
     servers: SmbServers,
     onBack: () -> Unit,
     onOpen: (SmbServer) -> Unit,
+    onOpenDlna: (tv.p2160.core.source.dlna.DlnaServer) -> Unit,
 ) {
     val list by servers.servers.collectAsStateWithLifecycle()
     val discovered = rememberDiscoveredHosts()
@@ -117,6 +118,7 @@ fun NetworkScreen(
                     modifier = if (list.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
                 )
             }
+            item(key = "dlna") { DlnaServersSection(onOpen = onOpenDlna) }
             item(key = "disc-title") { SectionTitle(tr("net.discovered")) }
             if (discovered.isEmpty()) {
                 item(key = "searching") {

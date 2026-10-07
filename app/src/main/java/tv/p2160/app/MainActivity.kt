@@ -115,7 +115,12 @@ class MainActivity : ComponentActivity() {
                 P2160Theme(PlayerThemes.byId(s.themeId)) {
                     // Автообновление из GitHub Releases: диалог поверх любого экрана.
                     tv.p2160.app.update.UpdateDialog()
-                    androidx.compose.runtime.LaunchedEffect(Unit) { tv.p2160.app.update.Updater.autoCheck(applicationContext) }
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        tv.p2160.app.update.Updater.cleanup(applicationContext)
+                        // Пакет для «Поделиться»: удалить старые версии, при необходимости докачать по Wi-Fi.
+                        tv.p2160.app.share.ShareApp.prepareFull(applicationContext, auto = true)
+                        tv.p2160.app.update.Updater.autoCheck(applicationContext)
+                    }
                     when (screen) {
                         Screen.HOME -> HomeScreen(
                             store = store,

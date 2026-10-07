@@ -19,7 +19,7 @@
   "faq.tv_install.q": "How do I install it on Android TV?",
   "faq.tv_install.a": "Easiest from a phone that already has the player: Settings → About → Share the app → \"Share over Wi-Fi\", then open the shown address on the TV in Downloader or a browser. A USB stick works too: copy the APK and open it in the TV's file manager.",
   "faq.share.q": "How do I share the player without internet?",
-  "faq.share.a": "Settings → About → Share the app: \"Send the file\" (Quick Share, Bluetooth, Telegram) or \"Share over Wi-Fi\" — another device on the same network downloads the player straight from this one via a QR code. No router? Turn on the phone's hotspot.",
+  "faq.share.a": "Settings → About → Share the app: \"Send the file\" (Quick Share, Bluetooth, Telegram) or \"Share over Wi-Fi\" — another device on the same network downloads the player straight from this one via a QR code. No router? Turn on the phone's hotspot. If you have a single-architecture build (arm64-v8a), the player downloads over Wi-Fi and keeps a package for all devices — a single copy, updated together with the player.",
   "faq.scale.q": "Black bars / the picture doesn't fill the screen",
   "faq.scale.a": "The \"Video\" button (frame icon, top right) → Scale: Whole picture, Fit width, Fit height, Fill screen (crop), Stretch. On a phone just pinch: spread two fingers to fill, pinch in to fit. The choice is remembered.",
   "faq.dv.q": "It says \"Dolby Vision is not supported here — the HDR10 base layer is shown\"",

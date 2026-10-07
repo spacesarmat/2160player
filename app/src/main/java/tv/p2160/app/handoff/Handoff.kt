@@ -308,7 +308,7 @@ object Handoff {
             }
             // «Поделиться приложением» по Wi-Fi: сам APK, без защиты кодом (это приложение, не просмотр).
             method == "GET" && path.startsWith("/app") -> {
-                serveFile(ctx, Uri.fromFile(java.io.File(ctx.applicationInfo.sourceDir)), headers["range"], out,
+                serveFile(ctx, Uri.fromFile(tv.p2160.app.share.ShareApp.sharedApk(ctx)), headers["range"], out,
                     type = "application/vnd.android.package-archive", fileName = tv.p2160.app.share.ShareApp.fileName())
             }
             method == "GET" && path.startsWith("/stream/") -> {

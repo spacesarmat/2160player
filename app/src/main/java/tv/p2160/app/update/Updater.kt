@@ -178,7 +178,28 @@ object Updater {
         )
     }
 
-    private fun open(url: String, vararg headers: Pair<String, String>): HttpURLConnection {
+    /** Удалить скачанный APK обновления: после установки он больше не нужен (вызывается при запуске). */
+    fun cleanup(context: Context) {
+        if (_state.value is UpdateState.Downloading || _state.value is UpdateState.Installing) return
+        File(context.cacheDir, "update").listFiles()?.forEach { it.delete() }
+    }
+
+    /**
+     * Общий ARM-APK (иначе универсальный) релиза [version]: ссылка и размер.
+     * Нужен «Поделиться приложением», когда установлен APK под одну архитектуру.
+     */
+    internal suspend fun sharedAsset(version: String): Pair<String, Long> = withContext(Dispatchers.IO) {
+        val conn = open("https://api.github.com/repos/$REPO/releases/tags/v$version", "Accept" to "application/vnd.github+json")
+        val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        val assets = json.getJSONArray("assets")
+        val apks = (0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name").endsWith(".apk") }
+        val apk = apks.firstOrNull { "-arm-" in it.getString("name") }
+            ?: apks.firstOrNull { "universal" in it.getString("name") }
+            ?: error("no shared APK in release $version")
+        apk.getString("browser_download_url") to apk.optLong("size")
+    }
+
+    internal fun open(url: String, vararg headers: Pair<String, String>): HttpURLConnection {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15_000
         conn.readTimeout = 30_000

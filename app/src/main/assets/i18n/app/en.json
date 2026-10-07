@@ -193,7 +193,7 @@
   "share.link": "GitHub link",
   "share.link_hint": "The recipient needs internet",
   "share.link_text": "2160 Player — a player for phones and Android TV:",
-  "share.abi_warning": "This file only fits %1$s devices. For older 32-bit TVs download the ARM build from the releases page.",
+  "share.abi_warning": "The installed file only fits %1$s devices.",
   "share.wifi_none": "No Wi-Fi connection. Connect to a network or turn on the phone's hotspot.",
   "share.wifi_steps": "On another device on the same network scan the QR code or open the address in a browser (on TV — in Downloader). Keep this window open while it downloads. No router: turn on the hotspot on the phone and connect the other device to it.",
   "local.title": "Files on device",
@@ -220,5 +220,10 @@
   "settings.author": "Author",
   "settings.author_hint": "Message on Telegram",
   "settings.donate": "Support the project",
-  "settings.donate_hint": "Donate on Boosty — thank you!"
+  "settings.donate_hint": "Donate on Boosty — thank you!",
+  "share.full_get": "Download the package for all devices",
+  "share.full_get_hint": "≈26 MB, one copy is kept and updated with the player. Downloads by itself on Wi-Fi",
+  "share.full_downloading": "Downloading the package for all devices… %1$d%%",
+  "share.full_ready": "Sharing the package for all devices (phones and 32-bit TVs).",
+  "share.full_failed": "Download failed: %1$s"
 }

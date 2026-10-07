@@ -14,16 +14,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,13 +70,7 @@ fun ShareAppDialog(onDismiss: () -> Unit) {
                     Option(Icons.Default.Link, tr("share.link"), tr("share.link_hint")) {
                         ShareApp.shareLink(context, strings["share.link_text"], strings["share.title"])
                     }
-                    if (abis.isNotEmpty() && !ShareApp.fitsAllArmDevices(abis)) {
-                        Text(
-                            tr("share.abi_warning", abis.sorted().joinToString(", ")),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                    if (abis.isNotEmpty() && !ShareApp.fitsAllArmDevices(abis)) FullPackage(abis)
                 } else {
                     val url = remember { ShareApp.wifiUrl() }
                     if (url == null) {
@@ -97,6 +94,25 @@ fun ShareAppDialog(onDismiss: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("update.close")) } },
     )
+}
+
+/** Установлен APK под одну архитектуру: статус полного пакета или кнопка «скачать». */
+@Composable
+private fun FullPackage(abis: Set<String>) {
+    val context = LocalContext.current
+    val small = MaterialTheme.typography.bodySmall
+    when (val full = ShareApp.full.collectAsState().value) {
+        is ShareApp.FullState.Ready -> Text(tr("share.full_ready"), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        is ShareApp.FullState.Downloading -> {
+            Text(tr("share.full_downloading", (full.progress * 100).toInt()), style = small, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LinearProgressIndicator(progress = { full.progress }, modifier = Modifier.fillMaxWidth())
+        }
+        else -> {
+            Text(tr("share.abi_warning", abis.sorted().joinToString(", ")), style = small, color = MaterialTheme.colorScheme.error)
+            if (full is ShareApp.FullState.Failed) Text(tr("share.full_failed", full.message), style = small, color = MaterialTheme.colorScheme.error)
+            Option(Icons.Default.Download, tr("share.full_get"), tr("share.full_get_hint")) { ShareApp.prepareFull(context, auto = false) }
+        }
+    }
 }
 
 @Composable

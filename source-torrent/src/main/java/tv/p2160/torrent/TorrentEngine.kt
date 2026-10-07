@@ -22,9 +22,20 @@ import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+
+/** Почему торрент стоит на паузе по правилам раздачи (а не по просьбе пользователя). */
+enum class TorrentHold {
+    /** Ждёт безлимитную сеть ([NetworkMode]). */
+    WIFI,
+    /** Ждёт зарядку ([TorrentPrefs.seedOnlyCharging]). */
+    CHARGING,
+    /** Раздача завершена по [SeedPolicy]; продолжить можно вручную ([TorrentEngine.start]). */
+    SEED_LIMIT,
+}
 
 /** Торрент для UI: сохранённая запись + живое состояние, если он сейчас в сессии. */
-data class TorrentItem(val stored: StoredTorrent, val stats: TorrentStats?) {
+data class TorrentItem(val stored: StoredTorrent, val stats: TorrentStats?, val hold: TorrentHold? = null) {
     val id: String get() = stored.id
     val name: String get() = stats?.name?.takeIf { stats.hasMetadata } ?: stored.name
 }
@@ -41,8 +52,19 @@ class TorrentEngine private constructor(context: Context) {
     private val store = TorrentStore(File(appContext.filesDir, "torrents"))
     private val dataRoot: File = File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "torrent-data")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val monitor = DeviceMonitor(appContext)
+    /** Сеть (с оплатой трафика или нет) и зарядка — от них зависят правила раздачи. */
+    val device: StateFlow<DeviceState> = monitor.state
 
-    private val session: TorrentSession = TorrentSession(settings.state.value.sessionConfig(), object : TorrentSession.Callbacks {
+    /** Причины пауз по правилам; [held] — торренты, которые мы сами поставили на паузу и вернём. */
+    private val holds = ConcurrentHashMap<String, TorrentHold>()
+    private val held: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    /** Пользователь продолжил раздачу, уже выполнившую [SeedPolicy], — больше её не останавливаем. */
+    private val seedExempt: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    /** Согласие смотреть торренты по мобильному интернету в режиме [NetworkMode.WIFI_ONLY] (до возврата на Wi-Fi). */
+    @Volatile private var mobileAllowed = false
+
+    private val session: TorrentSession = TorrentSession(settings.state.value.sessionConfig(monitor.state.value.metered), object : TorrentSession.Callbacks {
         override fun onMetadata(id: String, torrent: ByteArray?) {
             torrent?.let { runCatching { store.torrentFile(id).writeBytes(it) } }
             val files = session.files(id).orEmpty()
@@ -69,8 +91,18 @@ class TorrentEngine private constructor(context: Context) {
         // Новые лимиты применяем к работающей сессии.
         scope.launch {
             settings.state.drop(1).collect { prefs ->
-                runCatching { session.applyConfig(prefs.sessionConfig()) }
+                runCatching { session.applyConfig(prefs.sessionConfig(device.value.metered)) }
+                runCatching { applyRules() }
                 cleanup()
+            }
+        }
+        // Сменилась сеть или зарядка — пересчитать лимиты и паузы сразу, не дожидаясь тика.
+        scope.launch {
+            device.drop(1).collect { state ->
+                if (!state.metered) mobileAllowed = false
+                runCatching { session.applyConfig(settings.state.value.sessionConfig(state.metered)) }
+                runCatching { applyRules() }
+                refresh()
             }
         }
     }
@@ -106,6 +138,7 @@ class TorrentEngine private constructor(context: Context) {
                     if (!stats.paused && stats.readers == 0 && !session.keepActive(id) && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
                     if (n % 15 == 0 && stats.hasMetadata) store.update(id) { it.copy(bytesDone = stats.wantedDone) }
                 }
+                applyRules()
                 if (n % 3600 == 0 && n > 0) cleanup()
             }
             n++
@@ -113,10 +146,87 @@ class TorrentEngine private constructor(context: Context) {
         }
     }
 
+    /**
+     * Правила раздачи (раз в секунду и при смене сети/зарядки/настроек):
+     * - [NetworkMode.WIFI_ONLY] по сети с оплатой трафика без согласия — пауза всему;
+     * - иначе просматриваемый сейчас торрент работает всегда, а фоновые встают на паузу по сети
+     *   ([NetworkMode.SEED_WIFI]) и без зарядки ([TorrentPrefs.seedOnlyCharging]);
+     * - скачанный и не просматриваемый торрент останавливается по [SeedPolicy].
+     * Поставленные на паузу правилами торренты возвращаются сами, когда условие снято.
+     */
+    @Synchronized
+    private fun applyRules() {
+        val prefs = settings.state.value
+        val dev = device.value
+        val metered = dev.metered && prefs.network != NetworkMode.ANY
+        val allBlocked = dev.metered && prefs.network == NetworkMode.WIFI_ONLY && !mobileAllowed
+        val noCharge = prefs.seedOnlyCharging && !dev.charging
+        val now = System.currentTimeMillis()
+        session.ids().forEach { id ->
+            val stats = session.stats(id) ?: return@forEach
+            val watching = stats.readers > 0
+            if (holds[id] == TorrentHold.SEED_LIMIT) {
+                // Снова запущен (просмотр, «Продолжить») — метка больше не верна.
+                if (stats.paused) return@forEach
+                holds.remove(id)
+            }
+            if (!watching && stats.state == TorrentStats.State.FINISHED && id !in seedExempt && seedDone(prefs.seedPolicy, stats)) {
+                held.remove(id)
+                holds[id] = TorrentHold.SEED_LIMIT
+                session.stop(id)
+                return@forEach
+            }
+            val hold = when {
+                allBlocked -> TorrentHold.WIFI
+                watching -> null
+                metered -> TorrentHold.WIFI
+                noCharge -> TorrentHold.CHARGING
+                else -> null
+            }
+            if (hold != null) {
+                if (!stats.paused) {
+                    held.add(id)
+                    session.pause(id)
+                }
+                // Метка — только для поставленных на паузу правилами (не для остановленных пользователем).
+                if (id in held) holds[id] = hold else holds.remove(id)
+            } else {
+                holds.remove(id)
+                if (held.remove(id) && stats.paused && (session.keepActive(id) || now - session.lastActiveAt(id) < IDLE_PAUSE_MS)) {
+                    session.resume(id)
+                }
+            }
+        }
+    }
+
+    // Только если что-то действительно скачано: без выбранных файлов libtorrent тоже считает торрент «загруженным».
+    private fun seedDone(policy: SeedPolicy, stats: TorrentStats): Boolean = stats.wanted > 0 && stats.wantedDone >= stats.wanted && when (policy) {
+        SeedPolicy.ALWAYS -> false
+        SeedPolicy.RATIO -> stats.uploadedTotal >= stats.wanted
+        SeedPolicy.DAY -> stats.finishedSeconds >= 24 * 3600
+        SeedPolicy.NEVER -> true
+    }
+
+    /**
+     * Нужно ли согласие на мобильный интернет: режим [NetworkMode.WIFI_ONLY], сеть с оплатой трафика и
+     * пользователь ещё не разрешил. Тогда новые потоки не открываются ([openStream] бросит `IOException`).
+     */
+    fun needsMobileConsent(): Boolean =
+        device.value.metered && settings.state.value.network == NetworkMode.WIFI_ONLY && !mobileAllowed
+
+    /** Разрешить торренты по мобильному интернету до возвращения на безлимитную сеть. */
+    fun allowMobileData() {
+        mobileAllowed = true
+        scope.launch {
+            runCatching { applyRules() }
+            refresh()
+        }
+    }
+
     private fun refresh() {
         val live = session.ids().associateWith { session.stats(it) }
         _torrents.value = store.all()
-            .map { TorrentItem(it, live[it.id]) }
+            .map { t -> TorrentItem(t, live[t.id], if (live[t.id] != null) holds[t.id] else null) }
             .sortedByDescending { it.stored.lastOpenedAt }
     }
 
@@ -254,6 +364,7 @@ class TorrentEngine private constructor(context: Context) {
 
     /** Открывает поток для [TorrentDataSource]. Блокирующий, с потока загрузчика плеера. */
     internal fun openStream(id: String, fileIndex: Int): TorrentSession.FileStream {
+        if (needsMobileConsent()) throw IOException("torrents are set to Wi-Fi only (mobile data)")
         if (!ensureActive(id)) throw IOException("unknown torrent $id")
         if (!session.awaitMetadata(id, METADATA_TIMEOUT_MS)) throw IOException("no metadata for $id")
         val now = System.currentTimeMillis()
@@ -266,6 +377,8 @@ class TorrentEngine private constructor(context: Context) {
     /** Удаляет торрент из списка; [deleteFiles] — вместе со скачанными данными. */
     /** Остановить раздачу: ни загрузки, ни отдачи (данные остаются; просмотр продолжит её сам). */
     suspend fun stop(id: String) = withContext(Dispatchers.IO) {
+        held.remove(id)
+        if (holds[id] != TorrentHold.SEED_LIMIT) holds.remove(id)
         session.stop(id)
         refresh()
     }
@@ -276,7 +389,14 @@ class TorrentEngine private constructor(context: Context) {
      */
     suspend fun start(id: String): Boolean = withContext(Dispatchers.IO) {
         if (!ensureActive(id)) return@withContext false
+        // Продолжили вручную раздачу, уже выполнившую правило «сколько раздавать», — не останавливаем снова.
+        val stats = session.stats(id)
+        if (holds.remove(id) == TorrentHold.SEED_LIMIT ||
+            (stats != null && stats.state == TorrentStats.State.FINISHED && seedDone(settings.state.value.seedPolicy, stats))
+        ) seedExempt.add(id)
+        held.remove(id)
         session.start(id)
+        runCatching { applyRules() }
         refresh()
         true
     }

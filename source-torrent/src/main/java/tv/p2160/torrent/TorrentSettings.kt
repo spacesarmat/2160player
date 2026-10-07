@@ -6,6 +6,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/** В какой сети работают торренты. */
+enum class NetworkMode {
+    /** Качать и раздавать по любой сети. */
+    ANY,
+    /** Просмотр — по любой сети; фоновые раздачи и отдача — только по безлимитной (Wi-Fi). */
+    SEED_WIFI,
+    /** Только по безлимитной сети; на мобильном интернете — после согласия ([TorrentEngine.allowMobileData]). */
+    WIFI_ONLY,
+}
+
+/** Когда прекращать раздачу скачанного торрента (если его сейчас не смотрят). */
+enum class SeedPolicy {
+    ALWAYS,
+    /** Пока не отдано столько же, сколько весят выбранные файлы (рейтинг 1:1). */
+    RATIO,
+    /** 24 часа раздачи после завершения загрузки. */
+    DAY,
+    /** Сразу после завершения загрузки. */
+    NEVER,
+}
+
 /** Пользовательские настройки торрентов. */
 data class TorrentPrefs(
     /** Лимит кэша, ГБ; 0 — без лимита. */
@@ -17,8 +38,23 @@ data class TorrentPrefs(
     val maxConnections: Int = 200,
     /** Ограничение отдачи, КБ/с; 0 — без ограничения. */
     val uploadLimitKb: Int = 0,
+    val network: NetworkMode = NetworkMode.SEED_WIFI,
+    val seedPolicy: SeedPolicy = SeedPolicy.ALWAYS,
+    /** Фоновые раздачи — только на зарядке (устройства без батареи считаются заряжающимися). */
+    val seedOnlyCharging: Boolean = false,
+    /** Ограничение загрузки по сети с оплатой трафика, КБ/с; 0 — без ограничения. */
+    val mobileDownloadLimitKb: Int = 0,
 ) {
-    fun sessionConfig(): SessionConfig = SessionConfig(maxConnections = maxConnections, uploadLimit = uploadLimitKb * 1024)
+    /**
+     * Настройки сессии с учётом сети: по сети с оплатой трафика (кроме режима [NetworkMode.ANY]) отдача
+     * урезается до 16 КБ/с — совсем выключить её у качающегося торрента нельзя (пиры перестанут отдавать
+     * нам), и действует [mobileDownloadLimitKb].
+     */
+    fun sessionConfig(metered: Boolean = false): SessionConfig = SessionConfig(
+        maxConnections = maxConnections,
+        uploadLimit = if (metered && network != NetworkMode.ANY) METERED_UPLOAD_LIMIT else uploadLimitKb * 1024,
+        downloadLimit = if (metered) mobileDownloadLimitKb * 1024 else 0,
+    )
 
     fun cleanupPolicy(): CleanupPolicy = CleanupPolicy(
         maxAgeDays = maxAgeDays,
@@ -31,6 +67,9 @@ data class TorrentPrefs(
         val MAX_AGE_DAYS = listOf(1, 3, 7, 14, 30)
         val CONNECTIONS = listOf(50, 100, 200, 400)
         val UPLOAD_LIMITS = listOf(0, 100, 500, 1024, 5 * 1024)
+        val MOBILE_DOWNLOAD_LIMITS = listOf(0, 512, 1024, 2 * 1024, 5 * 1024)
+        /** Отдача по сети с оплатой трафика, байт/с. */
+        const val METERED_UPLOAD_LIMIT = 16 * 1024
     }
 }
 
@@ -48,6 +87,10 @@ class TorrentSettings internal constructor(context: Context) {
             maxAgeDays = prefs.getInt("max_age_days", d.maxAgeDays),
             maxConnections = prefs.getInt("max_connections", d.maxConnections),
             uploadLimitKb = prefs.getInt("upload_limit_kb", d.uploadLimitKb),
+            network = runCatching { NetworkMode.valueOf(prefs.getString("network", null)!!) }.getOrDefault(d.network),
+            seedPolicy = runCatching { SeedPolicy.valueOf(prefs.getString("seed_policy", null)!!) }.getOrDefault(d.seedPolicy),
+            seedOnlyCharging = prefs.getBoolean("seed_only_charging", d.seedOnlyCharging),
+            mobileDownloadLimitKb = prefs.getInt("mobile_download_limit_kb", d.mobileDownloadLimitKb),
         )
     }
 
@@ -59,6 +102,10 @@ class TorrentSettings internal constructor(context: Context) {
             putInt("max_age_days", next.maxAgeDays)
             putInt("max_connections", next.maxConnections)
             putInt("upload_limit_kb", next.uploadLimitKb)
+            putString("network", next.network.name)
+            putString("seed_policy", next.seedPolicy.name)
+            putBoolean("seed_only_charging", next.seedOnlyCharging)
+            putInt("mobile_download_limit_kb", next.mobileDownloadLimitKb)
         }
         _state.value = next
     }

@@ -75,5 +75,7 @@
   "faq.embed.q": "Can I embed the player in my app?",
   "faq.embed.a": "Yes: via Intent (compatible with MX Player and VLC) or as the player-core library. Docs: docs/EMBEDDING.md and docs/API.md in the repository. License GPL v3: an app embedding the library must be open source too.",
   "faq.telegram": "Message the author on Telegram",
-  "faq.donate": "Support the project on Boosty"
+  "faq.donate": "Support the project on Boosty",
+  "faq.torrent_network.q": "How do I keep torrents off mobile data?",
+  "faq.torrent_network.a": "Torrent settings (gear on the Torrents screen) → Network. \"Seed on Wi-Fi\" (default): watch anywhere, but on mobile data background torrents wait for Wi-Fi and upload is almost off. \"Wi-Fi only\": torrents do not run on mobile data, the player asks before watching. The same dialog sets how long to seed, seeding only while charging and a download limit on mobile data."
 }

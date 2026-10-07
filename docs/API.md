@@ -1761,7 +1761,9 @@ lifecycleScope.launch {
 | `suspend fun prepare(id: String, fileIndex: Int): PlaybackRequest` | См. выше (ждёт метаданные до 120 с, иначе `IOException`). |
 | `val torrents: StateFlow<List<TorrentItem>>` | Все торренты (`StoredTorrent` + живые `TorrentStats`: скорость, пиры, прогресс, буфер). |
 | `val engineError: StateFlow<String?>` | Ошибка запуска (например, нет нативной библиотеки под ABI). |
-| `val settings: TorrentSettings` | `state: StateFlow<TorrentPrefs>`, `update { }`: `cacheLimitGb = 20`, `keepFiles = false`, `maxAgeDays = 7`, `maxConnections = 200`, `uploadLimitKb = 0`. |
+| `val settings: TorrentSettings` | `state: StateFlow<TorrentPrefs>`, `update { }`: `cacheLimitGb = 20`, `keepFiles = false`, `maxAgeDays = 7`, `maxConnections = 200`, `uploadLimitKb = 0`, `network = NetworkMode.SEED_WIFI`, `seedPolicy = SeedPolicy.ALWAYS`, `seedOnlyCharging = false`, `mobileDownloadLimitKb = 0` (см. «Правила раздачи» ниже). |
+| `val device: StateFlow<DeviceState>` | `DeviceState(metered, charging)`: сеть с оплатой трафика (мобильный интернет, точка доступа) и зарядка (устройство без батареи — ТВ, приставка — считается заряжающимся). |
+| `fun needsMobileConsent(): Boolean` / `fun allowMobileData()` | Режим `WIFI_ONLY` и сеть с оплатой трафика: нужно согласие. `allowMobileData()` разрешает торренты до возврата на безлимитную сеть; без него `openStream` (чтение плеером) бросает `IOException`. |
 | `suspend fun stop(id: String)` | Остановить раздачу: ни загрузки, ни отдачи; данные остаются. Начатый просмотр продолжит её сам. |
 | `suspend fun start(id: String): Boolean` | Продолжить раздачу (вернуть «неактивную» после перезапуска в сессию): качает и раздаёт, автопауза через 10 мин без просмотра её не трогает. `false` — не удалось восстановить. |
 | `suspend fun remove(id: String, deleteFiles: Boolean)` / `suspend fun deleteData(id: String)` | Удалить торрент / только скачанные данные. |
@@ -1774,6 +1776,22 @@ lifecycleScope.launch {
 
 Приложение 2160 Player дополнительно открывает magnet-ссылки и `.torrent`-файлы извне
 (`TorrentOpenActivity`: `VIEW` со схемой `magnet`, MIME `application/x-bittorrent`, расширение `.torrent`).
+
+**Правила раздачи.** Раз в секунду и сразу при смене сети, зарядки или настроек движок применяет правила;
+торренты, поставленные на паузу правилами, возвращаются сами, когда условие снято. Причина паузы — в
+`TorrentItem.hold: TorrentHold?` (`WIFI` — ждёт безлимитную сеть, `CHARGING` — ждёт зарядку, `SEED_LIMIT` —
+раздача завершена по правилу; продолжить вручную — `start`, после этого правило к торренту не применяется).
+
+| Настройка | Значения и поведение |
+|---|---|
+| `network: NetworkMode` | `ANY` — по любой сети. `SEED_WIFI` (по умолчанию) — просматриваемый торрент работает везде, фоновые по сети с оплатой трафика ждут Wi-Fi, отдача урезается до `TorrentPrefs.METERED_UPLOAD_LIMIT` (16 КБ/с: совсем выключить её нельзя, а при 1 КБ/с не устанавливаются даже соединения с пирами). `WIFI_ONLY` — по сети с оплатой трафика всё на паузе до `allowMobileData()`; дальше как `SEED_WIFI`. |
+| `seedPolicy: SeedPolicy` | Когда скачанный и не просматриваемый торрент перестаёт раздаваться: `ALWAYS`, `RATIO` (отдано не меньше размера выбранных файлов, `TorrentStats.uploadedTotal`), `DAY` (24 ч в состоянии «загружено», `TorrentStats.finishedSeconds`), `NEVER`. Торрент без выбранных файлов «скачанным» не считается. |
+| `seedOnlyCharging` | Фоновые торренты ждут зарядку; просмотр работает всегда. |
+| `mobileDownloadLimitKb` | Ограничение загрузки по сети с оплатой трафика (`MOBILE_DOWNLOAD_LIMITS`: 0, 512, 1024, 2048, 5120 КБ/с). |
+
+`TorrentPrefs.sessionConfig(metered)` строит настройки сессии с учётом сети. Приложение 2160 Player перед
+добавлением и просмотром торрента в режиме «Только Wi-Fi» спрашивает «Смотреть через мобильный интернет?»
+и на карточках показывает метки «Ждёт Wi-Fi», «Ждёт зарядку», «Раздача завершена».
 
 При активации (выбор файла, `start`) торрент сразу заново анонсируется на трекерах и в DHT
 (`forceReannounce` с `IGNORE_MIN_INTERVAL`, `forceDHTAnnounce`): восстановленный из данных возобновления
@@ -1975,7 +1993,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | `tv.p2160.core.source.dlna` | `DlnaServers`, `KnownDlnaServer`, `DlnaServer`, `DlnaIcon`, `DlnaDiscovery`, `DlnaProbe`, `ContentDirectory`, `BrowsePage`, `DlnaObject`, `DlnaContainer`, `DlnaItem`, `DlnaResource`, `DlnaSubtitle`, `DlnaMediaKind`, `DlnaPlayback`, `DlnaException` | §19 |
 | `tv.p2160.core.iptv` | `IptvStore`, `IptvPlaylist`, `IptvPlayback`, `M3uParser`, `M3uPlaylist`, `IptvChannel`, `XmltvParser`, `EpgFilter`, `EpgData`, `EpgGuide`, `EpgProgramme`, `NowNext`, `EpgCodec` | §20 |
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
-| `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
+| `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `NetworkMode`, `SeedPolicy`, `TorrentHold`, `DeviceState`, `MagnetLink` | §21 |
 
 Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;

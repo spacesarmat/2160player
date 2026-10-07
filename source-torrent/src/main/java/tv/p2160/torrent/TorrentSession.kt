@@ -96,6 +96,10 @@ data class TorrentStats(
     val bufferedBytes: Long,
     val readers: Int,
     val error: String?,
+    /** Отдано за всё время (байт) — для правила «раздавать до 1:1». */
+    val uploadedTotal: Long = 0,
+    /** Секунд в состоянии «загружено» (раздача) — для правила «24 часа». */
+    val finishedSeconds: Long = 0,
 ) {
     enum class State { METADATA, CHECKING, DOWNLOADING, FINISHED, ERROR }
 }
@@ -526,6 +530,8 @@ class TorrentSession(
             bufferedBytes = buffered,
             readers = entry.readers.size,
             error = error,
+            uploadedTotal = s.allTimeUpload(),
+            finishedSeconds = s.finishedDuration(),
         )
     }
 
@@ -550,6 +556,12 @@ class TorrentSession(
     fun start(id: String) {
         val e = entries[id] ?: return
         e.keepActive = true
+        resume(id)
+    }
+
+    /** Снять паузу (после ограничения по сети/зарядке), не меняя [keepActive]. */
+    fun resume(id: String) {
+        val e = entries[id] ?: return
         e.handle.unsetFlags(TorrentFlags.AUTO_MANAGED)
         e.handle.unsetFlags(TorrentFlags.UPLOAD_MODE)
         e.handle.resume()

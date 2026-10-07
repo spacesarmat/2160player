@@ -35,6 +35,13 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Upload
+import tv.p2160.torrent.SeedPolicy
+import tv.p2160.torrent.NetworkMode
+import tv.p2160.torrent.TorrentHold
+import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Description
@@ -112,7 +119,13 @@ fun TorrentScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    fun add(block: suspend () -> String) {
+    // Режим «Только Wi-Fi» на мобильном интернете: сначала спросить.
+    var consent by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun guarded(action: () -> Unit) {
+        if (engine.needsMobileConsent()) consent = action else action()
+    }
+
+    fun addNow(block: suspend () -> String) {
         busy = true
         error = null
         scope.launch {
@@ -122,6 +135,8 @@ fun TorrentScreen(
             busy = false
         }
     }
+
+    fun add(block: suspend () -> String) = guarded { addNow(block) }
 
     val pickTorrent = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) add { engine.addFromUri(uri) }
@@ -139,7 +154,7 @@ fun TorrentScreen(
     val id = openedId
     if (id != null) {
         BackHandler { openedId = null }
-        TorrentDetails(engine, id, onBack = { openedId = null }, onPlay = onPlay)
+        TorrentDetails(engine, id, onBack = { openedId = null }, onPlay = onPlay, guarded = ::guarded)
     } else {
         TorrentList(
             engine = engine,
@@ -169,6 +184,22 @@ fun TorrentScreen(
         )
     }
     if (settingsDialog) TorrentSettingsDialog(engine, onDismiss = { settingsDialog = false })
+    consent?.let { action ->
+        AlertDialog(
+            onDismissRequest = { consent = null },
+            icon = { Icon(Icons.Default.SignalCellularAlt, null) },
+            title = { Text(tr("torrent.mobile_title")) },
+            text = { Text(tr("torrent.mobile_text")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    consent = null
+                    engine.allowMobileData()
+                    action()
+                }) { Text(tr("torrent.mobile_allow")) }
+            },
+            dismissButton = { TextButton(onClick = { consent = null }) { Text(tr("app.cancel")) } },
+        )
+    }
 }
 
 @Composable
@@ -295,13 +326,16 @@ private fun Progress(text: String) {
 }
 
 /** Что сейчас с раздачей — для цвета, значка и подписи карточки. */
-private enum class TorrentPhase { DOWNLOADING, SEEDING, PAUSED, STORED, METADATA, CHECKING, ERROR }
+private enum class TorrentPhase { DOWNLOADING, SEEDING, PAUSED, STORED, METADATA, CHECKING, ERROR, WAIT_WIFI, WAIT_CHARGING, SEED_DONE }
 
 private val TorrentItem.phase: TorrentPhase
     get() {
         val st = stats ?: return TorrentPhase.STORED
         return when {
             st.state == TorrentStats.State.ERROR -> TorrentPhase.ERROR
+            st.paused && hold == TorrentHold.WIFI -> TorrentPhase.WAIT_WIFI
+            st.paused && hold == TorrentHold.CHARGING -> TorrentPhase.WAIT_CHARGING
+            st.paused && hold == TorrentHold.SEED_LIMIT -> TorrentPhase.SEED_DONE
             st.paused -> TorrentPhase.PAUSED
             st.state == TorrentStats.State.METADATA -> TorrentPhase.METADATA
             st.state == TorrentStats.State.CHECKING -> TorrentPhase.CHECKING
@@ -317,6 +351,8 @@ private fun phaseColor(phase: TorrentPhase): Color = when (phase) {
     TorrentPhase.METADATA, TorrentPhase.CHECKING -> Color(0xFF42A5F5)
     TorrentPhase.ERROR -> MaterialTheme.colorScheme.error
     TorrentPhase.PAUSED, TorrentPhase.STORED -> MaterialTheme.colorScheme.onSurfaceVariant
+    TorrentPhase.WAIT_WIFI, TorrentPhase.WAIT_CHARGING -> Color(0xFFFFA726)
+    TorrentPhase.SEED_DONE -> Color(0xFF66BB6A).copy(alpha = 0.7f)
 }
 
 private fun phaseIcon(phase: TorrentPhase): ImageVector = when (phase) {
@@ -326,6 +362,9 @@ private fun phaseIcon(phase: TorrentPhase): ImageVector = when (phase) {
     TorrentPhase.STORED -> Icons.Default.Bedtime
     TorrentPhase.METADATA, TorrentPhase.CHECKING -> Icons.Default.HourglassTop
     TorrentPhase.ERROR -> Icons.Default.ErrorOutline
+    TorrentPhase.WAIT_WIFI -> Icons.Default.WifiOff
+    TorrentPhase.WAIT_CHARGING -> Icons.Default.BatteryChargingFull
+    TorrentPhase.SEED_DONE -> Icons.Default.CheckCircle
 }
 
 @Composable
@@ -337,6 +376,9 @@ private fun phaseLabel(phase: TorrentPhase): String = when (phase) {
     TorrentPhase.METADATA -> tr("torrent.state_metadata")
     TorrentPhase.CHECKING -> tr("torrent.state_checking")
     TorrentPhase.ERROR -> tr("torrent.phase_error")
+    TorrentPhase.WAIT_WIFI -> tr("torrent.phase_wait_wifi")
+    TorrentPhase.WAIT_CHARGING -> tr("torrent.phase_wait_charging")
+    TorrentPhase.SEED_DONE -> tr("torrent.phase_seed_done")
 }
 
 /**
@@ -404,8 +446,12 @@ private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit
     }
 }
 
-/** Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе. */
-private val TorrentItem.running: Boolean get() = stats?.paused == false
+/**
+ * Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе — или ждёт Wi-Fi/зарядку
+ * (тогда кнопка «Остановить» отменяет ожидание).
+ */
+private val TorrentItem.running: Boolean
+    get() = stats?.paused == false || hold == TorrentHold.WIFI || hold == TorrentHold.CHARGING
 
 /**
  * Строка со свайпами: вправо — [onStart], влево — [onStop]. Строка не исчезает: после действия
@@ -488,7 +534,13 @@ internal fun formatSize(s: Strings, bytes: Long): String {
 // ---------------------------------------------------------------- файлы торрента
 
 @Composable
-private fun TorrentDetails(engine: TorrentEngine, id: String, onBack: () -> Unit, onPlay: (PlaybackRequest) -> Unit) {
+private fun TorrentDetails(
+    engine: TorrentEngine,
+    id: String,
+    onBack: () -> Unit,
+    onPlay: (PlaybackRequest) -> Unit,
+    guarded: (() -> Unit) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()
@@ -560,13 +612,15 @@ private fun TorrentDetails(engine: TorrentEngine, id: String, onBack: () -> Unit
                             modifier = if (f == ordered.first()) Modifier.focusRequester(firstFocus) else Modifier,
                             onClick = {
                                 if (!f.isPlayable || preparing != null) return@FileRow
-                                preparing = f.index
-                                playError = null
-                                scope.launch {
-                                    runCatching { engine.prepare(id, f.index) }
-                                        .onSuccess(onPlay)
-                                        .onFailure { playError = strings.format("torrent.play_error", it.message ?: it.javaClass.simpleName) }
-                                    preparing = null
+                                guarded {
+                                    preparing = f.index
+                                    playError = null
+                                    scope.launch {
+                                        runCatching { engine.prepare(id, f.index) }
+                                            .onSuccess(onPlay)
+                                            .onFailure { playError = strings.format("torrent.play_error", it.message ?: it.javaClass.simpleName) }
+                                        preparing = null
+                                    }
                                 }
                             },
                         )
@@ -722,6 +776,34 @@ private fun TorrentSettingsDialog(engine: TorrentEngine, onDismiss: () -> Unit) 
                     SettingRow(tr("torrent.max_connections"), prefs.maxConnections.toString()) {
                         engine.settings.update { it.copy(maxConnections = next(TorrentPrefs.CONNECTIONS, it.maxConnections)) }
                     }
+                }
+                item {
+                    SettingRow(
+                        tr("torrent.network"),
+                        tr("torrent.network_" + prefs.network.name.lowercase()),
+                        hint = tr("torrent.network_" + prefs.network.name.lowercase() + "_hint"),
+                    ) { engine.settings.update { it.copy(network = next(NetworkMode.entries, it.network)) } }
+                }
+                item {
+                    SettingRow(
+                        tr("torrent.seed_policy"),
+                        tr("torrent.seed_" + prefs.seedPolicy.name.lowercase()),
+                        hint = tr("torrent.seed_policy_hint"),
+                    ) { engine.settings.update { it.copy(seedPolicy = next(SeedPolicy.entries, it.seedPolicy)) } }
+                }
+                item {
+                    SettingRow(
+                        tr("torrent.seed_charging"),
+                        tr(if (prefs.seedOnlyCharging) "torrent.on" else "torrent.off"),
+                        hint = tr("torrent.seed_charging_hint"),
+                    ) { engine.settings.update { it.copy(seedOnlyCharging = !it.seedOnlyCharging) } }
+                }
+                item {
+                    SettingRow(
+                        tr("torrent.mobile_limit"),
+                        if (prefs.mobileDownloadLimitKb == 0) tr("torrent.unlimited") else strings.format("torrent.kbps", prefs.mobileDownloadLimitKb),
+                        hint = tr("torrent.mobile_limit_hint"),
+                    ) { engine.settings.update { it.copy(mobileDownloadLimitKb = next(TorrentPrefs.MOBILE_DOWNLOAD_LIMITS, it.mobileDownloadLimitKb)) } }
                 }
                 item {
                     SettingRow(

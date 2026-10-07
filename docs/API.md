@@ -522,13 +522,18 @@ PiP и паузу при уходе в фон он **не** трогает — �
 ### 6.1. `PlayerController`
 
 ```kotlin
-class PlayerController(context: Context, request: PlaybackRequest)
+class PlayerController(
+    context: Context,
+    request: PlaybackRequest,
+    config: PlayerConfig = Player2160.config,   // буфер, тайм-ауты, фоновая работа — §15.6
+)
 ```
 
 Создание сразу собирает ExoPlayer и **начинает воспроизведение** (`playWhenReady = true`),
 восстанавливает позицию/дорожки/скорость, раз в ~5 с сохраняет прогресс и раз в секунду публикует
 `Player2160.nowPlaying`. Создавайте и вызывайте все методы на главном потоке. Обязательно вызовите
-`release()`, иначе останутся ExoPlayer, декодеры и открытые диски.
+`release()`, иначе останутся ExoPlayer, декодеры, открытые диски и медиасессия с уведомлением
+(контроллер сам регистрирует `MediaSession` и сервис `PlaybackService`, см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)).
 
 | Член | Описание |
 |---|---|
@@ -556,6 +561,7 @@ class PlayerController(context: Context, request: PlaybackRequest)
 | `fun dismissSmartHint()` | Скрыть подсказку `state.smartHint` («дорожки выбраны по привычке»). |
 | `fun report(): MediaReport` | Сводка по текущему файлу (см. [§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). |
 | `fun dismissWarnings()` | Очистить `state.warnings`. |
+| `fun setInBackground(background: Boolean)` | Плеер ушёл с экрана, но звук продолжается: `true` отключает декодирование видео, `false` возвращает его (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)). |
 | `fun retry()` | Повторить после ошибки. |
 | `fun dismissResumeHint()` / `fun restartFromBeginning()` | Подсказка «Продолжено с …». |
 | `fun result(): PlaybackResult` | Текущий результат (для возврата вызывающему). |
@@ -1781,6 +1787,7 @@ TXT-атрибут `id` — случайный id экземпляра). Дру�
 | Пакет | Класс | Раздел |
 |---|---|---|
 | `tv.p2160.core.api` | `Player2160`, `Player2160.PlayContract` | §5.2 |
+| | `PlayerConfig` | §15.6 |
 | | `PlaybackRequest`, `MediaEntry`, `ExternalSubtitle`, `PlaybackResult` | §5.1 |
 | | `IntentApi` | §3, §5.3 |
 | | `NowPlaying`, `PlayerAction`, `PlayerExtensions` | §7, §8 |
@@ -1792,6 +1799,8 @@ TXT-атрибут `id` — случайный id экземпляра). Дру�
 | | `NightAudioProcessor`, `PassthroughGuard` | §16 |
 | | `TrackPreferences`, `TrackRules`, `TrackChoice`, `TrackCandidate` | §17 |
 | | `MediaReport`, `ReportSection`, `ReportRow` | §18.2 |
+| | `PlaybackService` (объявлен в манифесте библиотеки) | §15.4 |
+| | `DolbyVisionFallback` (`Marker`, `ExtractorsFactoryWrapper`) | §15.5 |
 | `tv.p2160.core.intro` | `IntroDetector`, `DetectionResult` | §18.1 |
 | `tv.p2160.core.ui` | `PlayerScreen`, `PlayerTheme`, `PlayerThemes`, `P2160Theme` | §6, §9.3 |
 | `tv.p2160.core.settings` | `PlayerSettings`, `Settings`, `NightSchedule`, `SubtitleStyle`, `DecoderPreference`, `ResizeMode`, `SkipMode`, `SubtitleEdge` | §9 |

@@ -45,7 +45,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 ## Документация
 
 - [docs/EMBEDDING.md](docs/EMBEDDING.md) — встраивание за 5 минут: подключение (модуль, `includeBuild`, mavenLocal, GitHub Packages), запуск, свой экран.
-- [docs/API.md](docs/API.md) — полный справочник: Intent API, `Player2160`, `PlayerController`, `PlayerScreen`, настройки, история, SMB, отрезки, локализация, Blu-ray, ограничения.
+- [docs/API.md](docs/API.md) — полный справочник: Intent API, `Player2160`, `PlayerController`, `PlayerScreen`, настройки движка (`PlayerConfig`: буфер, тайм-ауты, фоновая работа), фоновое воспроизведение, история, SMB, DLNA, IPTV, торренты, отрезки, локализация, Blu-ray, ограничения.
 - [samples/embed-demo](samples/embed-demo) — пример приложения-хоста.
 
 Короткий пример:
@@ -164,6 +164,8 @@ The `player-core` module is an embeddable library:
   `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
   Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for
   results, or embed the `PlayerScreen` composable with your own `PlayerController`.
+- **Engine tuning** — `Player2160.config = PlayerConfig(...)`: buffer limit (64 MB by default), network
+  timeouts, switches for audio intro detection, chapter reading and history restore/save.
 - **Extensibility** — observe `Player2160.nowPlaying`, add toolbar buttons with
   `Player2160.registerAction(PlayerAction(...))`, change `PlayerSettings`, read `ResumeStore`.
 

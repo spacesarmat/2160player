@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,7 +102,7 @@ fun HomeScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
-        contentPadding = PaddingValues(horizontal = 32.dp, vertical = 24.dp),
+        contentPadding = PaddingValues(horizontal = if (LocalConfiguration.current.screenWidthDp >= 600) 32.dp else 16.dp, vertical = 20.dp),
     ) {
         item(key = "header") {
             Image(
@@ -110,14 +110,27 @@ fun HomeScreen(
                 contentDescription = "2160 Player",
                 modifier = Modifier.height(56.dp),
             )
-            Spacer(Modifier.height(20.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ActionTile(Icons.Default.FolderOpen, tr("app.open_file"), onOpenFile, Modifier.focusRequester(firstFocus))
-                ActionTile(Icons.Default.Lan, tr("app.network"), onOpenNetwork)
-                ActionTile(Icons.Default.LiveTv, tr("iptv.title"), onOpenIptv)
-                ActionTile(Icons.Default.Download, tr("torrent.title"), onOpenTorrents)
-                ActionTile(Icons.Default.Link, tr("app.open_url"), { urlDialog = true })
-                ActionTile(Icons.Default.Settings, tr("app.settings"), onOpenSettings)
+            Spacer(Modifier.height(16.dp))
+            // Компактная сетка: 3 колонки на телефоне в портрете, все 6 в ряд на широком экране/ТВ.
+            val actions = listOf(
+                Triple(Icons.Default.FolderOpen, tr("app.open_file"), onOpenFile),
+                Triple(Icons.Default.Lan, tr("app.network"), onOpenNetwork),
+                Triple(Icons.Default.LiveTv, tr("iptv.title"), onOpenIptv),
+                Triple(Icons.Default.Download, tr("torrent.title"), onOpenTorrents),
+                Triple(Icons.Default.Link, tr("app.link"), { urlDialog = true }),
+                Triple(Icons.Default.Settings, tr("app.settings"), onOpenSettings),
+            )
+            val columns = if (LocalConfiguration.current.screenWidthDp >= 600) actions.size else 3
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                actions.chunked(columns).forEachIndexed { row, chunk ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        chunk.forEachIndexed { i, (icon, label, onClick) ->
+                            val focus = if (row == 0 && i == 0) Modifier.focusRequester(firstFocus) else Modifier
+                            ActionTile(icon, label, onClick, Modifier.weight(1f).then(focus))
+                        }
+                        repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
             }
         }
 
@@ -126,8 +139,8 @@ fun HomeScreen(
                 SectionTitle(tr("handoff.other_devices"))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(remote, key = { "r" + it.peer.id }) { session ->
-                        FocusCard(onClick = { onPlayRemote(session) }, modifier = Modifier.width(280.dp).height(140.dp)) {
-                            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                        FocusCard(onClick = { onPlayRemote(session) }, modifier = Modifier.width(240.dp).height(116.dp)) {
+                            Column(Modifier.fillMaxSize().padding(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Devices, null, tint = colors.primary, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
@@ -181,18 +194,30 @@ fun HomeScreen(
 
 @Composable
 private fun ActionTile(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FocusCard(onClick = onClick, modifier = modifier.width(160.dp).height(104.dp)) {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+    FocusCard(onClick = onClick, modifier = modifier.height(76.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
 @Composable
 private fun ContinueCard(entry: ResumeEntry, onClick: () -> Unit, onLongClick: () -> Unit) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(280.dp).height(140.dp)) {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(240.dp).height(116.dp)) {
+        Column(Modifier.fillMaxSize().padding(14.dp)) {
             Text(
                 entry.title ?: entry.uri,
                 style = MaterialTheme.typography.titleMedium,

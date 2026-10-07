@@ -1758,6 +1758,8 @@ lifecycleScope.launch {
 | `val torrents: StateFlow<List<TorrentItem>>` | Все торренты (`StoredTorrent` + живые `TorrentStats`: скорость, пиры, прогресс, буфер). |
 | `val engineError: StateFlow<String?>` | Ошибка запуска (например, нет нативной библиотеки под ABI). |
 | `val settings: TorrentSettings` | `state: StateFlow<TorrentPrefs>`, `update { }`: `cacheLimitGb = 20`, `keepFiles = false`, `maxAgeDays = 7`, `maxConnections = 200`, `uploadLimitKb = 0`. |
+| `suspend fun stop(id: String)` | Остановить раздачу: ни загрузки, ни отдачи; данные остаются. Начатый просмотр продолжит её сам. |
+| `suspend fun start(id: String): Boolean` | Продолжить раздачу (вернуть «неактивную» после перезапуска в сессию): качает и раздаёт, автопауза через 10 мин без просмотра её не трогает. `false` — не удалось восстановить. |
 | `suspend fun remove(id: String, deleteFiles: Boolean)` / `suspend fun deleteData(id: String)` | Удалить торрент / только скачанные данные. |
 | `fun dhtNodes(): Long` | Узлов DHT (для экрана ожидания метаданных). |
 
@@ -1768,6 +1770,10 @@ lifecycleScope.launch {
 
 Приложение 2160 Player дополнительно открывает magnet-ссылки и `.torrent`-файлы извне
 (`TorrentOpenActivity`: `VIEW` со схемой `magnet`, MIME `application/x-bittorrent`, расширение `.torrent`).
+
+При активации (выбор файла, `start`) торрент сразу заново анонсируется на трекерах и в DHT
+(`forceReannounce` с `IGNORE_MIN_INTERVAL`, `forceDHTAnnounce`): восстановленный из данных возобновления
+торрент иначе ждал бы интервал трекера (15–30 мин) с нулём пиров.
 
 ---
 

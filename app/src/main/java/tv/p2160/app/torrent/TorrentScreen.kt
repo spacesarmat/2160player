@@ -30,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Link
@@ -202,6 +204,7 @@ private fun TorrentList(
     val engineError by engine.engineError.collectAsStateWithLifecycle()
     var removing by remember { mutableStateOf<TorrentItem?>(null) }
     val strings = LocalStrings.current
+    val scope = rememberCoroutineScope()
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
 
@@ -229,7 +232,11 @@ private fun TorrentList(
             items(torrents.chunked(2), key = { it.first().id }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
                     pair.forEach { t ->
-                        TorrentRow(t, onClick = { onOpen(t.id) }, onRemove = { removing = t }, modifier = Modifier.weight(1f).fillMaxHeight())
+                        TorrentRow(
+                            t, onClick = { onOpen(t.id) }, onRemove = { removing = t },
+                            onToggle = { scope.launch { if (t.running) engine.stop(t.id) else engine.start(t.id) } },
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
@@ -263,7 +270,7 @@ private fun Progress(text: String) {
 }
 
 @Composable
-private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit, modifier: Modifier = Modifier) {
+private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val strings = LocalStrings.current
     FocusCard(onClick = onClick, onLongClick = onRemove, modifier = modifier) {
@@ -278,9 +285,24 @@ private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit
                 }
             }
             Spacer(Modifier.width(8.dp))
+            StartStopAction(t.running, onToggle)
             IconAction(Icons.Default.Delete, tr("torrent.remove"), onRemove, tint = colors.onSurfaceVariant)
         }
     }
+}
+
+/** Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе. */
+private val TorrentItem.running: Boolean get() = stats?.paused == false
+
+/** «Остановить» / «Продолжить» раздачу. */
+@Composable
+private fun StartStopAction(running: Boolean, onClick: () -> Unit) {
+    IconAction(
+        if (running) Icons.Default.Pause else Icons.Default.PlayArrow,
+        if (running) tr("torrent.stop") else tr("torrent.start"),
+        onClick,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 private fun statusLine(s: Strings, t: TorrentItem): String {
@@ -348,6 +370,7 @@ private fun TorrentDetails(engine: TorrentEngine, id: String, onBack: () -> Unit
 
     Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Header(item?.name ?: id, onBack) {
+            if (item != null) StartStopAction(item.running, { scope.launch { if (item.running) engine.stop(id) else engine.start(id) } })
             IconAction(Icons.Default.Delete, tr("torrent.remove"), { removing = true })
         }
         val list = files

@@ -52,5 +52,7 @@
   "torrent.close": "Закрыть",
   "torrent.unit_kb": "КБ",
   "torrent.unit_mb": "МБ",
-  "torrent.unit_gb": "ГБ"
+  "torrent.unit_gb": "ГБ",
+  "torrent.stop": "Остановить раздачу",
+  "torrent.start": "Продолжить раздачу"
 }

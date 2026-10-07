@@ -319,6 +319,16 @@ class TorrentSession(
         entry.handle.unsetFlags(TorrentFlags.UPLOAD_MODE)
         entry.handle.resume()
         entry.lastActiveAt = System.currentTimeMillis()
+        announceNow(entry)
+    }
+
+    /**
+     * Сразу спросить трекеры и DHT о пирах. Восстановленный из данных возобновления торрент помнит время
+     * прошлого анонса и иначе ждёт интервал трекера (15–30 мин) — всё это время «пиров: 0».
+     */
+    private fun announceNow(entry: Entry) {
+        runCatching { entry.handle.forceReannounce(0, -1, TorrentHandle.IGNORE_MIN_INTERVAL) }
+        runCatching { entry.handle.forceDHTAnnounce() }
     }
 
     /** Пересчёт дедлайнов по текущим позициям чтения. Вызывается при смене куска у читателя. */
@@ -529,6 +539,27 @@ class TorrentSession(
         requestResumeData(id)
     }
 
+    /** Остановить раздачу по просьбе пользователя: ни загрузки, ни отдачи. */
+    fun stop(id: String) {
+        val e = entries[id] ?: return
+        e.keepActive = false
+        pause(id)
+    }
+
+    /** Продолжить раздачу по просьбе пользователя: качает и раздаёт, автопауза без просмотра её не трогает. */
+    fun start(id: String) {
+        val e = entries[id] ?: return
+        e.keepActive = true
+        e.handle.unsetFlags(TorrentFlags.AUTO_MANAGED)
+        e.handle.unsetFlags(TorrentFlags.UPLOAD_MODE)
+        e.handle.resume()
+        e.lastActiveAt = System.currentTimeMillis()
+        announceNow(e)
+    }
+
+    /** Пользователь сам продолжил раздачу — не ставить её на автопаузу. */
+    fun keepActive(id: String): Boolean = entries[id]?.keepActive == true
+
     fun requestResumeData(id: String) {
         val e = entries[id] ?: return
         if (e.handle.torrentFile() == null) return
@@ -572,5 +603,6 @@ class TorrentSession(
         @Volatile internal var removed = false
         @Volatile internal var metadataReported = false
         @Volatile internal var lastActiveAt = System.currentTimeMillis()
+        @Volatile internal var keepActive = false
     }
 }

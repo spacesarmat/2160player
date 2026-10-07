@@ -103,7 +103,7 @@ class TorrentEngine private constructor(context: Context) {
                 session.ids().forEach { id ->
                     val stats = session.stats(id) ?: return@forEach
                     // Неиспользуемые торренты ставим на паузу — не качать фильм целиком «в фоне».
-                    if (!stats.paused && stats.readers == 0 && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
+                    if (!stats.paused && stats.readers == 0 && !session.keepActive(id) && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
                     if (n % 15 == 0 && stats.hasMetadata) store.update(id) { it.copy(bytesDone = stats.wantedDone) }
                 }
                 if (n % 3600 == 0 && n > 0) cleanup()
@@ -264,6 +264,23 @@ class TorrentEngine private constructor(context: Context) {
     // ---------------------------------------------------------------- удаление и очистка
 
     /** Удаляет торрент из списка; [deleteFiles] — вместе со скачанными данными. */
+    /** Остановить раздачу: ни загрузки, ни отдачи (данные остаются; просмотр продолжит её сам). */
+    suspend fun stop(id: String) = withContext(Dispatchers.IO) {
+        session.stop(id)
+        refresh()
+    }
+
+    /**
+     * Продолжить раздачу: вернуть в сессию (если она «неактивна» после перезапуска), качать и раздавать
+     * без автопаузы. false — торрент не удалось восстановить.
+     */
+    suspend fun start(id: String): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureActive(id)) return@withContext false
+        session.start(id)
+        refresh()
+        true
+    }
+
     suspend fun remove(id: String, deleteFiles: Boolean) = withContext(Dispatchers.IO) {
         session.remove(id, deleteFiles)
         if (deleteFiles) deleteDataDir(id)

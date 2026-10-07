@@ -52,5 +52,7 @@
   "torrent.close": "Close",
   "torrent.unit_kb": "KB",
   "torrent.unit_mb": "MB",
-  "torrent.unit_gb": "GB"
+  "torrent.unit_gb": "GB",
+  "torrent.stop": "Stop torrent",
+  "torrent.start": "Resume torrent"
 }

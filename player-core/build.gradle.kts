@@ -6,7 +6,7 @@ plugins {
 
 // Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
 group = "tv.p2160"
-version = providers.gradleProperty("playerCoreVersion").getOrElse("0.1.0")
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.1.5")
 
 android {
     namespace = "tv.p2160.core"

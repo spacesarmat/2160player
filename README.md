@@ -159,7 +159,7 @@ The `player-core` module is an embeddable library:
   activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
   `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
   results are returned in MX Player and VLC formats.
-- **Library** — `implementation("tv.p2160:player-core:0.1.0")` (module, composite build, mavenLocal
+- **Library** — `implementation("tv.p2160:player-core:0.1.5")` (module, composite build, mavenLocal
   or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
   `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
   Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for

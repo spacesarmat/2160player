@@ -10,8 +10,10 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Защита «Продолжить на другом устройстве» кодом, когда в одной сети несколько плееров.
  *
- * Код нужен один раз — для сопряжения нового устройства: клиент получает одноразовый nonce
- * (`GET /pair/challenge`), отвечает HMAC-SHA256(код, nonce:id) (`POST /pair`) и получает токен.
+ * Сопряжение нужно один раз для нового устройства: клиент получает одноразовый nonce
+ * (`GET /pair/challenge`), а хозяин видит уведомление «… хочет подключиться» с кнопками
+ * «Разрешить/Отклонить» ([PairRequests]). Токен клиент получает либо по коду —
+ * HMAC-SHA256(код, nonce:id) в `POST /pair`, — либо после «Разрешить», опрашивая `GET /pair/status`.
  * Дальше запросы `/now` и `/play` идут с токеном, пока пользователь не нажмёт «Забыть устройства».
  * Код на сутки меняется в полночь — это касается только новых сопряжений.
  *
@@ -24,15 +26,15 @@ object HandoffAuth {
     /** Результат сопряжения. */
     enum class PairResult { OK, WRONG_CODE, LOCKED, FAILED }
 
-    private const val CHALLENGE_TTL_MS = 2 * 60 * 1000L
+    /** Сколько ждём кода или ответа хозяина. */
+    private const val CHALLENGE_TTL_MS = 3 * 60 * 1000L
+    private const val DENY_MS = 10 * 60 * 1000L
     private const val MAX_FAILURES = 5
     private const val LOCK_MS = 60 * 1000L
 
     private val random = SecureRandom()
     private var prefs: SharedPreferences? = null
 
-    /** nonce → когда выдан (одноразовые, живут 2 минуты). */
-    private val challenges = HashMap<String, Long>()
     private var failures = 0
     private var lockedUntil = 0L
 
@@ -74,22 +76,72 @@ object HandoffAuth {
         }
     }
 
-    // region Сервер: выданные токены
+    // region Сервер: запросы на подключение и выданные токены
 
-    @Synchronized
-    fun newChallenge(): String {
-        val now = System.currentTimeMillis()
-        challenges.entries.removeAll { now - it.value > CHALLENGE_TTL_MS }
-        return hex(16).also { challenges[it] = now }
+    /** Ответ хозяина устройства на запрос подключения. */
+    enum class Decision { PENDING, APPROVED, DENIED }
+
+    /** Запрос на подключение: ждёт кода от клиента или решения хозяина (уведомление «Разрешить/Отклонить»). */
+    private class Pending(val clientId: String, val clientName: String, val createdAt: Long) {
+        var decision = Decision.PENDING
+        var token: String? = null
     }
 
-    /** Проверка ответа клиента; при успехе — новый токен для [clientId]. */
+    /** nonce → запрос (одноразовые, живут [CHALLENGE_TTL_MS]). */
+    private val pending = HashMap<String, Pending>()
+    /** clientId → до какого времени не беспокоить после «Отклонить». */
+    private val deniedUntil = HashMap<String, Long>()
+
+    /**
+     * Новый запрос подключения от [clientId]. null — клиент недавно отклонён: ни nonce, ни уведомления.
+     */
+    @Synchronized
+    fun newChallenge(clientId: String, clientName: String): String? {
+        val now = System.currentTimeMillis()
+        pending.entries.removeAll { now - it.value.createdAt > CHALLENGE_TTL_MS }
+        if ((deniedUntil[clientId] ?: 0L) > now) return null
+        return hex(16).also { pending[it] = Pending(clientId, clientName.take(64), now) }
+    }
+
+    /** «Разрешить» в уведомлении: выдаём токен без кода. */
+    @Synchronized
+    fun approve(nonce: String): Boolean {
+        val req = pending[nonce]?.takeIf { it.decision == Decision.PENDING } ?: return false
+        req.token = issue(req.clientId, req.clientName)
+        req.decision = Decision.APPROVED
+        return true
+    }
+
+    /** «Отклонить»: клиент получит отказ, повторные запросы от него 10 минут без уведомлений. */
+    @Synchronized
+    fun deny(nonce: String) {
+        val req = pending[nonce] ?: return
+        req.decision = Decision.DENIED
+        deniedUntil[req.clientId] = System.currentTimeMillis() + DENY_MS
+    }
+
+    /** Состояние запроса для опроса клиентом; токен отдаётся один раз — после этого запрос закрыт. */
+    @Synchronized
+    fun status(nonce: String): Pair<Decision, String?>? {
+        val req = pending[nonce] ?: return null
+        if (System.currentTimeMillis() - req.createdAt > CHALLENGE_TTL_MS) { pending.remove(nonce); return null }
+        if (req.decision != Decision.PENDING) pending.remove(nonce)
+        return req.decision to req.token
+    }
+
+    /** Имя устройства, приславшего запрос (для уведомления). */
+    @Synchronized
+    fun requesterName(nonce: String): String? = pending[nonce]?.clientName
+
+    /** Проверка кода от клиента; при успехе — новый токен для [clientId]. Неверный код запрос не закрывает. */
     @Synchronized
     fun verify(nonce: String, clientId: String, clientName: String, proof: String): Pair<PairResult, String?> {
         val now = System.currentTimeMillis()
         if (now < lockedUntil) return PairResult.LOCKED to null
-        val issued = challenges.remove(nonce)
-        if (issued == null || now - issued > CHALLENGE_TTL_MS) return PairResult.FAILED to null
+        val req = pending[nonce]
+        if (req == null || req.clientId != clientId || now - req.createdAt > CHALLENGE_TTL_MS || req.decision == Decision.DENIED) {
+            return PairResult.FAILED to null
+        }
         val code = currentCode()
         if (code.isEmpty() || !constantTimeEquals(proof, proofFor(code, nonce, clientId))) {
             if (++failures >= MAX_FAILURES) {
@@ -99,9 +151,14 @@ object HandoffAuth {
             return PairResult.WRONG_CODE to null
         }
         failures = 0
+        pending.remove(nonce)
+        return PairResult.OK to issue(clientId, clientName.ifBlank { req.clientName })
+    }
+
+    private fun issue(clientId: String, clientName: String): String {
         val token = hex(16)
         p().edit().putString("issued_$token", "$clientId|$clientName").apply()
-        return PairResult.OK to token
+        return token
     }
 
     fun isAuthorized(token: String?): Boolean =

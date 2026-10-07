@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Автообновление из GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Уведомление «… хочет подключиться» с кнопками «Разрешить / Отклонить» -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -37,6 +39,12 @@
         <receiver android:name=".update.UpdateReceiver" android:exported="false" />
 
         <!-- «Продолжить на другом устройстве» -->
+        <receiver android:name=".handoff.PairActionReceiver" android:exported="false" />
+        <activity
+            android:name=".handoff.PairRequestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.P2160.Dialog" />
         <activity
             android:name=".handoff.HandoffReceiveActivity"
             android:exported="false"

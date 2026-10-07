@@ -50,7 +50,7 @@ import tv.p2160.core.ui.PlayerThemes
 import tv.p2160.core.ui.formatTime
 
 /** Общая обёртка диалоговых экранов: тема и строки приложения. */
-private fun ComponentActivity.dialogContent(content: @androidx.compose.runtime.Composable () -> Unit) {
+internal fun ComponentActivity.dialogContent(content: @androidx.compose.runtime.Composable () -> Unit) {
     setContent {
         val strings by I18n.get(this).strings.collectAsStateWithLifecycle()
         val settings by Player2160.settings(this).state.collectAsStateWithLifecycle()
@@ -102,8 +102,9 @@ class HandoffReceiveActivity : ComponentActivity() {
 }
 
 /**
- * Ввод кода, который показывает [peer] (тост «… хочет подключиться» или Настройки → Передача),
- * и сопряжение. [onPaired] вызывается после успеха.
+ * Подключение к [peer]: при открытии отправляем запрос — на [peer] появляется уведомление
+ * «Разрешить / Отклонить», и мы ждём ответа. Параллельно можно ввести код с того устройства.
+ * [onPaired] — после «Разрешить» или верного кода.
  */
 @androidx.compose.runtime.Composable
 internal fun PairCodeDialog(peer: Peer, onDismiss: () -> Unit, onPaired: () -> Unit) {
@@ -113,16 +114,38 @@ internal fun PairCodeDialog(peer: Peer, onDismiss: () -> Unit, onPaired: () -> U
     var code by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var nonce by remember { mutableStateOf<String?>(null) }
+    var waiting by remember { mutableStateOf(true) }
+    val paired by androidx.compose.runtime.rememberUpdatedState(onPaired)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    // Запрос подключения и ожидание ответа хозяина (уведомление на том устройстве).
+    LaunchedEffect(peer.id) {
+        val request = withContext(Dispatchers.IO) { Handoff.requestPairing(context, peer) }
+        if (request.denied) { error = strings["handoff.pair_denied"]; waiting = false; return@LaunchedEffect }
+        val n = request.nonce ?: run { error = strings["handoff.failed"]; waiting = false; return@LaunchedEffect }
+        nonce = n
+        while (true) {
+            kotlinx.coroutines.delay(1_500)
+            when (withContext(Dispatchers.IO) { Handoff.pairStatus(peer, n) }) {
+                HandoffAuth.Decision.APPROVED -> { paired(); return@LaunchedEffect }
+                HandoffAuth.Decision.DENIED -> { error = strings["handoff.pair_denied"]; waiting = false; return@LaunchedEffect }
+                HandoffAuth.Decision.PENDING -> Unit
+                null -> { waiting = false; return@LaunchedEffect } // истёк или подключились по коду
+            }
+        }
+    }
+
     fun submit() {
+        val n = nonce ?: return
         if (busy || code.length < 4) return
         busy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) { Handoff.pair(context, peer, code) }
+            val result = withContext(Dispatchers.IO) { Handoff.pairWithCode(context, peer, n, code) }
             busy = false
             when (result) {
-                HandoffAuth.PairResult.OK -> onPaired()
+                HandoffAuth.PairResult.OK -> paired()
                 HandoffAuth.PairResult.WRONG_CODE -> { error = strings["handoff.code_wrong"]; code = "" }
                 HandoffAuth.PairResult.LOCKED -> error = strings["handoff.code_locked"]
                 HandoffAuth.PairResult.FAILED -> error = strings["handoff.failed"]
@@ -135,6 +158,13 @@ internal fun PairCodeDialog(peer: Peer, onDismiss: () -> Unit, onPaired: () -> U
         title = { Text(tr("handoff.code_title", peer.name)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (waiting) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(tr("handoff.pair_waiting", peer.name), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 Text(tr("handoff.code_hint"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 androidx.compose.material3.OutlinedTextField(
                     value = code,
@@ -152,7 +182,7 @@ internal fun PairCodeDialog(peer: Peer, onDismiss: () -> Unit, onPaired: () -> U
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }
         },
-        confirmButton = { TextButton(onClick = ::submit, enabled = code.length >= 4 && !busy) { Text(tr("handoff.code_connect")) } },
+        confirmButton = { TextButton(onClick = ::submit, enabled = nonce != null && code.length >= 4 && !busy) { Text(tr("handoff.code_connect")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("app.cancel")) } },
     )
 }

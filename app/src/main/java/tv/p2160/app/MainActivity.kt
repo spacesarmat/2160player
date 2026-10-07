@@ -60,9 +60,23 @@ class MainActivity : ComponentActivity() {
             .onFailure { toast(it.message ?: "error") }
     }
 
+    /** Разрешение на уведомления (Android 13+): запросы «… хочет подключиться» с кнопками. Отказ — запросы придут окном. */
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun askNotificationsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val prefs = getSharedPreferences("p2160_app", MODE_PRIVATE)
+        if (prefs.getBoolean("asked_notifications", false)) return
+        prefs.edit().putBoolean("asked_notifications", true).apply()
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        askNotificationsOnce()
         val store = Player2160.resumeStore(this)
 
         setContent {

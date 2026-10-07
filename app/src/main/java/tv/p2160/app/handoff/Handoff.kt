@@ -5,18 +5,14 @@ import android.net.Uri
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import tv.p2160.core.api.NowPlaying
 import tv.p2160.core.api.Player2160
-import tv.p2160.core.i18n.I18n
 import tv.p2160.core.source.RandomAccessSources
 import java.io.BufferedInputStream
 import java.io.OutputStream
@@ -35,6 +31,9 @@ data class Peer(val id: String, val name: String, val host: String, val port: In
 
 /** Итог отправки просмотра на другое устройство. */
 enum class PushResult { OK, NEED_CODE, FAILED }
+
+/** Запрос подключения: [nonce] — для кода и опроса ответа; [denied] — хозяин недавно отклонил нас. */
+data class PairRequest(val nonce: String?, val denied: Boolean = false)
 
 /** Что играет (или стояло на паузе) на другом устройстве. */
 data class RemoteSession(
@@ -55,7 +54,8 @@ data class RemoteSession(
  * - `POST /play` — предложение продолжить просмотр здесь (показываем диалог подтверждения);
  * - `GET /stream/<token>` — раздача локального файла (content://, file://) с поддержкой Range,
  *   чтобы ТВ мог досмотреть видео, лежащее в памяти телефона;
- * - `GET /pair/challenge`, `POST /pair` — сопряжение по коду ([HandoffAuth]); при включённой защите
+ * - `GET /pair/challenge`, `GET /pair/status`, `POST /pair` — сопряжение: хозяин отвечает в уведомлении
+ *   «Разрешить/Отклонить» ([PairRequests]) или клиент вводит код ([HandoffAuth]); при включённой защите
  *   `/now` и `/play` требуют заголовок `X-P2160-Token`, иначе 401.
  * Работает только в одной локальной сети (Wi-Fi, точка доступа телефона): mDNS и прямые соединения
  * через мобильную сеть (NAT оператора) не проходят.
@@ -162,16 +162,45 @@ object Handoff {
         }
     }.getOrDefault(PushResult.FAILED)
 
-    /** Сопряжение с [peer] по коду, который показывает он. Блокирующий вызов. */
-    fun pair(context: Context, peer: Peer, code: String): HandoffAuth.PairResult = runCatching {
+/**
+     * Запрос подключения к [peer]: на нём появится уведомление «Разрешить / Отклонить».
+     * Возвращает nonce запроса; null — не удалось или [peer] недавно отклонил нас (тогда [denied] = true).
+     */
+    fun requestPairing(context: Context, peer: Peer): PairRequest = runCatching {
         val name = Uri.encode(deviceName(context))
-        val challenge = connect(peer, "/pair/challenge?id=$deviceId&name=$name")
-        val nonce = try {
-            if (challenge.responseCode != 200) return HandoffAuth.PairResult.FAILED
-            JSONObject(challenge.inputStream.bufferedReader().readText()).getString("nonce")
+        val conn = connect(peer, "/pair/challenge?id=$deviceId&name=$name")
+        try {
+            when (conn.responseCode) {
+                200 -> PairRequest(JSONObject(conn.inputStream.bufferedReader().readText()).getString("nonce"))
+                403 -> PairRequest(null, denied = true)
+                else -> PairRequest(null)
+            }
         } finally {
-            challenge.disconnect()
+            conn.disconnect()
         }
+    }.getOrDefault(PairRequest(null))
+
+    /** Ответил ли хозяин [peer] на запрос: APPROVED — токен уже сохранён. null — запрос истёк или потерян. */
+    fun pairStatus(peer: Peer, nonce: String): HandoffAuth.Decision? = runCatching {
+        val conn = connect(peer, "/pair/status?nonce=$nonce")
+        try {
+            if (conn.responseCode != 200) return null
+            val json = JSONObject(conn.inputStream.bufferedReader().readText())
+            when (json.optString("state")) {
+                "approved" -> {
+                    HandoffAuth.saveToken(peer.id, json.getString("token"))
+                    HandoffAuth.Decision.APPROVED
+                }
+                "denied" -> HandoffAuth.Decision.DENIED
+                else -> HandoffAuth.Decision.PENDING
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    /** Сопряжение по коду, который показывает [peer] (в уведомлении или в его настройках). Блокирующий вызов. */
+    fun pairWithCode(context: Context, peer: Peer, nonce: String, code: String): HandoffAuth.PairResult = runCatching {
         val body = JSONObject()
             .put("id", deviceId)
             .put("name", deviceName(context))
@@ -231,8 +260,23 @@ object Handoff {
         }
         when {
             method == "GET" && path == "/pair/challenge" -> {
-                respond(out, 200, JSONObject().put("nonce", HandoffAuth.newChallenge()).toString(), "application/json")
-                announcePairing(ctx, query.getQueryParameter("name").orEmpty().ifBlank { "?" })
+                val clientId = query.getQueryParameter("id").orEmpty()
+                val name = query.getQueryParameter("name").orEmpty().ifBlank { "?" }.take(64)
+                val nonce = HandoffAuth.newChallenge(clientId, name)
+                if (nonce == null) {
+                    respond(out, 403, "") // недавно отклонён — не беспокоим хозяина
+                } else {
+                    respond(out, 200, JSONObject().put("nonce", nonce).toString(), "application/json")
+                    PairRequests.show(ctx, nonce, name)
+                }
+            }
+            method == "GET" && path == "/pair/status" -> {
+                val nonce = query.getQueryParameter("nonce").orEmpty()
+                val (decision, token) = HandoffAuth.status(nonce) ?: return respond(out, 404, "")
+                val json = JSONObject().put("state", decision.name.lowercase())
+                token?.let { json.put("token", it) }
+                if (decision != HandoffAuth.Decision.PENDING) PairRequests.cancel(ctx, nonce)
+                respond(out, 200, json.toString(), "application/json")
             }
             method == "POST" && path == "/pair" -> {
                 val json = JSONObject(readBody(input, headers))
@@ -243,7 +287,10 @@ object Handoff {
                     proof = json.optString("proof"),
                 )
                 when (result) {
-                    HandoffAuth.PairResult.OK -> respond(out, 200, JSONObject().put("token", token).toString(), "application/json")
+                    HandoffAuth.PairResult.OK -> {
+                        PairRequests.cancel(ctx, json.optString("nonce"))
+                        respond(out, 200, JSONObject().put("token", token).toString(), "application/json")
+                    }
                     HandoffAuth.PairResult.WRONG_CODE -> respond(out, 403, "")
                     HandoffAuth.PairResult.LOCKED -> respond(out, 429, "")
                     HandoffAuth.PairResult.FAILED -> respond(out, 400, "")
@@ -274,17 +321,6 @@ object Handoff {
         var r = 0
         while (r < length) { val n = input.read(body, r, length - r); if (n < 0) break; r += n }
         return String(body, 0, r)
-    }
-
-    /** На этом устройстве показываем, кто подключается, и код на сутки — как при сопряжении ТВ. */
-    private fun announcePairing(context: Context, who: String) {
-        val strings = I18n.get(context).current
-        val text = if (HandoffAuth.mode == HandoffAuth.Mode.DAILY) {
-            strings.format("handoff.pair_request_code", who, HandoffAuth.currentCode())
-        } else {
-            strings.format("handoff.pair_request", who)
-        }
-        Handler(Looper.getMainLooper()).post { Toast.makeText(context, text, Toast.LENGTH_LONG).show() }
     }
 
     private fun serveFile(context: Context, uri: Uri, range: String?, out: OutputStream) {

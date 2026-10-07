@@ -124,12 +124,22 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
     }
 
+    override fun onStart() {
+        super.onStart()
+        vm.controller?.setInBackground(false)   // снова декодируем видео
+    }
+
     override fun onStop() {
         super.onStop()
         val controller = vm.controller ?: return
-        // В PiP продолжаем играть; в остальных случаях — пауза и сохранение позиции.
-        if (!inPip || isFinishing) controller.player.pause()
         controller.saveProgress()
+        if (isFinishing) { controller.player.pause(); return }
+        if (inPip && !isChangingConfigurations) return            // в PiP играем дальше
+        // Аудио — в фоне всегда, видео — если включено «Видео в фоне»; иначе пауза.
+        val s = controller.state.value
+        val background = controller.player.playWhenReady &&
+            (!s.hasVideo || Player2160.settings(this).current.backgroundPlayback)
+        if (background) controller.setInBackground(true) else controller.player.pause()
     }
 
     companion object {

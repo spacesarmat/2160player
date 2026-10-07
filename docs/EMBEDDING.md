@@ -3,6 +3,10 @@
 Пошаговое руководство для разработчика стороннего приложения. Полный справочник — [API.md](API.md),
 рабочий пример — модуль [`samples/embed-demo`](../samples/embed-demo).
 
+> **Лицензия.** 2160 Player распространяется под [GPL v3](../LICENSE): приложение, в которое
+> встроена библиотека `player-core`, тоже должно быть открытым под GPL v3. Intent API (шаг 0) этого
+> не требует — вы лишь вызываете установленное отдельно приложение.
+
 > Не хотите тянуть библиотеку в APK? Используйте Intent API — пользователь ставит приложение
 > 2160 Player, а вы отправляете ему Intent (совместимо с MX Player/VLC). См. [шаг 0](#шаг-0-вариант-без-библиотеки-intent-api).
 
@@ -166,8 +170,10 @@ android {
 }
 ```
 
-Манифест трогать не нужно: библиотека сама добавит `Player2160Activity`, разрешения `INTERNET`,
-`ACCESS_NETWORK_STATE`, `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA) и `usesCleartextTraffic`.
+Манифест трогать не нужно: библиотека сама добавит `Player2160Activity`, сервис медиасессии
+`PlaybackService` (уведомление с управлением, экран блокировки, гарнитура, фоновое воспроизведение),
+разрешения `INTERNET`, `ACCESS_NETWORK_STATE`, `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA),
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` и `usesCleartextTraffic`.
 Торренты — отдельный модуль `:source-torrent` ([API.md §21](API.md#21-торренты-модуль-source-torrent)). ProGuard-правила подключаются автоматически (`consumer-rules.pro`).
 
 ---
@@ -230,7 +236,9 @@ setContent {
         onPickSubtitle = { pickSubtitle.launch(arrayOf("*/*")) },
     )
 }
-// onStop: controller.player.pause(); controller.saveProgress()
+// onStart: controller.setInBackground(false)
+// onStop:  controller.saveProgress(); затем либо controller.player.pause(),
+//          либо (фоновое воспроизведение) controller.setInBackground(true) — см. API.md §15.4
 // когда экран закрывается навсегда: controller.release()
 ```
 
@@ -243,9 +251,18 @@ setContent {
 
 ```kotlin
 Player2160.settings(context).update {
-    it.copy(themeId = "amoled", skipMode = SkipMode.AUTO, preferredAudioLanguages = listOf("en", "ru"))
+    it.copy(
+        themeId = "amoled",
+        skipMode = SkipMode.AUTO,
+        preferredAudioLanguages = listOf("en", "ru"),
+        resizeMode = ResizeMode.FIT_WIDTH,   // FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL
+        backgroundPlayback = true,           // видео звучит, когда плеер свёрнут
+    )
 }
 ```
+
+Масштаб пользователь меняет и сам: панель «Видео» в плеере или щипок двумя пальцами
+(развести — заполнить экран, свести — целиком). Выбор сохраняется в `Settings.resizeMode`.
 
 Темы: `cinema`, `ocean`, `ruby`, `mint`, `amoled`, `light`. Свои строки и переводы —
 `app/src/main/assets/i18n/<ваш_модуль>/<код>.json` ([API.md §13](API.md#13-локализация)).
@@ -277,3 +294,6 @@ adb install -r samples/embed-demo/build/outputs/apk/debug/embed-demo-debug.apk
 | `ACTION_VIEW` по http-ссылке открывает браузер | Укажите MIME (`video/*`) или явный пакет/компонент. |
 | SMB: «access denied» | Сохраните сервер с логином через `SmbServers.get(context).save(SmbServer(...))`; логин в URI не поддерживается. |
 | Звук продолжает играть после ухода с вашего экрана | Во встроенном `PlayerScreen` пауза в `onStop` — ваша задача (шаг 5). |
+| В шторке появилось уведомление плеера | Это медиасессия `PlaybackService`: управление с экрана блокировки, гарнитуры и Bluetooth. Исчезает после `controller.release()`. |
+| Нужно остановить воспроизведение из своего кода (с любого потока) | `Player2160.pause()`. |
+| Фильм с Dolby Vision играет без DV | Устройство не умеет этот профиль — плеер показывает совместимый слой HDR10 и пишет об этом в «Сведениях о файле» ([API.md §15.5](API.md#155-dolby-vision-без-декодера)). |

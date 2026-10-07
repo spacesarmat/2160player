@@ -71,7 +71,7 @@ includeBuild("../2160player") {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.1") }
+dependencies { implementation("tv.p2160:player-core:0.2.2") }
 ```
 
 Gradle соберёт библиотеку из исходников со своим каталогом версий; правки в `../2160player`
@@ -84,10 +84,10 @@ Gradle соберёт библиотеку из исходников со сво
 
 ```sh
 ./gradlew :player-core:publishReleasePublicationToMavenLocal
-# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.1-SNAPSHOT
+# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.2-SNAPSHOT
 ```
 
-Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.1/` (AAR, POM, Gradle module metadata, sources).
+Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.2/` (AAR, POM, Gradle module metadata, sources).
 
 ```kotlin
 // settings.gradle.kts вашего проекта
@@ -100,7 +100,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.1") }
+dependencies { implementation("tv.p2160:player-core:0.2.2") }
 ```
 
 ### 1d. GitHub Packages
@@ -110,7 +110,7 @@ dependencies { implementation("tv.p2160:player-core:0.2.1") }
 ```sh
 export GITHUB_ACTOR=<логин>
 export GITHUB_TOKEN=<токен>
-./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.1
+./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.2
 ```
 
 Вместо переменных окружения можно задать `gpr.user` / `gpr.key` в `~/.gradle/gradle.properties`.
@@ -137,7 +137,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.1") }
+dependencies { implementation("tv.p2160:player-core:0.2.2") }
 ```
 
 ---

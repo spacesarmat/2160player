@@ -77,8 +77,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Открыть экран трансляции камеры (из уведомления). */
+    private val openCamera = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_CAMERA, false)) openCamera.value = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.getBooleanExtra(EXTRA_OPEN_CAMERA, false) == true) openCamera.value = true
         enableEdgeToEdge()
         askNotificationsOnce()
         val store = Player2160.resumeStore(this)
@@ -87,6 +96,14 @@ class MainActivity : ComponentActivity() {
             val s by settings.state.collectAsStateWithLifecycle()
             val strings by i18n.strings.collectAsStateWithLifecycle()
             var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+            // Нажали уведомление «Трансляция камеры» — сразу на её экран.
+            val camera by openCamera.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(camera) {
+                if (camera) {
+                    screen = Screen.CAMERA
+                    openCamera.value = false
+                }
+            }
             var serverId by rememberSaveable { mutableStateOf<String?>(null) }
             val servers = remember { SmbServers.get(this) }
             var dlnaUdn by rememberSaveable { mutableStateOf<String?>(null) }
@@ -133,7 +150,9 @@ class MainActivity : ComponentActivity() {
                             onPlayEntry = ::playEntry,
                             onPlayRemote = { Handoff.play(this, it) },
                             onOpenContinue = { screen = Screen.CONTINUE },
+                            onOpenCamera = { screen = Screen.CAMERA },
                         )
+                        Screen.CAMERA -> tv.p2160.app.camera.CameraStreamScreen(onBack = { screen = Screen.HOME })
                         Screen.CONTINUE -> ContinueScreen(store = store, onBack = { screen = Screen.HOME }, onPlayEntry = ::playEntry)
                         Screen.NETWORK -> NetworkScreen(
                             servers = servers,
@@ -233,5 +252,10 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ, CONTINUE }
+    companion object {
+        /** Extra интента: открыть экран «Трансляция камеры». */
+        const val EXTRA_OPEN_CAMERA = "tv.p2160.app.OPEN_CAMERA"
+    }
+
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ, CONTINUE, CAMERA }
 }

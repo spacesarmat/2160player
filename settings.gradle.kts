@@ -10,6 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Трансляция камеры (RootEncoder, RTSP-Server) публикуется только на JitPack — берём оттуда лишь их.
+        maven("https://jitpack.io") {
+            content { includeGroupByRegex("com[.]github[.]pedroSG94.*") }
+        }
     }
 }
 

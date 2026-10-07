@@ -81,5 +81,7 @@
   "faq.frame_rate.q": "The picture judders on pans (TV)",
   "faq.frame_rate.a": "Turn on Settings → Playback → \"Match display frame rate\": the TV switches to 23.976/24/25/50 Hz for the film. The screen blanks for 1–3 seconds while switching — that's normal. Some TVs and boxes do this on their own.",
   "faq.stats.q": "How do I find out why playback stutters?",
-  "faq.stats.a": "In the player open Info (ⓘ) → \"Stats for nerds\". It shows the video decoder (hardware or software), dropped frames, buffer fill, network speed and CPU load. Software 4K decoding and DTS-HD decoded without a receiver are the heaviest cases."
+  "faq.stats.a": "In the player open Info (ⓘ) → \"Stats for nerds\". It shows the video decoder (hardware or software), dropped frames, buffer fill, network speed and CPU load. Software 4K decoding and DTS-HD decoded without a receiver are the heaviest cases.",
+  "faq.camera_stream.q": "How do I show the phone camera in OBS or on a TV?",
+  "faq.camera_stream.a": "Home → Camera: choose the camera and quality, press Start streaming. You get an address like rtsp://192.168.1.5:8554/ and a QR code. OBS: Media Source → untick Local File → paste the address. On a TV with 2160 Player: Link → the address. The phone and the viewer must be on the same network. Streaming continues with the app minimized — stop it from the notification."
 }

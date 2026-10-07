@@ -91,6 +91,16 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)   // QR-код для «Поделиться по Wi-Fi»
+    // Трансляция камеры: захват Camera2, аппаратное кодирование H.264/H.265/AAC, RTSP-сервер / SRT / RTMP (Apache-2.0).
+    // WHIP (WebRTC) не используем: он тянет BouncyCastle jdk15to18, а у SMB (smbj) — jdk18on с теми же классами.
+    implementation(libs.rootencoder.library) {
+        exclude(group = "com.github.pedroSG94.RootEncoder", module = "whip")
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
+    implementation(libs.rtsp.server) {
+        exclude(group = "com.github.pedroSG94.RootEncoder", module = "whip")
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

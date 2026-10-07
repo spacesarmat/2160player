@@ -2008,6 +2008,28 @@ ARM-устройствах берёт именно его (§22.2): устано
 долгое нажатие — убрать запись (`ResumeStore.delete`), как и на главном экране; когда список пустеет, экран
 закрывается. «Назад» возвращает на главный экран.
 
+### 22.7. Трансляция камеры (`tv.p2160.app.camera`)
+
+Главный экран → «Камера» (плитка есть, только если у устройства есть камера). Телефон становится RTSP-сервером
+в своей сети: видео H.264 с аппаратного кодировщика и звук AAC с микрофона. Смотреть — в OBS («Источник медиа»,
+снять «Локальный файл», адрес `rtsp://<IP телефона>:8554/`), VLC («Открыть URL»), ffmpeg или в другом 2160 Player
+(«Ссылка»). Работает и через точку доступа телефона.
+
+| Что | Как |
+|---|---|
+| Камера | `CameraStream.cameras(context)`: все камеры Camera2 с подписью («Задняя», «Широкоугольная», «Телевик» — по фокусному расстоянию относительно основной, «Фронтальная», «Внешняя»), режимами и наличием вспышки. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
+| Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), — и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт — ~0,08 бит на пиксель (1080p·30 — 5 Мбит/с, 4K·30 — 20). По умолчанию 1080p·30 (или лучший до 30 fps); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
+| Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. |
+| Фонарик | `CameraStream.setTorch(on)` — у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
+| Ориентация | По положению телефона при старте: держите горизонтально — картинка 16:9. |
+| Фон | Трансляция идёт в сервисе переднего плана `CameraStreamService` (`foregroundServiceType="camera\|microphone"`): экран можно закрыть, приложение свернуть. Уведомление показывает адрес и число зрителей, кнопка «Остановить»; нажатие открывает экран трансляции (`MainActivity.EXTRA_OPEN_CAMERA`). |
+| Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах — IPv4 (по нему клиенты делают SETUP), адрес для зрителей — IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт — в `CameraStream.state` (`CameraStreamState.Streaming`). |
+
+Разрешения: `CAMERA`, `RECORD_AUDIO`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`
+(камера и микрофон запрашиваются при первом открытии экрана). Захват и кодирование — RootEncoder 2.8.1,
+сервер — RTSP-Server 1.4.3 (pedroSG94, Apache-2.0, JitPack; модуль WHIP исключён). Защиты кодом пока нет —
+любой в той же сети, кто знает адрес, может смотреть; не включайте трансляцию в чужих сетях.
+
 ## 23. Справочник классов
 
 ### 23.1. Стабильный публичный API
@@ -2041,7 +2063,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `NetworkMode`, `SeedPolicy`, `TorrentHold`, `DeviceState`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`, `tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

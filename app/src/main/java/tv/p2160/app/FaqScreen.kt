@@ -63,7 +63,7 @@ internal object Faq {
         "faq.section.subtitles" to listOf("external_subs", "subs_delay", "dual_subs", "smart_tracks"),
         "faq.section.sources" to listOf("open_file_tv", "smb", "dlna", "iptv", "covers"),
         "faq.section.torrents" to listOf("torrent_peers", "torrent_stop", "torrent_network", "torrent_space"),
-        "faq.section.devices" to listOf("handoff", "handoff_code", "handoff_mobile"),
+        "faq.section.devices" to listOf("handoff", "handoff_code", "handoff_mobile", "camera_stream"),
         "faq.section.other" to listOf("sleep", "skip_intro", "languages", "embed"),
     )
 }

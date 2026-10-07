@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -86,6 +87,7 @@ fun HomeScreen(
     onPlayEntry: (ResumeEntry) -> Unit,
     onPlayRemote: (RemoteSession) -> Unit,
     onOpenContinue: () -> Unit,
+    onOpenCamera: () -> Unit = {},
 ) {
     // Что играет на других устройствах в сети — опрашиваем раз в несколько секунд.
     val peers by Handoff.peers.collectAsState()
@@ -103,6 +105,8 @@ fun HomeScreen(
     val history = remember(changes) { store.recent(100) }
     val continueList = history.filter { !it.finished && it.positionMs > 0 }
     var urlDialog by remember { mutableStateOf(false) }
+    val homeContext = LocalContext.current
+    val hasCamera = remember { homeContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) }
     val firstFocus = remember { FocusRequester() }
     val colors = MaterialTheme.colorScheme
 
@@ -127,8 +131,12 @@ fun HomeScreen(
                 Triple(Icons.Default.Download, tr("torrent.title"), onOpenTorrents),
                 Triple(Icons.Default.Link, tr("app.link"), { urlDialog = true }),
                 Triple(Icons.Default.Settings, tr("app.settings"), onOpenSettings),
+            ) + listOfNotNull(
+                // Трансляция камеры — только если камера есть (на ТВ обычно нет).
+                Triple(Icons.Default.Videocam, tr("camera.tile"), onOpenCamera).takeIf { hasCamera },
             )
             val columns = if (LocalConfiguration.current.screenWidthDp >= 600) actions.size else 3
+            // Неполный последний ряд на телефоне растягиваем на всю ширину, а не оставляем пустые места.
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 actions.chunked(columns).forEachIndexed { row, chunk ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -136,7 +144,7 @@ fun HomeScreen(
                             val focus = if (row == 0 && i == 0) Modifier.focusRequester(firstFocus) else Modifier
                             ActionTile(icon, label, onClick, Modifier.weight(1f).then(focus))
                         }
-                        repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
+                        if (chunk.size > 1) repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }

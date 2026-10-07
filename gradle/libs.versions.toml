@@ -10,8 +10,12 @@ coreKtx = "1.19.1"
 coroutines = "1.11.0"
 libtorrent4j = "2.1.0-39"
 zxing = "3.5.3"
+rootEncoder = "2.8.1"
+rtspServer = "1.4.3"
 
 [libraries]
+rootencoder-library = { module = "com.github.pedroSG94.RootEncoder:library", version.ref = "rootEncoder" }
+rtsp-server = { module = "com.github.pedroSG94:RTSP-Server", version.ref = "rtspServer" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

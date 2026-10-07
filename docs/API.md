@@ -1318,11 +1318,16 @@ val night = controller.state.value.nightMode
 рендерер выбирает декодер (системный или FFmpeg). Флаг поднимается:
 
 - при старте, если ночной режим активен;
-- при включении ночного режима на лету (вручную или по расписанию).
+- при включении ночного режима на лету (вручную или по расписанию);
 - автоматически при ошибке `PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED`: ТВ заявил
-  поддержку AC-3/DTS «на выход», но открыть такой `AudioTrack` не смог. Контроллер переключается на
+  поддержку AC-3/DTS «на выход», но открыть такой `AudioTrack` не смог. Первую такую ошибку контроллер
+  считает кратковременной (Realtek сразу после переключения звука: прежний выход ещё не закрыт,
+  `createTrack -38`) — через секунду повторяет `prepare()` с прежним `playWhenReady`; повтор — не чаще
+  раза в 10 с, так что срабатывает при любом переключении, в том числе при смене дорожки напрямую через
+  `player.trackSelectionParameters`. Если повтор тоже не удался, контроллер переключается на
   декодирование и вызывает `prepare()`/`play()` — пользователь ошибки не видит. Такой выход
   запоминается (`PassthroughGuard.failed`), и passthrough для этого контроллера больше не включается.
+  Цена для ТВ, который совсем не умеет passthrough, — одна лишняя секунда тишины.
 
 Выключение ночного режима опускает флаг — AC-3/E-AC-3/DTS снова уходят на ресивер многоканалом.
 При любом переключении аудиорендерер переинициализируется (дорожка звука кратковременно выключается
@@ -1824,7 +1829,7 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `Peer`, `RemoteSession`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `Peer`, `RemoteSession`, `PushResult`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`.
 
 ### 23.2. Публичные, но внутренние

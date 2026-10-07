@@ -11,6 +11,9 @@ import androidx.media3.exoplayer.audio.ForwardingAudioSink
 class PassthroughGuard {
     /** true — всё декодируем сами (ночной режим или ТВ, не сумевший открыть passthrough). */
     @Volatile var disabled: Boolean = false
+
+    /** Выход не смог открыть сжатый поток (AUDIO_TRACK_INIT_FAILED) — passthrough больше не включаем. */
+    @Volatile var failed: Boolean = false
 }
 
 /**

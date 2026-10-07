@@ -27,11 +27,14 @@ import kotlin.math.pow
 @OptIn(UnstableApi::class)
 class NightAudioProcessor(
     /**
-     * Сводить многоканальный звук в стерео. Включается, когда ночной режим активен при старте:
-     * ночью звук обычно идёт в динамики ТВ/наушники, а многие ТВ не принимают 6-канальный PCM.
+     * Сводить многоканальный звук в стерео, пока ночной режим включён: ночью звук обычно идёт
+     * в динамики ТВ/наушники, а многие ТВ не принимают 6-канальный PCM. Применяется при следующей
+     * настройке формата — после смены переподключите аудио ([PlayerController] делает это сам).
      */
-    private val downmixToStereo: Boolean = false,
+    downmixToStereo: Boolean = false,
 ) : BaseAudioProcessor() {
+
+    @Volatile var downmixToStereo: Boolean = downmixToStereo
 
     /** Включён ли ночной режим. Можно менять в любой момент. */
     @Volatile var enabled: Boolean = false

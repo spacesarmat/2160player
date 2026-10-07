@@ -229,6 +229,7 @@ class PlayerController(
             // переходим на декодирование звука и продолжаем без ошибки.
             if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED && !built.passthrough.disabled) {
                 built.passthrough.disabled = true
+                built.passthrough.failed = true
                 player.prepare()
                 player.play()
                 return
@@ -599,7 +600,7 @@ class PlayerController(
         _state.update { it.copy(secondaryTextId = secondary.formatId) }
     }
 
-    /** «Ночной звук» на лету. Если звук шёл на ресивер в обход декодера, режим включится со следующего запуска. */
+    /** «Ночной звук» на лету: при включении звук переходит на декодирование, при выключении — снова на ресивер. */
     fun setNightMode(enabled: Boolean) {
         nightOverridden = true
         applyNight(enabled)
@@ -607,11 +608,23 @@ class PlayerController(
 
     private fun applyNight(enabled: Boolean) {
         built.night.enabled = enabled
-        // Звук шёл на ресивер в обход декодера — переключаемся на декодирование, чтобы обработка заработала.
-        if (enabled && decoders.audioPassthrough && !built.passthrough.disabled) {
-            built.passthrough.disabled = true
-            reinitAudio()
+        var reinit = false
+        // Обход декодера (passthrough) следует за ночным звуком в обе стороны:
+        // включили — декодируем, чтобы обработка заработала; выключили — снова отдаём ресиверу многоканал.
+        // Если выход уже не смог принять сжатый поток (ТВ с AUDIO_TRACK_INIT_FAILED), остаёмся на декодировании.
+        val decode = enabled || built.passthrough.failed
+        if (decoders.audioPassthrough && built.passthrough.disabled != decode) {
+            built.passthrough.disabled = decode
+            reinit = true
         }
+        // Сведение в стерео тоже только на время ночного звука: после выключения AAC 5.1/FLAC
+        // и другие всегда декодируемые дорожки возвращаются в многоканал.
+        if (built.night.downmixToStereo != enabled) {
+            built.night.downmixToStereo = enabled
+            reinit = true
+        }
+        // Видео не трогаем — звук прерывается меньше чем на секунду.
+        if (reinit) reinitAudio()
         _state.update { it.copy(nightMode = enabled) }
     }
 

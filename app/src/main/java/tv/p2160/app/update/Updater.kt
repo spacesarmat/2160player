@@ -41,6 +41,8 @@ sealed interface UpdateState {
  */
 object Updater {
     const val REPO = "spacesarmat/2160player"
+    /** Пакет релизных сборок: только его APK из GitHub Releases можно поставить поверх установленного. */
+    const val RELEASE_PACKAGE = "tv.p2160.player"
     private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
 
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -85,6 +87,15 @@ object Updater {
     }
 
     suspend fun download(context: Context, info: UpdateInfo) {
+        // Отладочная сборка (tv.p2160.player.debug) — другой пакет: Android не поставит релиз поверх неё
+        // (INSTALL_FAILED_INVALID_APK). Открываем страницу релиза — релиз ставится отдельным приложением.
+        if (context.packageName != RELEASE_PACKAGE) {
+            _state.value = UpdateState.Idle
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(info.pageUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return
+        }
         _state.value = UpdateState.Downloading(info, 0f)
         try {
             val apk = withContext(Dispatchers.IO) {

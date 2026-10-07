@@ -57,8 +57,12 @@ data class Settings(
     val nightEndMinute: Int = 10 * 60,
     /** Запоминать ручной выбор дорожек и применять его к похожим файлам и сериям. */
     val smartTracks: Boolean = true,
-    /** Продолжать видео со звуком, когда плеер свёрнут или экран выключен (аудиофайлы играют в фоне всегда). */
+    /** Продолжать видео со звуком (без картинки), когда плеер свёрнут или экран выключен. */
     val backgroundPlayback: Boolean = false,
+    /** Продолжать музыку и аудио без видео, когда плеер свёрнут или экран выключен; false — пауза. */
+    val backgroundAudio: Boolean = true,
+    /** При нажатии «Домой» во время видео — окно «картинка в картинке» (если устройство умеет). */
+    val pictureInPicture: Boolean = true,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -129,6 +133,8 @@ class PlayerSettings private constructor(context: Context) {
             nightEndMinute = prefs.getInt("night_end", d.nightEndMinute),
             smartTracks = prefs.getBoolean("smart_tracks", d.smartTracks),
             backgroundPlayback = prefs.getBoolean("background_playback", d.backgroundPlayback),
+            backgroundAudio = prefs.getBoolean("background_audio", d.backgroundAudio),
+            pictureInPicture = prefs.getBoolean("picture_in_picture", d.pictureInPicture),
         )
     }
 
@@ -157,6 +163,8 @@ class PlayerSettings private constructor(context: Context) {
             .putInt("night_end", s.nightEndMinute)
             .putBoolean("smart_tracks", s.smartTracks)
             .putBoolean("background_playback", s.backgroundPlayback)
+            .putBoolean("background_audio", s.backgroundAudio)
+            .putBoolean("picture_in_picture", s.pictureInPicture)
             .apply()
     }
 

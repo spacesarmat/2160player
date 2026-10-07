@@ -257,6 +257,8 @@ Player2160.settings(context).update {
         preferredAudioLanguages = listOf("en", "ru"),
         resizeMode = ResizeMode.FIT_WIDTH,   // FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL
         backgroundPlayback = true,           // видео звучит, когда плеер свёрнут
+        backgroundAudio = false,             // музыка при сворачивании — на паузу
+        pictureInPicture = false,            // без окна «картинка в картинке»
     )
 }
 ```

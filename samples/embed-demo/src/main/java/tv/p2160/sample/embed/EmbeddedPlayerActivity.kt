@@ -135,10 +135,11 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         controller.saveProgress()
         if (isFinishing) { controller.player.pause(); return }
         if (inPip && !isChangingConfigurations) return            // в PiP играем дальше
-        // Аудио — в фоне всегда, видео — если включено «Видео в фоне»; иначе пауза.
+        // Аудио — если «Музыка и аудио в фоне», видео — если «Видео в фоне»; иначе пауза.
         val s = controller.state.value
+        val settings = Player2160.settings(this).current
         val background = controller.player.playWhenReady &&
-            (!s.hasVideo || Player2160.settings(this).current.backgroundPlayback)
+            (if (s.hasVideo) settings.backgroundPlayback else settings.backgroundAudio)
         if (background) controller.setInBackground(true) else controller.player.pause()
     }
 

@@ -205,7 +205,6 @@ fun SettingsScreen(
                 }
             }
             item { ToggleRow(tr("settings.auto_next"), null, s.autoPlayNext) { v -> update { it.copy(autoPlayNext = v) } } }
-            item { ToggleRow(tr("settings.background"), tr("settings.background_hint"), s.backgroundPlayback) { v -> update { it.copy(backgroundPlayback = v) } } }
             item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
             item {
                 ToggleRow(
@@ -261,6 +260,11 @@ fun SettingsScreen(
                 }
             }
             item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
+
+            item { SectionTitle(tr("settings.section_minimize")) }
+            item { ToggleRow(tr("settings.pip"), tr("settings.pip_hint"), s.pictureInPicture) { v -> update { it.copy(pictureInPicture = v) } } }
+            item { ToggleRow(tr("settings.background"), tr("settings.background_hint"), s.backgroundPlayback) { v -> update { it.copy(backgroundPlayback = v) } } }
+            item { ToggleRow(tr("settings.background_audio"), tr("settings.background_audio_hint"), s.backgroundAudio) { v -> update { it.copy(backgroundAudio = v) } } }
 
             item { SectionTitle(tr("settings.section_handoff")) }
             item {

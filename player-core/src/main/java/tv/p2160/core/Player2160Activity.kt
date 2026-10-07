@@ -112,7 +112,7 @@ class Player2160Activity : ComponentActivity() {
         super.onUserLeaveHint()
         val c = vm.controller ?: return
         val s = c.state.value
-        if (s.isPlaying && s.hasVideo && supportsPip()) {
+        if (s.isPlaying && s.hasVideo && supportsPip() && PlayerSettings.get(this).current.pictureInPicture) {
             val aspect = s.videoAspect.takeIf { it > 0 }?.coerceIn(0.42f, 2.39f) ?: (16f / 9f)
             runCatching {
                 enterPictureInPictureMode(
@@ -144,9 +144,10 @@ class Player2160Activity : ComponentActivity() {
         }
         // В PiP играем дальше; закрытие окна PiP тоже приходит сюда — тогда решаем как при сворачивании.
         if (inPip && !isChangingConfigurations) return
-        // Аудио играет в фоне всегда, видео — если включено фоновое воспроизведение (звук без картинки).
+        // Аудио — если включено «Музыка и аудио в фоне», видео — если «Видео в фоне» (звук без картинки); иначе пауза.
         val s = controller.state.value
-        val background = controller.player.playWhenReady && (!s.hasVideo || PlayerSettings.get(this).current.backgroundPlayback)
+        val settings = PlayerSettings.get(this).current
+        val background = controller.player.playWhenReady && (if (s.hasVideo) settings.backgroundPlayback else settings.backgroundAudio)
         if (background) controller.setInBackground(true) else controller.player.pause()
     }
 

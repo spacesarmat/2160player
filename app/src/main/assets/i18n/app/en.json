@@ -147,7 +147,7 @@
   "update.close": "Close",
   "app.back_to_exit": "Press Back again to exit",
   "settings.background": "Video in background",
-  "settings.background_hint": "Keep the sound playing when the player is minimized or the screen is off. Music and audio always play in background",
+  "settings.background_hint": "Keep the video's sound without picture when minimized or the screen is off",
   "handoff.pair_request_code": "“%1$s” wants to connect. Code: %2$s",
   "handoff.pair_request": "“%1$s” wants to connect — enter your code there",
   "handoff.code_title": "Code of “%1$s”",
@@ -171,5 +171,10 @@
   "settings.handoff_custom_rule": "4–8 digits",
   "settings.handoff_forget": "Forget connected devices",
   "settings.handoff_forget_hint": "Connected: %1$s",
-  "settings.handoff_forget_none": "No connected devices"
+  "settings.handoff_forget_none": "No connected devices",
+  "settings.section_minimize": "When the player is minimized",
+  "settings.pip": "Picture-in-picture",
+  "settings.pip_hint": "Home during a video opens a small window over other apps",
+  "settings.background_audio": "Music and audio in background",
+  "settings.background_audio_hint": "Audio files keep playing when minimized or the screen is off. Turn off to pause"
 }

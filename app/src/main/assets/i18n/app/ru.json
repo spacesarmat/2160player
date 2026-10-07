@@ -147,7 +147,7 @@
   "update.close": "Закрыть",
   "app.back_to_exit": "Нажмите «Назад» ещё раз, чтобы выйти",
   "settings.background": "Видео в фоне",
-  "settings.background_hint": "Звук продолжается, когда плеер свёрнут или экран выключен. Музыка и аудио играют в фоне всегда",
+  "settings.background_hint": "Звук видео продолжается без картинки, когда плеер свёрнут или экран выключен",
   "handoff.pair_request_code": "«%1$s» хочет подключиться. Код: %2$s",
   "handoff.pair_request": "«%1$s» хочет подключиться — введите на нём ваш код",
   "handoff.code_title": "Код устройства «%1$s»",
@@ -171,5 +171,10 @@
   "settings.handoff_custom_rule": "4–8 цифр",
   "settings.handoff_forget": "Забыть подключённые устройства",
   "settings.handoff_forget_hint": "Подключены: %1$s",
-  "settings.handoff_forget_none": "Подключённых устройств нет"
+  "settings.handoff_forget_none": "Подключённых устройств нет",
+  "settings.section_minimize": "При сворачивании плеера",
+  "settings.pip": "Картинка в картинке",
+  "settings.pip_hint": "Кнопка «Домой» во время видео — маленькое окно поверх других приложений",
+  "settings.background_audio": "Музыка и аудио в фоне",
+  "settings.background_audio_hint": "Аудиофайлы продолжают играть, когда плеер свёрнут или экран выключен. Выключите — будет пауза"
 }

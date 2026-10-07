@@ -651,10 +651,11 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         controller.saveProgress()
         if (isFinishing) { controller.player.pause(); return }
         if (inPip && !isChangingConfigurations) return            // в PiP играем дальше
-        // Аудио — в фоне всегда, видео — если включено «Видео в фоне»; иначе пауза.
+        // Аудио — если «Музыка и аудио в фоне», видео — если «Видео в фоне»; иначе пауза.
         val s = controller.state.value
+        val settings = Player2160.settings(this).current
         val background = controller.player.playWhenReady &&
-            (!s.hasVideo || Player2160.settings(this).current.backgroundPlayback)
+            (if (s.hasVideo) settings.backgroundPlayback else settings.backgroundAudio)
         if (background) controller.setInBackground(true) else controller.player.pause()
     }
 }
@@ -852,7 +853,9 @@ Player2160.settings(context).update {
 | `nightStartMinute` | `Int` = `1380` (23:00) | Минуты от полуночи. Интервал может переходить через полночь |
 | `nightEndMinute` | `Int` = `600` (10:00) | Минуты от полуночи (конец не включается) |
 | `smartTracks` | `Boolean` = `true` | Запоминать ручной выбор дорожек и применять к похожим файлам (см. [§17](#17-умный-выбор-дорожек)). При старте элемента |
-| `backgroundPlayback` | `Boolean` = `false` | Продолжать видео (звуком, без декодирования картинки), когда плеер свёрнут или экран выключен. Аудио без видео играет в фоне всегда (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)) |
+| `backgroundPlayback` | `Boolean` = `false` | Продолжать видео (звуком, без декодирования картинки), когда плеер свёрнут или экран выключен (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)) |
+| `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` — пауза при сворачивании |
+| `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео — окно PiP (если устройство поддерживает); `false` — без PiP, дальше по `backgroundPlayback` |
 
 `fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
@@ -1227,7 +1230,9 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 
 - уведомление с управлением, карточку на экране блокировки, кнопки гарнитуры, Bluetooth и часов;
 - фоновое воспроизведение: при уходе `Player2160Activity` с экрана (кнопка «Домой», выключение экрана,
-  закрытие окна PiP) аудио без видео продолжает играть всегда, видео — если `Settings.backgroundPlayback = true`.
+  переход в другое приложение, закрытие окна PiP) аудио без видео продолжает играть, если
+  `Settings.backgroundAudio = true` (по умолчанию), видео — если `Settings.backgroundPlayback = true`;
+  иначе пауза. При «Домой» во время видео сначала открывается PiP, если `Settings.pictureInPicture = true`.
   В фоне видеодорожка отключается (`PlayerController.setInBackground(true)`), при возврате включается снова;
 - нажатие на уведомление открывает `Player2160Activity`.
 
@@ -1795,6 +1800,9 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 
 Состояние — `Updater.state: StateFlow<UpdateState>` (`Idle`, `Checking`, `UpToDate`, `Available(info)`,
 `Downloading(info, progress)`, `Installing`, `Failed(message)`); настройки — SharedPreferences `p2160_update`.
+
+Отладочная сборка (`tv.p2160.player.debug`) — другой пакет, Android не поставит релиз поверх неё:
+там «Обновить» открывает страницу релиза в браузере (`Updater.RELEASE_PACKAGE`).
 
 ---
 

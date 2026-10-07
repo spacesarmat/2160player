@@ -189,6 +189,14 @@ fun SettingsScreen(
 
             item { SectionTitle(tr("settings.section_playback")) }
             item { ToggleRow(tr("settings.auto_resume"), null, s.autoResume) { v -> update { it.copy(autoResume = v) } } }
+            item { ToggleRow(tr("settings.smart_tracks"), tr("settings.smart_tracks_hint"), s.smartTracks) { v -> update { it.copy(smartTracks = v) } } }
+            item {
+                val context = LocalContext.current
+                SettingRow(tr("settings.smart_reset")) {
+                    tv.p2160.core.engine.TrackPreferences.get(context).clear()
+                    android.widget.Toast.makeText(context, strings["settings.smart_reset_done"], android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
             item { ToggleRow(tr("settings.auto_next"), null, s.autoPlayNext) { v -> update { it.copy(autoPlayNext = v) } } }
             item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
             item {

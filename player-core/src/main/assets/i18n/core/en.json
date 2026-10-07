@@ -117,5 +117,8 @@
   "info.warn_sdr_display": "This screen is not HDR — colours are tone-mapped",
   "info.warn_video_sw": "Video is decoded in software — playback may stutter",
   "info.warn_video_sw_4k": "4K video is decoded in software — expect stutter; try the hardware decoder in settings",
-  "info.more": "Details"
+  "info.more": "Details",
+  "smart.applied": "As usual: %1$s",
+  "smart.subs": "subtitles: %1$s",
+  "smart.no_subs": "no subtitles"
 }

@@ -124,5 +124,9 @@
   "settings.night_auto": "Night sound on a schedule",
   "settings.night_auto_hint": "Turns on by itself from %1$s to %2$s, even mid-movie",
   "settings.night_start": "From",
-  "settings.night_end": "Until"
+  "settings.night_end": "Until",
+  "settings.smart_tracks": "Remember my track choices",
+  "settings.smart_tracks_hint": "E.g. anime — Japanese audio with subtitles, movies — dub. Per series and per set of languages",
+  "settings.smart_reset": "Forget track habits",
+  "settings.smart_reset_done": "Track habits cleared"
 }

@@ -397,6 +397,21 @@ fun PlayerScreen(
                 )
             }
 
+            state.smartHint?.let { hint ->
+                if (!inPictureInPicture) {
+                    LaunchedEffect(hint) { delay(5_000); controller.dismissSmartHint() }
+                    Text(
+                        hint,
+                        color = theme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(Alignment.BottomStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(start = 24.dp, bottom = 120.dp).widthIn(max = 560.dp)
+                            .clip(RoundedCornerShape(14.dp)).background(theme.surface.copy(alpha = 0.92f))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                }
+            }
+
             if (state.warnings.isNotEmpty() && !inPictureInPicture) {
                 LaunchedEffect(state.warnings) { delay(8_000); controller.dismissWarnings() }
                 Column(

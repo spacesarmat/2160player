@@ -92,6 +92,8 @@ data class PlayerUiState(
     /** Format.id вторых субтитров или null. */
     val secondaryTextId: String? = null,
     val nightMode: Boolean = false,
+    /** «Как обычно: …» — дорожки выбраны по привычке. */
+    val smartHint: String? = null,
     /** Важные предупреждения о воспроизведении (показываются при старте). */
     val warnings: List<String> = emptyList(),
 )
@@ -127,6 +129,12 @@ class PlayerController(
     /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении). */
     private val subtitles: MutableList<MutableList<ExternalSubtitle>> =
         request.items.map { it.subtitles.toMutableList() }.toMutableList()
+
+    private val trackPrefs = TrackPreferences.get(appContext)
+    /** Применить привычку при первом известном списке дорожек нового файла. */
+    private var pendingSmart = false
+    /** После ручного выбора дождаться обновления дорожек и записать привычку. */
+    private var recordChoiceOnTracks = false
 
     /** Сохранённое состояние, которое нужно применить, когда станут известны дорожки. */
     private var pendingRestore: ResumeEntry? = null
@@ -176,6 +184,10 @@ class PlayerController(
 
         override fun onTracksChanged(tracks: Tracks) {
             applyPendingSelections(tracks)
+            if (recordChoiceOnTracks) {
+                recordChoiceOnTracks = false
+                rememberChoice(tracks)
+            }
             refresh()
         }
 
@@ -258,6 +270,8 @@ class PlayerController(
         player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
 
         pendingRestore = entry
+        // Своего сохранённого выбора у файла нет — попробуем привычку (сериал / набор языков).
+        pendingSmart = entry == null && settings.current.smartTracks
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
@@ -359,12 +373,16 @@ class PlayerController(
 
     private fun applyPendingSelections(tracks: Tracks) {
         if (tracks.isEmpty) return
+        if (pendingSmart) {
+            pendingSmart = false
+            applySmartChoice(tracks)
+        }
         pendingExternalSelect?.let { id ->
             val option = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull {
                 tracks.groups[it.groupIndex].getTrackFormat(it.trackIndex).id?.endsWith(id) == true
             }
             if (option != null) {
-                select(option)
+                selectTrack(option, user = false)
                 pendingExternalSelect = null
             }
         }
@@ -374,19 +392,76 @@ class PlayerController(
         val audio = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current)
         (audio.firstOrNull { entry.audioLabel != null && it.label == entry.audioLabel }
             ?: audio.firstOrNull { entry.audioLanguage != null && it.language == entry.audioLanguage })
-            ?.takeUnless { it.selected }?.let(::select)
+            ?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
 
         if (pendingExternalSelect == null) {
             if (entry.textDisabled) {
-                disableSubtitles()
+                disableText(user = false)
             } else {
                 val text = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current)
                 (text.firstOrNull { entry.textLabel != null && it.label == entry.textLabel }
                     ?: text.firstOrNull { entry.textLanguage != null && it.language == entry.textLanguage })
-                    ?.takeUnless { it.selected }?.let(::select)
+                    ?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
             }
         }
     }
+
+    // region Привычки выбора дорожек
+
+    private fun candidates(tracks: Tracks, type: Int): List<Pair<TrackOption, TrackCandidate>> =
+        TrackLabels.collect(tracks, type, i18n.current).mapIndexed { i, o ->
+            val f = tracks.groups[o.groupIndex].getTrackFormat(o.trackIndex)
+            o to TrackCandidate(i, f.language, f.label, f.channelCount.coerceAtLeast(0), f.selectionFlags and C.SELECTION_FLAG_FORCED != 0)
+        }
+
+    private fun currentSeriesKey(): String? {
+        val entry = request.items.getOrNull(player.currentMediaItemIndex) ?: return null
+        val name = SubtitleSupport.displayName(appContext, entry.uri) ?: entry.title
+        return SegmentDetector.seriesKey(name) ?: SegmentDetector.seriesKey(entry.title)
+    }
+
+    private fun applySmartChoice(tracks: Tracks) {
+        val audio = candidates(tracks, C.TRACK_TYPE_AUDIO)
+        val text = candidates(tracks, C.TRACK_TYPE_TEXT)
+        val ctx = TrackRules.contextKey(audio.map { it.second })
+        val choice = trackPrefs.forSeries(currentSeriesKey()) ?: trackPrefs.forContext(ctx) ?: return
+
+        val pickedAudio = TrackRules.pickAudio(choice, audio.map { it.second })?.let { c -> audio.first { it.second == c }.first }
+        pickedAudio?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
+
+        var subsLabel: String? = null
+        if (choice.textLanguage == null) {
+            if (text.isNotEmpty()) disableText(user = false)
+        } else {
+            val pickedText = TrackRules.pickText(choice, text.map { it.second })?.let { c -> text.first { it.second == c }.first }
+            pickedText?.let { selectTrack(it, user = false); subsLabel = it.label }
+        }
+        if (pickedAudio != null || subsLabel != null) {
+            val t = i18n.current
+            val parts = listOfNotNull(pickedAudio?.label, subsLabel?.let { t.format("smart.subs", it) } ?: if (choice.textLanguage == null && text.isNotEmpty()) t["smart.no_subs"] else null)
+            _state.update { it.copy(smartHint = t.format("smart.applied", parts.joinToString(" · "))) }
+        }
+    }
+
+    private fun rememberChoice(tracks: Tracks) {
+        if (!settings.current.smartTracks) return
+        val audio = candidates(tracks, C.TRACK_TYPE_AUDIO)
+        val text = candidates(tracks, C.TRACK_TYPE_TEXT)
+        val selectedAudio = audio.firstOrNull { it.first.selected }?.second ?: return
+        val textOff = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val selectedText = if (textOff) null else text.firstOrNull { it.first.selected && !it.first.external }?.second
+        val choice = TrackChoice(
+            audioLanguage = TrackRules.normalizeLang(selectedAudio.language),
+            audioHint = TrackRules.hintOf(selectedAudio.label),
+            textLanguage = TrackRules.normalizeLang(selectedText?.language),
+            textForced = selectedText?.forced == true,
+        )
+        trackPrefs.remember(currentSeriesKey(), TrackRules.contextKey(audio.map { it.second }), choice)
+    }
+
+    fun dismissSmartHint() = _state.update { it.copy(smartHint = null) }
+
+    // endregion
 
     // region Управление
 
@@ -420,7 +495,11 @@ class PlayerController(
         refresh()
     }
 
-    fun select(option: TrackOption) {
+    /** Выбор дорожки пользователем (запоминается как привычка). */
+    fun select(option: TrackOption) = selectTrack(option, user = true)
+
+    private fun selectTrack(option: TrackOption, user: Boolean) {
+        if (user && (option.type == C.TRACK_TYPE_AUDIO || option.type == C.TRACK_TYPE_TEXT)) recordChoiceOnTracks = true
         val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(option.type, false)
@@ -435,7 +514,11 @@ class PlayerController(
             .build()
     }
 
-    fun disableSubtitles() {
+    /** Пользователь выключил субтитры (запоминается как привычка). */
+    fun disableSubtitles() = disableText(user = true)
+
+    private fun disableText(user: Boolean) {
+        if (user) recordChoiceOnTracks = true
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)

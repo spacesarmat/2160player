@@ -54,6 +54,8 @@ data class Settings(
     /** Минуты от полуночи: 23:00 = 1380. */
     val nightStartMinute: Int = 23 * 60,
     val nightEndMinute: Int = 10 * 60,
+    /** Запоминать ручной выбор дорожек и применять его к похожим файлам и сериям. */
+    val smartTracks: Boolean = true,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -122,6 +124,7 @@ class PlayerSettings private constructor(context: Context) {
             nightAuto = prefs.getBoolean("night_auto", d.nightAuto),
             nightStartMinute = prefs.getInt("night_start", d.nightStartMinute),
             nightEndMinute = prefs.getInt("night_end", d.nightEndMinute),
+            smartTracks = prefs.getBoolean("smart_tracks", d.smartTracks),
         )
     }
 
@@ -148,6 +151,7 @@ class PlayerSettings private constructor(context: Context) {
             .putBoolean("night_auto", s.nightAuto)
             .putInt("night_start", s.nightStartMinute)
             .putInt("night_end", s.nightEndMinute)
+            .putBoolean("smart_tracks", s.smartTracks)
             .apply()
     }
 

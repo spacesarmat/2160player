@@ -124,5 +124,9 @@
   "settings.night_auto": "Ночной звук по расписанию",
   "settings.night_auto_hint": "Сам включается с %1$s до %2$s, даже посреди фильма",
   "settings.night_start": "С",
-  "settings.night_end": "До"
+  "settings.night_end": "До",
+  "settings.smart_tracks": "Запоминать выбор дорожек",
+  "settings.smart_tracks_hint": "Например: аниме — японская озвучка с субтитрами, фильмы — дубляж. Отдельно для сериалов и наборов языков",
+  "settings.smart_reset": "Забыть привычки выбора дорожек",
+  "settings.smart_reset_done": "Привычки выбора дорожек сброшены"
 }

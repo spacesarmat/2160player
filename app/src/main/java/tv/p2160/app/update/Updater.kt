@@ -149,8 +149,7 @@ object Updater {
 
     /** Последний релиз, если он новее установленной версии, иначе null. */
     private suspend fun fetchLatest(): UpdateInfo? = withContext(Dispatchers.IO) {
-        val conn = open("https://api.github.com/repos/$REPO/releases/latest")
-        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        val conn = open("https://api.github.com/repos/$REPO/releases/latest", "Accept" to "application/vnd.github+json")
         val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
         val version = json.getString("tag_name").removePrefix("v")
         if (!isNewer(version, currentVersion)) return@withContext null
@@ -161,21 +160,31 @@ object Updater {
             ?: error("no APK in release $version")
         UpdateInfo(
             version = version,
-            notes = json.optString("body").trim(),
+            notes = plainText(json.optString("body")),
             apkUrl = apk.getString("browser_download_url"),
             apkSize = apk.optLong("size"),
             pageUrl = json.optString("html_url"),
         )
     }
 
-    private fun open(url: String): HttpURLConnection {
+    private fun open(url: String, vararg headers: Pair<String, String>): HttpURLConnection {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 15_000
         conn.readTimeout = 30_000
         conn.setRequestProperty("User-Agent", "2160Player/$currentVersion")
+        headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
         if (conn.responseCode !in 200..299) error("HTTP ${conn.responseCode}")
         return conn
     }
+
+    /** Описание релиза из Markdown в простой текст для диалога. */
+    fun plainText(markdown: String): String = markdown
+        .replace(Regex("""\*\*(.+?)\*\*"""), "$1")
+        .replace(Regex("`([^`]*)`"), "$1")
+        .replace(Regex("""(?m)^#+\s*"""), "")
+        .replace(Regex("(?m)^- "), "• ")
+        .replace(Regex("""\[([^\]]+)]\([^)]*\)"""), "$1")
+        .trim()
 
     /** APK под первую поддерживаемую ABI устройства, иначе универсальный. */
     fun pickAsset(names: List<String>, abis: List<String>): String? =

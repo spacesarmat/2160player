@@ -30,4 +30,10 @@ class UpdaterTest {
         assertEquals(names[2], Updater.pickAsset(names, listOf("x86_64")))
         assertNull(Updater.pickAsset(listOf("notes.txt"), listOf("x86_64")))
     }
+
+    @Test
+    fun stripsMarkdownFromNotes() {
+        val md = listOf("**Title**", "- `arm64` - phones", "see [API](docs/API.md)").joinToString("\n")
+        assertEquals(listOf("Title", "• arm64 - phones", "see API").joinToString("\n"), Updater.plainText(md))
+    }
 }

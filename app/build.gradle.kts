@@ -19,8 +19,8 @@ android {
         applicationId = "tv.p2160.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 11
-        versionName = (findProperty("p2160.versionName") as String?) ?: "0.1.9"
+        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 12
+        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.0"
     }
 
     signingConfigs {

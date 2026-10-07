@@ -26,6 +26,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lan
@@ -82,6 +85,7 @@ fun HomeScreen(
     onOpenTorrents: () -> Unit,
     onPlayEntry: (ResumeEntry) -> Unit,
     onPlayRemote: (RemoteSession) -> Unit,
+    onOpenContinue: () -> Unit,
 ) {
     // Что играет на других устройствах в сети — опрашиваем раз в несколько секунд.
     val peers by Handoff.peers.collectAsState()
@@ -173,7 +177,15 @@ fun HomeScreen(
 
         if (continueList.isNotEmpty()) {
             item(key = "continue") {
-                SectionTitle(tr("app.continue"))
+                // Заголовок кликабелен (палец и пульт): открывает полный список недосмотренного.
+                FocusCard(onClick = onOpenContinue, background = androidx.compose.ui.graphics.Color.Transparent, modifier = Modifier.padding(top = 12.dp)) {
+                    Row(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("app.continue"), style = MaterialTheme.typography.titleMedium, color = colors.primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("app.continue_all", continueList.size), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
+                }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(continueList, key = { "c" + it.key }) { entry ->
                         val cover = remember(entry.key, coverChanges) { store.cover(entry.key) }
@@ -221,8 +233,14 @@ private fun ActionTile(icon: ImageVector, label: String, onClick: () -> Unit, mo
 }
 
 @Composable
-private fun ContinueCard(entry: ResumeEntry, cover: java.io.File?, onClick: () -> Unit, onLongClick: () -> Unit) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(if (cover != null) 290.dp else 240.dp).height(116.dp)) {
+private fun ContinueCard(
+    entry: ResumeEntry,
+    cover: java.io.File?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier.width(if (cover != null) 290.dp else 240.dp),
+) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.height(116.dp)) {
         Row(Modifier.fillMaxSize()) {
         // Обложка слева (постер 2:3 — по высоте карточки), если у файла она есть.
         if (cover != null) CoverImage(cover, Modifier.fillMaxHeight().width(78.dp))
@@ -247,6 +265,54 @@ private fun ContinueCard(entry: ResumeEntry, cover: java.io.File?, onClick: () -
                 trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
             )
         }
+        }
+    }
+}
+
+/**
+ * «Продолжить просмотр» целиком: все недосмотренные файлы сеткой (на телефоне — в одну колонку).
+ * Нажатие — продолжить, долгое нажатие — убрать из списка, как и на главном экране.
+ */
+@Composable
+fun ContinueScreen(store: ResumeStore, onBack: () -> Unit, onPlayEntry: (ResumeEntry) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val changes by store.changes.collectAsState()
+    val coverChanges by tv.p2160.core.resume.Covers.changes.collectAsState()
+    val list = remember(changes) { store.recent(500).filter { !it.finished && it.positionMs > 0 } }
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() else runCatching { firstFocus.requestFocus() } }
+
+    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = androidx.compose.ui.graphics.Color.Transparent) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(tr("app.continue"), style = MaterialTheme.typography.headlineSmall, color = colors.onBackground, modifier = Modifier.weight(1f))
+            Text(list.size.toString(), style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant)
+        }
+        Text(
+            tr("app.continue_hint"),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(300.dp),
+            contentPadding = PaddingValues(horizontal = if (LocalConfiguration.current.screenWidthDp >= 600) 32.dp else 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            itemsIndexed(list, key = { _, it -> it.key }) { i, entry ->
+                val cover = remember(entry.key, coverChanges) { store.cover(entry.key) }
+                ContinueCard(
+                    entry, cover,
+                    onClick = { onPlayEntry(entry) },
+                    onLongClick = { store.delete(entry.key) },
+                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(firstFocus) else Modifier),
+                )
+            }
         }
     }
 }

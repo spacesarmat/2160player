@@ -225,5 +225,7 @@
   "share.full_get_hint": "≈26 MB, one copy is kept and updated with the player. Downloads by itself on Wi-Fi",
   "share.full_downloading": "Downloading the package for all devices… %1$d%%",
   "share.full_ready": "Sharing the package for all devices (phones and 32-bit TVs).",
-  "share.full_failed": "Download failed: %1$s"
+  "share.full_failed": "Download failed: %1$s",
+  "app.continue_all": "all · %1$d",
+  "app.continue_hint": "Tap to resume. Long-press to remove from the list."
 }

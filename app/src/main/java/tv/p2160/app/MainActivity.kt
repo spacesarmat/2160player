@@ -132,7 +132,9 @@ class MainActivity : ComponentActivity() {
                             onOpenTorrents = { screen = Screen.TORRENTS },
                             onPlayEntry = ::playEntry,
                             onPlayRemote = { Handoff.play(this, it) },
+                            onOpenContinue = { screen = Screen.CONTINUE },
                         )
+                        Screen.CONTINUE -> ContinueScreen(store = store, onBack = { screen = Screen.HOME }, onPlayEntry = ::playEntry)
                         Screen.NETWORK -> NetworkScreen(
                             servers = servers,
                             onBack = { screen = Screen.HOME },
@@ -231,5 +233,5 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ, CONTINUE }
 }

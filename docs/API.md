@@ -1938,6 +1938,14 @@ ARM-устройствах берёт именно его (§22.2): устано
 
 ---
 
+### 22.6. Список «Продолжить просмотр» (`tv.p2160.app.ContinueScreen`)
+
+На главном экране заголовок «Продолжить просмотр» кликабелен (палец и пульт, рядом — «все · N»): открывается
+полный список недосмотренных файлов — `store.recent(500)` без досмотренных и без нулевой позиции, сеткой
+(`GridCells.Adaptive(300.dp)`, на телефоне — одна колонка) с обложками и прогрессом. Нажатие — продолжить,
+долгое нажатие — убрать запись (`ResumeStore.delete`), как и на главном экране; когда список пустеет, экран
+закрывается. «Назад» возвращает на главный экран.
+
 ## 23. Справочник классов
 
 ### 23.1. Стабильный публичный API
@@ -1969,7 +1977,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

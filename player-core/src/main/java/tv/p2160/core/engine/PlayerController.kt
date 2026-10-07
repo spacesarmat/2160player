@@ -166,7 +166,11 @@ class PlayerController(
     private var sleepFadeJob: Job? = null
     private var coverJob: Job? = null
 
-    private val built = PlayerFactory.build(appContext, settings.current, request.headers, config)
+    private val built = PlayerFactory.build(
+        appContext, settings.current, request.headers, config,
+        // Все элементы — живые источники (камера по RTSP и т.п.): режим низкой задержки.
+        lowLatency = request.items.isNotEmpty() && request.items.all { it.uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES },
+    )
     val player: ExoPlayer get() = built.player
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
@@ -442,6 +446,9 @@ class PlayerController(
         return runCatching { guide.describe(entry, System.currentTimeMillis()) }.getOrNull()?.ifBlank { null }
     }
 
+    /** Живой поток (камера по RTSP и т.п.): ни глав, ни поиска вступления — лишнее подключение к источнику. */
+    private fun isLiveSource(uri: Uri): Boolean = uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES
+
     private fun loadChaptersAndSegments(index: Int) {
         val entry = request.items.getOrNull(index) ?: return
         chapters = emptyList()
@@ -463,7 +470,7 @@ class PlayerController(
                 // Главы диска — из плейлиста (FFmpeg в ISO не заглянет).
                 val starts = d.title.chapters
                 starts.mapIndexed { i, start -> Chapter(null, start, starts.getOrElse(i + 1) { d.title.durationMs }) }
-            } ?: if (config.readChapters) runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList()) else emptyList()
+            } ?: if (config.readChapters && !isLiveSource(entry.uri)) runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList()) else emptyList()
             if (player.currentMediaItemIndex != index) return@launch
             chapters = found
             // Явно переданные отрезки (Intent/медиасервер) важнее найденных по главам.
@@ -480,6 +487,7 @@ class PlayerController(
      */
     private fun startIntroDetection(index: Int, series: String?) {
         if (!config.introDetection || series == null || discs[index] != null) return
+        if (request.items.getOrNull(index)?.uri?.let(::isLiveSource) == true) return
         val known = (baseSegments + marks.toSegments(Long.MAX_VALUE / 4)).map { it.type }.toSet()
         if (SegmentType.INTRO in known && SegmentType.CREDITS in known) return
         val entry = request.items.getOrNull(index) ?: return

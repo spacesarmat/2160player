@@ -97,10 +97,7 @@ dependencies {
         exclude(group = "com.github.pedroSG94.RootEncoder", module = "whip")
         exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
     }
-    implementation(libs.rtsp.server) {
-        exclude(group = "com.github.pedroSG94.RootEncoder", module = "whip")
-        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
-    }
+    implementation(project(":rtsp-server"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

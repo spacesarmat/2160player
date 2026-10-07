@@ -29,7 +29,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Stop
@@ -114,6 +116,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 }
             }
             if (state is CameraStreamState.Error) item(key = "err") { Text(tr("camera.error"), color = colors.error) }
+            if (cameraAllowed) item(key = "zoom") { ZoomAndFocus() }
 
             item(key = "start") {
                 val label = if (streaming != null) tr("camera.stop") else tr("camera.start")
@@ -203,9 +206,20 @@ private fun CameraPreview() {
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             SurfaceView(ctx).apply {
+                // Касание — фокус в точке, два пальца — зум щипком.
+                val taps = android.view.GestureDetector(ctx, object : android.view.GestureDetector.SimpleOnGestureListener() {
+                    override fun onSingleTapUp(e: android.view.MotionEvent): Boolean = CameraStream.tapToFocus(this@apply, e)
+                })
+                @Suppress("ClickableViewAccessibility")
+                setOnTouchListener { v, event ->
+                    if (event.pointerCount >= 2) CameraStream.onPreviewTouch(v, event) else taps.onTouchEvent(event)
+                    true
+                }
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) = CameraStream.startPreview(context, this@apply)
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+                    // Размер окна предпросмотра (поворот, раскладка) — иначе картинка рисуется в части окна.
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) =
+                        CameraStream.setPreviewSize(width, height)
                     override fun surfaceDestroyed(holder: SurfaceHolder) = CameraStream.stopPreview(this@apply)
                 })
                 view = this
@@ -213,6 +227,48 @@ private fun CameraPreview() {
         },
     )
     DisposableEffect(Unit) { onDispose { view?.let(CameraStream::stopPreview) } }
+}
+
+/** Зум (ползунок, работает и с пульта) и возврат автофокуса. Фокус касанием и щипок — на самом предпросмотре. */
+@Composable
+private fun ZoomAndFocus() {
+    val colors = MaterialTheme.colorScheme
+    val zoom by CameraStream.zoom.collectAsState()
+    val config by CameraStream.config.collectAsState()
+    // Диапазон известен, когда камера открыта; перечитываем при смене камеры.
+    var range by remember { mutableStateOf(1f..1f) }
+    LaunchedEffect(config.cameraId) {
+        repeat(10) {
+            range = CameraStream.zoomRange()
+            if (range.endInclusive > range.start) return@LaunchedEffect
+            kotlinx.coroutines.delay(300)
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.ZoomIn, null, tint = colors.primary)
+        Spacer(Modifier.size(8.dp))
+        if (range.endInclusive > range.start) {
+            androidx.compose.material3.Slider(
+                value = zoom.coerceIn(range.start, range.endInclusive),
+                onValueChange = CameraStream::setZoom,
+                valueRange = range,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Text(tr("camera.zoom_none"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.size(8.dp))
+        Text("%.1f×".format(zoom), color = colors.onSurface, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.size(8.dp))
+        FocusCard(onClick = CameraStream::autoFocus, background = colors.surfaceVariant) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CenterFocusStrong, null, tint = colors.primary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(6.dp))
+                Text(tr("camera.autofocus"), color = colors.onSurface, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+    Text(tr("camera.focus_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable

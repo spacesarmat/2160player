@@ -259,5 +259,8 @@
   "camera.channel": "Camera streaming",
   "camera.notification_title": "Camera is streaming",
   "camera.notification_text": "%1$s · viewers: %2$d",
-  "camera.torch": "Flashlight"
+  "camera.torch": "Flashlight",
+  "camera.autofocus": "Autofocus",
+  "camera.zoom_none": "This camera has no zoom",
+  "camera.focus_hint": "Tap the picture to focus there. Pinch with two fingers to zoom."
 }

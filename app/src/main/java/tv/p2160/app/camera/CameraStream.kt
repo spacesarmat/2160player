@@ -93,6 +93,43 @@ object CameraStream {
     /** Фонарик (вспышка задней камеры) включён. */
     val torch: StateFlow<Boolean> = _torch.asStateFlow()
 
+    private val _zoom = MutableStateFlow(1f)
+    /** Текущий зум (1 — без увеличения). */
+    val zoom: StateFlow<Float> = _zoom.asStateFlow()
+
+    /** Диапазон зума работающей камеры (у широкоугольной может начинаться ниже 1). */
+    fun zoomRange(): ClosedFloatingPointRange<Float> {
+        val r = (stream?.videoSource as? Camera2Source)?.getZoomRange() ?: return 1f..1f
+        return r.lower..r.upper
+    }
+
+    fun setZoom(level: Float) {
+        val source = stream?.videoSource as? Camera2Source ?: return
+        val r = zoomRange()
+        runCatching { source.setZoom(level.coerceIn(r.start, r.endInclusive)) }
+        _zoom.value = runCatching { source.getZoom() }.getOrDefault(level)
+    }
+
+    /** Жест на предпросмотре: два пальца — зум щипком. */
+    fun onPreviewTouch(view: android.view.View, event: android.view.MotionEvent) {
+        val source = stream?.videoSource as? Camera2Source ?: return
+        if (event.pointerCount >= 2) {
+            runCatching { source.setZoom(event) }
+            _zoom.value = runCatching { source.getZoom() }.getOrDefault(_zoom.value)
+        }
+    }
+
+    /** Касание предпросмотра: фокус (и экспозиция) в этой точке. */
+    fun tapToFocus(view: android.view.View, event: android.view.MotionEvent): Boolean {
+        val source = stream?.videoSource as? Camera2Source ?: return false
+        return runCatching { source.tapToFocus(view, event) }.getOrDefault(false)
+    }
+
+    /** Вернуть непрерывный автофокус. */
+    fun autoFocus() {
+        (stream?.videoSource as? Camera2Source)?.let { runCatching { it.enableAutoFocus() } }
+    }
+
     /** Включить/выключить фонарик — только у камеры со вспышкой, пока камера работает. */
     fun setTorch(on: Boolean) {
         val source = stream?.videoSource as? Camera2Source ?: return
@@ -215,6 +252,7 @@ object CameraStream {
         val s = stream
         if (s != null && next.cameraId != old.cameraId && next.copy(cameraId = old.cameraId) == old) {
             _torch.value = false
+            _zoom.value = 1f
             next.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.openCameraId(id) }
             preparedFor = next
             return
@@ -237,7 +275,7 @@ object CameraStream {
         val rotation = CameraHelper.getCameraOrientation(app)
         val q = cfg.quality
         val ok = runCatching {
-            s.prepareVideo(q.width, q.height, q.bitrateKbps * 1000, q.fps, iFrameInterval = 2, rotation = rotation) &&
+            s.prepareVideo(q.width, q.height, q.bitrateKbps * 1000, q.fps, iFrameInterval = 1, rotation = rotation) &&
                 s.prepareAudio(44_100, true, 128_000)
         }.getOrElse { e ->
             Log.w(TAG, "prepare failed", e)
@@ -265,6 +303,11 @@ object CameraStream {
         val s = ensurePrepared(context) ?: return
         if (!s.isOnPreview) runCatching { s.startPreview(surface) }.onFailure { Log.w(TAG, "preview", it) }
         _config.value.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
+    }
+
+    /** Размер окна предпросмотра изменился. */
+    fun setPreviewSize(width: Int, height: Int) {
+        stream?.getGlInterface()?.setPreviewResolution(width, height)
     }
 
     /** Поверхность исчезла (экран закрыт): предпросмотр выключаем, трансляция продолжается. */
@@ -309,6 +352,7 @@ object CameraStream {
 
     private fun release() {
         _torch.value = false
+        _zoom.value = 1f
         stream?.let { s ->
             runCatching { if (s.isStreaming) s.stopStream() }
             runCatching { if (s.isOnPreview) s.stopPreview() }

@@ -57,7 +57,14 @@ internal object PlayerFactory {
 
     const val USER_AGENT = "2160Player/1.0 (Linux; Android) ExoPlayerLib"
 
-    fun build(context: Context, settings: Settings, headers: Map<String, String>, config: PlayerConfig = PlayerConfig()): BuiltPlayer {
+    /** Живые источники, где важна задержка: камеры и эфир по RTSP/RTMP/SRT/UDP. */
+    val LOW_LATENCY_SCHEMES = setOf("rtsp", "rtsps", "rtmp", "rtmps", "srt", "udp", "rtp")
+
+    /**
+     * @param lowLatency живой источник (камера по RTSP и т.п.): почти без буфера перед стартом и не больше
+     *   2 с в буфере — задержка ~0,3–0,5 с вместо 2 с, ценой подгрузок на плохой сети.
+     */
+    fun build(context: Context, settings: Settings, headers: Map<String, String>, config: PlayerConfig = PlayerConfig(), lowLatency: Boolean = false): BuiltPlayer {
         val mode = when (settings.decoder) {
             DecoderPreference.AUTO -> DecoderMode.AUTO
             DecoderPreference.HARDWARE -> DecoderMode.HARDWARE
@@ -122,14 +129,17 @@ internal object PlayerFactory {
         val loadControl = DefaultLoadControl.Builder()
             .setAllocator(allocator)
             .setTargetBufferBytes(bufferBytes.takeIf { it > 0 } ?: C.LENGTH_UNSET)
-            .setBufferDurationsMs(config.minBufferMs, config.maxBufferMs, config.bufferForPlaybackMs, config.bufferForPlaybackAfterRebufferMs)
-            .setPrioritizeTimeOverSizeThresholds(false)
+            .apply {
+                if (lowLatency) setBufferDurationsMs(500, 2_000, 100, 300).setPrioritizeTimeOverSizeThresholds(true)
+                else setBufferDurationsMs(config.minBufferMs, config.maxBufferMs, config.bufferForPlaybackMs, config.bufferForPlaybackAfterRebufferMs)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+            }
             .build()
 
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(DiscMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DolbyVisionFallback.ExtractorsFactoryWrapper(context, m2tsExtractors))))
+            .setMediaSourceFactory(RtspOverTcp(DiscMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DolbyVisionFallback.ExtractorsFactoryWrapper(context, m2tsExtractors)))))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -147,4 +157,19 @@ internal object PlayerFactory {
         decoderManager.attach(player)
         return BuiltPlayer(player, decoderManager, secondarySubtitles, night, passthrough, allocator, bufferBytes)
     }
+}
+
+/**
+ * RTSP — с RTP внутри TCP-соединения (interleaved). По умолчанию Media3 сначала ждёт RTP по UDP, а по Wi-Fi
+ * (телефон → ТВ, точки доступа, NAT) UDP часто теряется или режется: картинка не приходит. TCP надёжнее,
+ * задержка почти та же. Остальные источники — как у [delegate].
+ */
+@OptIn(UnstableApi::class)
+internal class RtspOverTcp(private val delegate: androidx.media3.exoplayer.source.MediaSource.Factory) :
+    androidx.media3.exoplayer.source.MediaSource.Factory by delegate {
+    private val rtsp = androidx.media3.exoplayer.rtsp.RtspMediaSource.Factory().setForceUseRtpTcp(true)
+
+    override fun createMediaSource(mediaItem: androidx.media3.common.MediaItem): androidx.media3.exoplayer.source.MediaSource =
+        if (mediaItem.localConfiguration?.uri?.scheme.equals("rtsp", ignoreCase = true)) rtsp.createMediaSource(mediaItem)
+        else delegate.createMediaSource(mediaItem)
 }

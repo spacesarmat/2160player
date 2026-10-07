@@ -21,4 +21,7 @@ rootProject.name = "2160player"
 include(":player-core")
 include(":source-torrent")
 include(":app")
+// RTSP-Server (pedroSG94, Apache-2.0) исходниками с правкой — см. third-party/rtsp-server/NOTICE.md
+include(":rtsp-server")
+project(":rtsp-server").projectDir = file("third-party/rtsp-server")
 include(":samples:embed-demo")

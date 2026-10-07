@@ -259,5 +259,8 @@
   "camera.channel": "Трансляция камеры",
   "camera.notification_title": "Идёт трансляция камеры",
   "camera.notification_text": "%1$s · зрителей: %2$d",
-  "camera.torch": "Фонарик"
+  "camera.torch": "Фонарик",
+  "camera.autofocus": "Автофокус",
+  "camera.zoom_none": "Зум недоступен у этой камеры",
+  "camera.focus_hint": "Коснитесь картинки — фокус в этой точке. Два пальца — зум щипком."
 }

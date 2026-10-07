@@ -41,6 +41,7 @@ object DlnaPlayback {
             title = s.title,
             subtitles = s.subtitles.map { ExternalSubtitle(it.url.toUri(), it.name, it.language) },
             mimeType = s.mimeType,
+            artworkUri = item.albumArtUrl?.toUri(),
         )
     }
 

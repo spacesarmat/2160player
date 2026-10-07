@@ -50,6 +50,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -92,6 +95,7 @@ fun HomeScreen(
         }
     }
     val changes by store.changes.collectAsState()
+    val coverChanges by tv.p2160.core.resume.Covers.changes.collectAsState()
     val history = remember(changes) { store.recent(100) }
     val continueList = history.filter { !it.finished && it.positionMs > 0 }
     var urlDialog by remember { mutableStateOf(false) }
@@ -172,7 +176,8 @@ fun HomeScreen(
                 SectionTitle(tr("app.continue"))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(continueList, key = { "c" + it.key }) { entry ->
-                        ContinueCard(entry, onClick = { onPlayEntry(entry) }, onLongClick = { store.delete(entry.key) })
+                        val cover = remember(entry.key, coverChanges) { store.cover(entry.key) }
+                        ContinueCard(entry, cover, onClick = { onPlayEntry(entry) }, onLongClick = { store.delete(entry.key) })
                     }
                 }
             }
@@ -181,7 +186,8 @@ fun HomeScreen(
         if (history.isNotEmpty()) {
             item(key = "history-title") { SectionTitle(tr("app.history")) }
             items(history, key = { "h" + it.key }) { entry ->
-                HistoryRow(entry, onClick = { onPlayEntry(entry) }, onLongClick = { store.delete(entry.key) })
+                val cover = remember(entry.key, coverChanges) { store.cover(entry.key) }
+                HistoryRow(entry, cover, onClick = { onPlayEntry(entry) }, onLongClick = { store.delete(entry.key) })
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -215,9 +221,12 @@ private fun ActionTile(icon: ImageVector, label: String, onClick: () -> Unit, mo
 }
 
 @Composable
-private fun ContinueCard(entry: ResumeEntry, onClick: () -> Unit, onLongClick: () -> Unit) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(240.dp).height(116.dp)) {
-        Column(Modifier.fillMaxSize().padding(14.dp)) {
+private fun ContinueCard(entry: ResumeEntry, cover: java.io.File?, onClick: () -> Unit, onLongClick: () -> Unit) {
+    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(if (cover != null) 290.dp else 240.dp).height(116.dp)) {
+        Row(Modifier.fillMaxSize()) {
+        // Обложка слева (постер 2:3 — по высоте карточки), если у файла она есть.
+        if (cover != null) CoverImage(cover, Modifier.fillMaxHeight().width(78.dp))
+        Column(Modifier.weight(1f).fillMaxHeight().padding(14.dp)) {
             Text(
                 entry.title ?: entry.uri,
                 style = MaterialTheme.typography.titleMedium,
@@ -238,22 +247,43 @@ private fun ContinueCard(entry: ResumeEntry, onClick: () -> Unit, onLongClick: (
                 trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
             )
         }
+        }
+    }
+}
+
+/** Обложка из [tv.p2160.core.resume.Covers] (декодируем с фонового потока). */
+@Composable
+private fun CoverImage(file: java.io.File, modifier: Modifier = Modifier) {
+    val bitmap by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, file, file.lastModified()) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { android.graphics.BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull()
+        }
+    }
+    val image = bitmap
+    if (image != null) {
+        Image(image, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = modifier)
+    } else {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
     }
 }
 
 @Composable
-private fun HistoryRow(entry: ResumeEntry, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun HistoryRow(entry: ResumeEntry, cover: java.io.File?, onClick: () -> Unit, onLongClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(40.dp).background(colors.primary.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (entry.finished) Icons.Default.CheckCircle else Icons.Default.Movie, null,
-                    tint = colors.primary, modifier = Modifier.size(22.dp),
-                )
+            if (cover != null) {
+                CoverImage(cover, Modifier.size(width = 40.dp, height = 56.dp).clip(RoundedCornerShape(8.dp)))
+            } else {
+                Box(
+                    Modifier.size(40.dp).background(colors.primary.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (entry.finished) Icons.Default.CheckCircle else Icons.Default.Movie, null,
+                        tint = colors.primary, modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {

@@ -54,6 +54,7 @@ import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.PlaybackResult
 import tv.p2160.core.i18n.I18n
 import tv.p2160.core.resume.ResumeEntry
+import tv.p2160.core.resume.Covers
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.PlayerSettings
 import tv.p2160.core.subtitle.SubtitleSupport
@@ -140,6 +141,7 @@ class PlayerController(
     /** Таймер сна: момент паузы (SystemClock.elapsedRealtime) или 0 — выключен. */
     private var sleepAtMs = 0L
     private var sleepFadeJob: Job? = null
+    private var coverJob: Job? = null
 
     private val built = PlayerFactory.build(appContext, settings.current, request.headers, config)
     val player: ExoPlayer get() = built.player
@@ -338,6 +340,23 @@ class PlayerController(
         applyPendingSelections(player.currentTracks)
         // Главы и поиск вступления в эфире бессмысленны (и FFmpeg повис бы на бесконечном потоке).
         if (!request.liveTv) loadChaptersAndSegments(index)
+        if (!request.liveTv && config.saveHistory) findCover(index)
+    }
+
+    /**
+     * Обложка для «Продолжить просмотр» ([Covers]): встроенная, переданная источником или картинка рядом
+     * с файлом. Ищем один раз на запись и через 10 с — не мешаем буферизации.
+     */
+    private fun findCover(index: Int) {
+        coverJob?.cancel()
+        val key = keyAt(index) ?: return
+        val entry = request.items.getOrNull(index) ?: return
+        if (Covers.get(appContext, key) != null) return
+        coverJob = scope.launch {
+            delay(10_000)
+            if (player.currentMediaItemIndex != index) return@launch
+            Covers.find(appContext, key, entry.uri, entry.artworkUri, player.mediaMetadata.artworkData, request.headers)
+        }
     }
 
     /** Текущая передача канала из телегида (свой [PlayerExtensions.liveGuide] или встроенный IPTV). */
@@ -911,6 +930,7 @@ class PlayerController(
         progressJob?.cancel()
         analyzeJob?.cancel()
         introJob?.cancel()
+        coverJob?.cancel()
         scope.cancel()
         analyzer.release()
         discs.values.forEach(DiscSessions::close)

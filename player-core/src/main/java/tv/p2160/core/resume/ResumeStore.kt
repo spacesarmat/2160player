@@ -36,6 +36,8 @@ data class ResumeEntry(
  */
 class ResumeStore private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "p2160_resume.db", null, 1) {
+    private val appContext = context.applicationContext
+
 
     private val _changes = MutableStateFlow(0L)
     /** Меняется при каждой записи; удобно для обновления UI истории. */
@@ -100,13 +102,18 @@ class ResumeStore private constructor(context: Context) :
 
     fun delete(key: String) {
         writableDatabase.delete("history", "key = ?", arrayOf(key))
+        Covers.delete(appContext, key)
         _changes.value++
     }
 
     fun clear() {
         writableDatabase.delete("history", null, null)
+        Covers.clear(appContext)
         _changes.value++
     }
+
+    /** Обложка записи (см. [Covers]) или null. */
+    fun cover(key: String): java.io.File? = Covers.get(appContext, key)
 
     private fun Cursor.toEntry() = ResumeEntry(
         key = str("key")!!,

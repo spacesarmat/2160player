@@ -20,6 +20,8 @@ data class MediaEntry(
     val mimeType: String? = null,
     /** Известные отрезки (вступление, титры…), например от медиасервера. */
     val segments: List<SkipSegment> = emptyList(),
+    /** Обложка/постер (http(s), smb, file, content) — для «Продолжить просмотр»; иначе ищется сама. */
+    val artworkUri: Uri? = null,
 )
 
 /**

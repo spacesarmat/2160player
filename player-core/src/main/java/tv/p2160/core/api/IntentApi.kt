@@ -36,6 +36,10 @@ object IntentApi {
     const val EXTRA_INTRO_START = "tv.p2160.extra.INTRO_START"
     const val EXTRA_INTRO_END = "tv.p2160.extra.INTRO_END"
     const val EXTRA_CREDITS_START = "tv.p2160.extra.CREDITS_START"
+    /** Обложка текущего файла (String URI) — для «Продолжить просмотр». */
+    const val EXTRA_ARTWORK = "tv.p2160.extra.ARTWORK"
+    /** Обложки элементов плейлиста (String[] URI, по порядку; пустая строка — нет). */
+    const val EXTRA_ARTWORKS = "tv.p2160.extra.ARTWORKS"
     /** Boolean: плейлист — телеканалы (см. [PlaybackRequest.liveTv]). */
     const val EXTRA_LIVE = "tv.p2160.extra.LIVE"
 
@@ -59,6 +63,7 @@ object IntentApi {
         val playlistNames = intent.getStringArrayExtra(EXTRA_VIDEO_LIST_NAME)
             ?: intent.getStringArrayExtra(EXTRA_TITLES)
         val mimeTypes = intent.getStringArrayExtra(EXTRA_MIME_TYPES)
+        val artworks = intent.getStringArrayExtra(EXTRA_ARTWORKS)
 
         val uris = playlist.ifEmpty { listOf(data) }
         val startIndex = uris.indexOf(data).coerceAtLeast(0)
@@ -72,6 +77,8 @@ object IntentApi {
                 subtitles = if (i == startIndex) subtitles else emptyList(),
                 mimeType = mimeTypes?.getOrNull(i) ?: if (i == startIndex) intent.type else null,
                 segments = if (i == startIndex) parseSegments(intent) else emptyList(),
+                artworkUri = (artworks?.getOrNull(i)?.takeIf { it.isNotBlank() }
+                    ?: if (i == startIndex) intent.getStringExtra(EXTRA_ARTWORK) else null)?.let(Uri::parse),
             )
         }
 
@@ -111,6 +118,10 @@ object IntentApi {
             putExtra(EXTRA_SUBS_ENABLE, current.subtitles.filter { it.select }.map { it.uri }.toTypedArray())
         }
         if (current.segments.isNotEmpty()) putExtra(EXTRA_SEGMENTS, SkipSegment.formatList(current.segments))
+        current.artworkUri?.let { putExtra(EXTRA_ARTWORK, it.toString()) }
+        if (request.items.size > 1 && request.items.any { it.artworkUri != null }) {
+            putExtra(EXTRA_ARTWORKS, request.items.map { it.artworkUri?.toString().orEmpty() }.toTypedArray())
+        }
         if (request.headers.isNotEmpty()) {
             putExtra(EXTRA_HEADERS, request.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
         }

@@ -137,6 +137,8 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.INTRO_START` | `Int`/`Long` (мс) | Начало вступления (по умолчанию 0). Учитывается только вместе с `INTRO_END`. |
 | `tv.p2160.extra.INTRO_END` | `Int`/`Long` (мс) | Конец вступления. |
 | `tv.p2160.extra.CREDITS_START` | `Int`/`Long` (мс) | Начало финальных титров (до конца файла). |
+| `tv.p2160.extra.ARTWORK` | `String` (URI) | Обложка текущего файла (`MediaEntry.artworkUri`). |
+| `tv.p2160.extra.ARTWORKS` | `String[]` | Обложки элементов плейлиста по порядку; пустая строка — нет. |
 | `tv.p2160.extra.LIVE` | `Boolean` | Плейлист — телеканалы (`PlaybackRequest.liveTv`): без продолжения с места и истории, «Эфир» вместо полосы перемотки, стрелки вверх/вниз (и CH+/CH−, цифры) переключают каналы по кругу. |
 
 Субтитры, MIME из `Intent.type` и отрезки относятся только к **стартовому** элементу плейлиста.
@@ -401,6 +403,7 @@ data class MediaEntry(
 | `subtitles` | Внешние субтитры. |
 | `mimeType` | Нужен для адаптивных потоков без расширения: значение, содержащее `mpegurl` → HLS, `dash` → DASH, `vnd.ms-sstr` → SmoothStreaming. Для остального игнорируется. URL с `.m3u8` распознаётся и без него. |
 | `segments` | Известные пропускаемые отрезки (имеют приоритет над найденными по главам). |
+| `artworkUri` | Обложка/постер (`http(s)`, `smb`, `file`, `content`) для «Продолжить просмотр» и истории (§10.1). Не задана — плеер ищет сам. |
 
 ```kotlin
 data class ExternalSubtitle(
@@ -482,7 +485,7 @@ data class PlaybackResult(
 Константы: `ACTION_PLAY`, `EXTRA_TITLE`, `EXTRA_POSITION`, `EXTRA_FROM_START`, `EXTRA_HEADERS`,
 `EXTRA_RETURN_RESULT`, `EXTRA_SUBS`, `EXTRA_SUBS_NAME`, `EXTRA_SUBS_ENABLE`, `EXTRA_VLC_SUBTITLE`,
 `EXTRA_VIDEO_LIST`, `EXTRA_VIDEO_LIST_NAME`, `EXTRA_TITLES`, `EXTRA_PLAYLIST`, `EXTRA_MIME_TYPES`,
-`EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_LIVE`, `RESULT_ACTION`, `RESULT_POSITION`,
+`EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_ARTWORK`, `EXTRA_ARTWORKS`, `EXTRA_LIVE`, `RESULT_ACTION`, `RESULT_POSITION`,
 `RESULT_DURATION`, `RESULT_END_BY`, `END_BY_USER`, `END_BY_COMPLETION` — значения в таблицах §3.
 
 ### 5.4. `Player2160Activity`
@@ -927,7 +930,8 @@ data class PlayerTheme(
 | `fun get(key: String): ResumeEntry?` | Запись по ключу. |
 | `fun recent(limit: Int = 50, includeFinished: Boolean = true): List<ResumeEntry>` | Последние по времени обновления. |
 | `fun save(entry: ResumeEntry)` | Записать/заменить. |
-| `fun delete(key: String)` / `fun clear()` | Удалить запись / всю историю. |
+| `fun delete(key: String)` / `fun clear()` | Удалить запись / всю историю (вместе с обложками). |
+| `fun cover(key: String): File?` | Сохранённая обложка записи (§10.1) или `null`. |
 | `val changes: StateFlow<Long>` | Счётчик изменений — для обновления списка в UI. |
 | `companion fun keyFor(uri: Uri): String` | Ключ файла: для `http(s)` без query-строки (одноразовые токены не ломают продолжение), иначе `uri.toString()`. |
 | `companion fun isFinished(positionMs: Long, durationMs: Long): Boolean` | Досмотрено: осталось < 30 с или пройдено > 97 %. |
@@ -956,6 +960,22 @@ val entry = store.get(ResumeStore.keyFor(uri))
 Методы обращаются к SQLite синхронно — вызывайте их с фонового потока (одиночный `get` на главном
 допустим, но не рекомендуется). `ResumeStore` наследует `SQLiteOpenHelper`; его методы
 (`readableDatabase`, `onCreate`…) публичны технически, но схема таблицы — не часть API.
+
+### 10.1. Обложки (`tv.p2160.core.resume.Covers`)
+
+Для «Продолжить просмотр» и истории плеер сохраняет обложку каждого файла — уменьшенный (~480 px) JPEG в
+`filesDir/covers` по ключу записи. Через 10 с после старта (чтобы не мешать буферизации), один раз на
+запись, ищется по порядку:
+
+1. встроенная в файл — `MediaMetadata.artworkData` (обложка MP4, MP3, FLAC);
+2. `MediaEntry.artworkUri` (DLNA-сервер передаёт свой `albumArtURI`, встраивающее приложение — постер);
+3. картинка рядом с файлом (`file`, `smb`, `http(s)`): `<имя>.jpg`, `<имя>-poster.jpg`, `<имя>-thumb.jpg`
+   (Sonarr/Jellyfin/Kodi), `<имя>.png`, `poster.jpg`, `folder.jpg`, `cover.jpg`; если файл лежит в папке сезона
+   (`Season 1`, `Сезон 1`, `S01`), — ещё постер сериала папкой выше.
+
+Не ищется для телеканалов и при `PlayerConfig.saveHistory = false`. `Covers.get(context, key)` — файл или
+`null`; `Covers.changes` — `StateFlow` для перерисовки списков; `Covers.find(...)` — поиск вручную (блокирующий,
+с фонового потока). Обложки удаляются вместе с записью (`ResumeStore.delete`/`clear`).
 
 ---
 
@@ -1909,7 +1929,7 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `tv.p2160.core.intro` | `IntroDetector`, `DetectionResult` | §18.1 |
 | `tv.p2160.core.ui` | `PlayerScreen`, `PlayerTheme`, `PlayerThemes`, `P2160Theme` | §6, §9.3 |
 | `tv.p2160.core.settings` | `PlayerSettings`, `Settings`, `NightSchedule`, `SubtitleStyle`, `DecoderPreference`, `ResizeMode`, `SkipMode`, `SubtitleEdge` | §9 |
-| `tv.p2160.core.resume` | `ResumeStore`, `ResumeEntry` | §10 |
+| `tv.p2160.core.resume` | `ResumeStore`, `ResumeEntry`, `Covers` | §10 |
 | `tv.p2160.core.source.smb` | `SmbServers`, `SmbServer`, `SmbPath`, `SmbEntry`, `SmbConnections` | §11 |
 | `tv.p2160.core.source.dlna` | `DlnaServers`, `KnownDlnaServer`, `DlnaServer`, `DlnaIcon`, `DlnaDiscovery`, `DlnaProbe`, `ContentDirectory`, `BrowsePage`, `DlnaObject`, `DlnaContainer`, `DlnaItem`, `DlnaResource`, `DlnaSubtitle`, `DlnaMediaKind`, `DlnaPlayback`, `DlnaException` | §19 |
 | `tv.p2160.core.iptv` | `IptvStore`, `IptvPlaylist`, `IptvPlayback`, `M3uParser`, `M3uPlaylist`, `IptvChannel`, `XmltvParser`, `EpgFilter`, `EpgData`, `EpgGuide`, `EpgProgramme`, `NowNext`, `EpgCodec` | §20 |

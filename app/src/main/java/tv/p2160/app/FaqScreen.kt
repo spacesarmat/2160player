@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
@@ -49,6 +51,9 @@ import tv.p2160.core.i18n.tr
  */
 internal object Faq {
     const val ISSUES_URL = "https://github.com/spacesarmat/2160player/issues"
+    const val AUTHOR = "@Andy_bum"
+    const val TELEGRAM_URL = "https://t.me/Andy_bum"
+    const val DONATE_URL = "https://boosty.to/djmaker/donate"
 
     /** Разделы: ключ заголовка → вопросы (id). */
     val sections: List<Pair<String, List<String>>> = listOf(
@@ -111,8 +116,46 @@ fun FaqScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            item(key = "report") {
+            item(key = "telegram") {
                 SectionTitle(tr("faq.section.help"))
+                FocusCard(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Faq.TELEGRAM_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.AutoMirrored.Filled.Send, null, tint = colors.primary)
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text(tr("faq.telegram"), style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+                            Text("${Faq.AUTHOR} · ${Faq.TELEGRAM_URL}", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item(key = "donate") {
+                FocusCard(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Faq.DONATE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Favorite, null, tint = colors.primary)
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text(tr("faq.donate"), style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+                            Text(Faq.DONATE_URL, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item(key = "report") {
                 FocusCard(
                     onClick = {
                         runCatching {

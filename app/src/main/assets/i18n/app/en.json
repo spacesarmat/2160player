@@ -216,5 +216,9 @@
   "local.permission_grant": "Allow access",
   "local.permission_settings": "Open settings",
   "settings.faq": "Help & FAQ",
-  "settings.faq_hint": "Answers to common questions and where to report a bug"
+  "settings.faq_hint": "Answers to common questions and where to report a bug",
+  "settings.author": "Author",
+  "settings.author_hint": "Message on Telegram",
+  "settings.donate": "Support the project",
+  "settings.donate_hint": "Donate on Boosty — thank you!"
 }

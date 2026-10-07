@@ -73,5 +73,7 @@
   "faq.languages.q": "How do I translate the player into my language?",
   "faq.languages.a": "Settings → Export translation template, translate the strings in the file and import it back. Russian and English are built in.",
   "faq.embed.q": "Can I embed the player in my app?",
-  "faq.embed.a": "Yes: via Intent (compatible with MX Player and VLC) or as the player-core library. Docs: docs/EMBEDDING.md and docs/API.md in the repository. License GPL v3: an app embedding the library must be open source too."
+  "faq.embed.a": "Yes: via Intent (compatible with MX Player and VLC) or as the player-core library. Docs: docs/EMBEDDING.md and docs/API.md in the repository. License GPL v3: an app embedding the library must be open source too.",
+  "faq.telegram": "Message the author on Telegram",
+  "faq.donate": "Support the project on Boosty"
 }

@@ -28,6 +28,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -337,10 +341,28 @@ fun SettingsScreen(
             }
 
             item { SectionTitle(tr("settings.section_about")) }
-            item { SettingRow(tr("settings.faq"), hint = tr("settings.faq_hint"), onClick = onOpenFaq) }
+            item { SettingRow(tr("settings.faq"), hint = tr("settings.faq_hint"), icon = Icons.AutoMirrored.Filled.HelpOutline, onClick = onOpenFaq) }
+            item {
+                val context = LocalContext.current
+                SettingRow(tr("settings.donate"), hint = tr("settings.donate_hint"), icon = Icons.Default.Favorite) {
+                    runCatching {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Faq.DONATE_URL))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+            }
+            item {
+                val context = LocalContext.current
+                SettingRow(tr("settings.author"), value = Faq.AUTHOR, hint = tr("settings.author_hint"), icon = Icons.AutoMirrored.Filled.Send) {
+                    runCatching {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Faq.TELEGRAM_URL))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+            }
             item {
                 var sharing by remember { mutableStateOf(false) }
-                SettingRow(tr("share.title"), hint = tr("share.settings_hint")) { sharing = true }
+                SettingRow(tr("share.title"), hint = tr("share.settings_hint"), icon = Icons.Default.Share) { sharing = true }
                 if (sharing) tv.p2160.app.share.ShareAppDialog(onDismiss = { sharing = false })
             }
             item {
@@ -373,11 +395,17 @@ private fun SettingRow(
     value: String? = null,
     hint: String? = null,
     modifier: Modifier = Modifier,
+    /** Значок слева (фирменным цветом) — для пунктов-ссылок вроде «Справка», «Автор». */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(icon, null, tint = colors.primary)
+                Spacer(Modifier.size(16.dp))
+            }
             // Длинное значение справа сжимает заголовок и подсказку — тогда показываем его под заголовком.
             val inline = value != null && value.length <= 14
             Column(Modifier.weight(1f)) {

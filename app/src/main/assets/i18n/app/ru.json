@@ -216,5 +216,9 @@
   "local.permission_grant": "Разрешить доступ",
   "local.permission_settings": "Открыть настройки",
   "settings.faq": "Справка и FAQ",
-  "settings.faq_hint": "Ответы на частые вопросы и куда сообщить об ошибке"
+  "settings.faq_hint": "Ответы на частые вопросы и куда сообщить об ошибке",
+  "settings.author": "Автор",
+  "settings.author_hint": "Написать в Telegram",
+  "settings.donate": "Поддержать проект",
+  "settings.donate_hint": "Донат на Boosty — спасибо!"
 }

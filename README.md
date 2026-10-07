@@ -143,6 +143,15 @@ Issue и pull request'ы приветствуются. Пожалуйста, и�
 [docs/API.md](docs/API.md). Новые строки интерфейса добавляйте во все языковые пакеты
 (`assets/i18n/*/en.json`, `ru.json`) — это проверяет `TranslationsTest`.
 
+## Автор
+
+Andy_bum — Telegram: [@Andy_bum](https://t.me/Andy_bum). Вопросы, идеи и сообщения об ошибках — в Telegram или в
+[Issues](https://github.com/spacesarmat/2160player/issues).
+
+## Поддержать проект
+
+Если плеер пригодился — можно поддержать разработку на [Boosty](https://boosty.to/djmaker/donate).
+
 ## Лицензия
 
 [GNU GPL v3.0](LICENSE). Приложение и библиотеку `player-core` можно свободно использовать, изменять
@@ -184,3 +193,4 @@ Docs are in Russian: [docs/EMBEDDING.md](docs/EMBEDDING.md) (quick start),
 [docs/API.md](docs/API.md) (reference). Code samples are self-explanatory; see
 [samples/embed-demo](samples/embed-demo). Build with `./gradlew :app:assembleDebug` (JDK 21).
 License: [GPL-3.0](LICENSE) — embedding apps must be GPL-3.0 as well.
+Author: Andy_bum — Telegram [@Andy_bum](https://t.me/Andy_bum). Support the project: [Boosty](https://boosty.to/djmaker/donate).

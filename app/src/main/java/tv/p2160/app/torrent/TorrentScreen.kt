@@ -205,6 +205,7 @@ private fun TorrentList(
     var removing by remember { mutableStateOf<TorrentItem?>(null) }
     val strings = LocalStrings.current
     val scope = rememberCoroutineScope()
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
 
@@ -228,8 +229,9 @@ private fun TorrentList(
             if (torrents.isEmpty()) {
                 item(key = "empty") { Text(tr("torrent.empty"), color = colors.onSurfaceVariant) }
             }
-            // Две колонки: раздачи парами, последняя без пары — на половину ширины.
-            items(torrents.chunked(2), key = { it.first().id }) { pair ->
+            // ТВ и широкий экран — две колонки (раздачи парами), телефон в портрете — одна: иначе текст не помещается.
+            val columns = if (wide) 2 else 1
+            items(torrents.chunked(columns), key = { it.first().id }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
                     pair.forEach { t ->
                         TorrentRow(
@@ -238,7 +240,7 @@ private fun TorrentList(
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    if (pair.size < columns) Spacer(Modifier.weight(1f))
                 }
             }
             item(key = "legal") {
@@ -251,11 +253,19 @@ private fun TorrentList(
 
 @Composable
 private fun Tile(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FocusCard(onClick = onClick, modifier = modifier.height(76.dp)) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Значок над подписью (как плитки главного экрана): в половину ширины телефона длинные слова не рвутся.
+    FocusCard(onClick = onClick, modifier = modifier.height(84.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(12.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
         }
     }
 }

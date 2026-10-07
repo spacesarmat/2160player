@@ -57,6 +57,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -234,11 +235,18 @@ private fun TorrentList(
             items(torrents.chunked(columns), key = { it.first().id }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
                     pair.forEach { t ->
-                        TorrentRow(
-                            t, onClick = { onOpen(t.id) }, onRemove = { removing = t },
-                            onToggle = { scope.launch { if (t.running) engine.stop(t.id) else engine.start(t.id) } },
+                        // Свайп вправо — продолжить раздачу, влево — остановить (кнопки — для пульта ТВ).
+                        SwipeStartStop(
+                            onStart = { scope.launch { engine.start(t.id) } },
+                            onStop = { scope.launch { engine.stop(t.id) } },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
-                        )
+                        ) {
+                            TorrentRow(
+                                t, onClick = { onOpen(t.id) }, onRemove = { removing = t },
+                                onToggle = { scope.launch { if (t.running) engine.stop(t.id) else engine.start(t.id) } },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                     if (pair.size < columns) Spacer(Modifier.weight(1f))
                 }
@@ -303,6 +311,43 @@ private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit
 
 /** Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе. */
 private val TorrentItem.running: Boolean get() = stats?.paused == false
+
+/**
+ * Строка со свайпами: вправо — [onStart], влево — [onStop]. Строка не исчезает: после действия
+ * возвращается на место, под ней на время свайпа видна подсказка со значком.
+ */
+@Composable
+private fun SwipeStartStop(onStart: () -> Unit, onStop: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val state = androidx.compose.material3.rememberSwipeToDismissBoxState()
+    val scope = rememberCoroutineScope()
+    androidx.compose.material3.SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        onDismiss = { value ->
+            when (value) {
+                androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd -> onStart()
+                androidx.compose.material3.SwipeToDismissBoxValue.EndToStart -> onStop()
+                else -> Unit
+            }
+            scope.launch { state.reset() }
+        },
+        backgroundContent = {
+            val toStart = state.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd
+            val colors = MaterialTheme.colorScheme
+            Row(
+                Modifier.fillMaxSize().clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                    .background(if (toStart) colors.primary.copy(alpha = 0.25f) else colors.error.copy(alpha = 0.25f))
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = if (toStart) Arrangement.Start else Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(if (toStart) Icons.Default.PlayArrow else Icons.Default.Pause, null, tint = colors.onSurface)
+                Spacer(Modifier.width(8.dp))
+                Text(if (toStart) tr("torrent.start") else tr("torrent.stop"), color = colors.onSurface, style = MaterialTheme.typography.labelLarge)
+            }
+        },
+    ) { content() }
+}
 
 /** «Остановить» / «Продолжить» раздачу. */
 @Composable

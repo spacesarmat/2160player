@@ -562,6 +562,10 @@ class PlayerController(
 | `fun report(): MediaReport` | Сводка по текущему файлу (см. [§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). |
 | `fun dismissWarnings()` | Очистить `state.warnings`. |
 | `fun setInBackground(background: Boolean)` | Плеер ушёл с экрана, но звук продолжается: `true` отключает декодирование видео, `false` возвращает его (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)). |
+| `fun setAudioDelay(ms: Int)` | Задержка звука относительно картинки, мс (> 0 — звук позже, < 0 — раньше; предел ±`AUDIO_DELAY_LIMIT_MS` = 2000). Сдвигает аудиочасы, по которым синхронизируется видео; работает и для PCM, и для passthrough. Сохраняется в `Settings.audioDelayMs` — общая для всех файлов. |
+| `fun setSleepTimer(minutes: Int?)` | Таймер сна: через N минут звук за 8 с затихает и плеер встаёт на паузу; `null`/`0` — выключить. Остаток — в `state.sleepRemainingMs`. |
+| `fun setSleepAtEndOfItem()` | Таймер «в конце серии»: пауза, когда закончится текущий файл (без автоперехода к следующему). |
+| `fun cancelSleepTimer()` | Выключить таймер сна (громкость и автопереход возвращаются). |
 | `fun retry()` | Повторить после ошибки. |
 | `fun dismissResumeHint()` / `fun restartFromBeginning()` | Подсказка «Продолжено с …». |
 | `fun result(): PlaybackResult` | Текущий результат (для возврата вызывающему). |
@@ -755,6 +759,9 @@ val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 | `isLive` | `Boolean` | Прямой эфир: поток помечен как live (или `liveTv` и длительность неизвестна). |
 | `liveTv` | `Boolean` | Запрос — телеканалы (`PlaybackRequest.liveTv`). |
 | `subtitle` | `String?` | Подпись под названием; для каналов — текущая передача из `LiveGuide`. |
+| `audioDelayMs` | `Int` | Текущая задержка звука, мс. |
+| `sleepRemainingMs` | `Long?` | Таймер сна: сколько осталось до паузы; `null` — выключен (или стоит «в конце серии»). |
+| `sleepAtEnd` | `Boolean` | Таймер сна «в конце серии». |
 
 ```kotlin
 data class TrackOption(
@@ -856,6 +863,7 @@ Player2160.settings(context).update {
 | `backgroundPlayback` | `Boolean` = `false` | Продолжать видео (звуком, без декодирования картинки), когда плеер свёрнут или экран выключен (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)) |
 | `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` — пауза при сворачивании |
 | `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео — окно PiP (если устройство поддерживает); `false` — без PiP, дальше по `backgroundPlayback` |
+| `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 — звук позже картинки, < 0 — раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер — `setAudioDelay()` |
 
 `fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
@@ -1804,6 +1812,9 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 Состояние — `Updater.state: StateFlow<UpdateState>` (`Idle`, `Checking`, `UpToDate`, `Available(info)`,
 `Downloading(info, progress)`, `Installing`, `Failed(message)`); настройки — SharedPreferences `p2160_update`.
 
+Выбор APK из релиза: ARM-устройствам — общий ARM-APK (в имени `-arm-`), если он есть; иначе APK под
+архитектуру устройства (`-arm64-v8a-`, `-armeabi-v7a-`…), иначе `universal`.
+
 Отладочная сборка (`tv.p2160.player.debug`) — другой пакет, Android не поставит релиз поверх неё:
 там «Обновить» открывает страницу релиза в браузере (`Updater.RELEASE_PACKAGE`).
 
@@ -1858,6 +1869,20 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 насовсем — кнопку «Открыть настройки» (`ACTION_APPLICATION_DETAILS_SETTINGS`). При возврате на экран
 (`ON_RESUME`) разрешение и список накопителей перечитываются — так появляется только что вставленная флешка.
 
+### 22.4. Поделиться приложением (`tv.p2160.app.share.ShareApp`)
+
+Настройки → О приложении → «Поделиться приложением». Три способа, первые два — без интернета:
+
+| Способ | Как работает |
+|---|---|
+| Отправить файл | Копия установленного APK (`applicationInfo.sourceDir`) через `FileProvider` (`${applicationId}.share`) в системное «Поделиться»: Quick Share, Bluetooth, Telegram, почта. |
+| Раздать по Wi-Fi | Сервер передачи между устройствами (§22.1) отдаёт тот же APK по `GET /app/<имя>.apk` (без защиты кодом, `Content-Type: application/vnd.android.package-archive`, поддерживает `Range`). На экране — адрес `http://<IPv4>:<порт>/app/…` и QR-код (ZXing). Работает в одной Wi-Fi или через точку доступа телефона, пока окно открыто. |
+| Ссылка | Текст со ссылкой на `releases/latest` (нужен интернет у получателя). |
+
+Если установленный APK собран не под обе ARM-архитектуры (`arm64-v8a` и `armeabi-v7a` — проверяются папки
+`lib/` внутри APK), диалог предупреждает, что файл подойдёт не всем устройствам. Поэтому основной APK
+релиза — общий ARM-APK (`-Pp2160.abi=arm`), и автообновление на ARM-устройствах берёт именно его (§22.2).
+
 ---
 
 ## 23. Справочник классов
@@ -1891,7 +1916,7 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

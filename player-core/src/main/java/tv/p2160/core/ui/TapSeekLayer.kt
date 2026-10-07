@@ -34,6 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemGestures
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -142,6 +146,12 @@ fun TapSeekLayer(
     val scrubEnd by rememberUpdatedState(onScrubEnd)
     val boost by rememberUpdatedState(onSpeedBoost)
     val pinch by rememberUpdatedState(onPinch)
+    // Края экрана, где Android ловит жест «Назад» (жестовая навигация); при кнопках — 0.
+    val density = LocalDensity.current
+    val dir = LocalLayoutDirection.current
+    val gestures = WindowInsets.systemGestures
+    val edgeLeft by rememberUpdatedState(gestures.getLeft(density, dir).toFloat())
+    val edgeRight by rememberUpdatedState(gestures.getRight(density, dir).toFloat())
 
     Box(
         modifier
@@ -149,6 +159,8 @@ fun TapSeekLayer(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    // Свайп от края — системный «Назад», а не перемотка.
+                    val fromEdge = down.position.x < edgeLeft || down.position.x > size.width - edgeRight
                     val slop = viewConfiguration.touchSlop
                     val longPress = viewConfiguration.longPressTimeoutMillis
                     var dragging = false
@@ -186,7 +198,7 @@ fun TapSeekLayer(
                         last = change.position
                         val dx = change.position.x - down.position.x
                         val dy = change.position.y - down.position.y
-                        if (!dragging && !boosted && abs(dx) > slop && abs(dx) > abs(dy) * 1.5f) {
+                        if (!dragging && !boosted && !fromEdge && abs(dx) > slop && abs(dx) > abs(dy) * 1.5f) {
                             dragging = true
                             scrubStart()
                         }

@@ -522,6 +522,10 @@ fun PlayerScreen(
 (`LocalStrings`), обрабатывает жесты, клавиши пульта и `BackHandler`. Системные панели, ориентацию,
 PiP и паузу при уходе в фон он **не** трогает — это задача Activity.
 
+Жесты `PlayerScreen`: тап — показать/скрыть управление, двойной тап по краям — перемотка, удержание — 2×,
+горизонтальный свайп — перемотка, щипок — масштаб. Свайп, начатый в зоне системного жеста у края экрана
+(`WindowInsets.systemGestures`, при жестовой навигации), перемоткой не считается — это системный «Назад».
+
 ### 6.1. `PlayerController`
 
 ```kotlin
@@ -1909,6 +1913,14 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 `lib/` внутри APK), диалог предупреждает, что файл подойдёт не всем устройствам. Поэтому основной APK
 релиза — общий ARM-APK (`-Pp2160.abi=arm`), и автообновление на ARM-устройствах берёт именно его (§22.2).
 
+### 22.5. Справка и FAQ (`tv.p2160.app.FaqScreen`)
+
+Настройки → О приложении → «Справка и FAQ»: вопросы по разделам (установка и обновления, картинка, звук,
+субтитры, файлы и сеть, торренты, между устройствами, разное), ответ раскрывается по нажатию (палец и
+пульт), внизу — ссылка на GitHub Issues. Список вопросов — `Faq.sections` (id по разделам), тексты — в
+языковом пакете `assets/i18n/faq/<код>.json` (ключи `faq.<id>.q` / `faq.<id>.a`, заголовки `faq.section.*`),
+поэтому FAQ переводится вместе с остальным интерфейсом (экспорт/импорт шаблона перевода).
+
 ---
 
 ## 23. Справочник классов
@@ -1942,7 +1954,7 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

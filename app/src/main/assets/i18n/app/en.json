@@ -214,5 +214,7 @@
   "local.permission_text": "To show videos and music from device storage, a USB drive or an SD card, allow 2160 Player to access media files.",
   "local.permission_denied": "File access is denied. Turn it on in the app settings: Permissions → Music and audio, Photos and videos, or Files and media.",
   "local.permission_grant": "Allow access",
-  "local.permission_settings": "Open settings"
+  "local.permission_settings": "Open settings",
+  "settings.faq": "Help & FAQ",
+  "settings.faq_hint": "Answers to common questions and where to report a bug"
 }

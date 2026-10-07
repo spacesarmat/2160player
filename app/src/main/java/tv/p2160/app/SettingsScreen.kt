@@ -72,6 +72,7 @@ fun SettingsScreen(
     settingsStore: PlayerSettings,
     i18n: I18n,
     onBack: () -> Unit,
+    onOpenFaq: () -> Unit,
     onImportTranslation: () -> Unit,
     onExportTemplate: () -> Unit,
     onClearHistory: () -> Unit,
@@ -336,6 +337,7 @@ fun SettingsScreen(
             }
 
             item { SectionTitle(tr("settings.section_about")) }
+            item { SettingRow(tr("settings.faq"), hint = tr("settings.faq_hint"), onClick = onOpenFaq) }
             item {
                 var sharing by remember { mutableStateOf(false) }
                 SettingRow(tr("share.title"), hint = tr("share.settings_hint")) { sharing = true }

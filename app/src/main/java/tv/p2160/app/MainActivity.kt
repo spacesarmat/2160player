@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Screen.BROWSE, Screen.DLNA -> screen = Screen.NETWORK
+                    Screen.FAQ -> screen = Screen.SETTINGS
                     else -> screen = Screen.HOME
                 }
             }
@@ -165,10 +166,12 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                        Screen.FAQ -> FaqScreen(onBack = { screen = Screen.SETTINGS })
                         Screen.SETTINGS -> SettingsScreen(
                             settingsStore = settings,
                             i18n = i18n,
                             onBack = { screen = Screen.HOME },
+                            onOpenFaq = { screen = Screen.FAQ },
                             onImportTranslation = { importTranslation.launch(arrayOf("application/json", "text/plain", "*/*")) },
                             onExportTemplate = { exportTemplate.launch("2160player-translation.json") },
                             onClearHistory = {
@@ -223,5 +226,5 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ }
 }

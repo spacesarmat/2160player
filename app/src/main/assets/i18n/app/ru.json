@@ -129,5 +129,20 @@
   "settings.smart_tracks": "Запоминать выбор дорожек",
   "settings.smart_tracks_hint": "Например: аниме — японская озвучка с субтитрами, фильмы — дубляж. Отдельно для сериалов и наборов языков",
   "settings.smart_reset": "Забыть привычки выбора дорожек",
-  "settings.smart_reset_done": "Привычки выбора дорожек сброшены"
+  "settings.smart_reset_done": "Привычки выбора дорожек сброшены",
+  "settings.section_updates": "Обновления",
+  "settings.update_auto": "Проверять обновления автоматически",
+  "settings.update_auto_hint": "Новые версии с GitHub — не чаще двух раз в сутки",
+  "settings.update_check": "Проверить обновления",
+  "settings.update_checking": "Проверка…",
+  "update.title": "Доступно обновление",
+  "update.version": "Версия %1$s (у вас %2$s)",
+  "update.install": "Обновить",
+  "update.later": "Позже",
+  "update.skip": "Пропустить версию",
+  "update.downloading": "Загрузка… %1$s",
+  "update.installing": "Установка…",
+  "update.up_to_date": "У вас последняя версия (%1$s)",
+  "update.failed": "Не удалось обновить: %1$s",
+  "update.close": "Закрыть"
 }

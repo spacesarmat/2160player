@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// Ключ подписи релизов: keystore.properties (не в git) или переменные окружения в CI.
+val signing = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun signingValue(key: String, env: String): String? = signing.getProperty(key) ?: System.getenv(env)
 
 android {
     namespace = "tv.p2160.app"
@@ -11,8 +19,17 @@ android {
         applicationId = "tv.p2160.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 2
+        versionName = (findProperty("p2160.versionName") as String?) ?: "0.1.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            signingValue("storeFile", "P2160_KEYSTORE")?.let { storeFile = file(it) }
+            storePassword = signingValue("storePassword", "P2160_KEYSTORE_PASSWORD")
+            keyAlias = signingValue("keyAlias", "P2160_KEY_ALIAS")
+            keyPassword = signingValue("keyPassword", "P2160_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -20,6 +37,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Без ключа релиз собирается неподписанным (например, в CI на pull request).
+            if (signingValue("storeFile", "P2160_KEYSTORE") != null) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -50,6 +69,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

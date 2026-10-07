@@ -1,5 +1,10 @@
 package tv.p2160.app
 
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import tv.p2160.app.update.UpdateState
+import tv.p2160.app.update.Updater
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -253,6 +258,24 @@ fun SettingsScreen(
                 }
             }
             item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
+
+            item { SectionTitle(tr("settings.section_updates")) }
+            item {
+                val context = LocalContext.current
+                var auto by remember { mutableStateOf(Updater.isAutoCheck(context)) }
+                ToggleRow(tr("settings.update_auto"), tr("settings.update_auto_hint"), auto) { v ->
+                    auto = v
+                    Updater.setAutoCheck(context, v)
+                }
+            }
+            item {
+                val scope = rememberCoroutineScope()
+                val updateState by Updater.state.collectAsStateWithLifecycle()
+                SettingRow(
+                    tr("settings.update_check"),
+                    value = if (updateState == UpdateState.Checking) tr("settings.update_checking") else Updater.currentVersion,
+                ) { scope.launch { Updater.check() } }
+            }
 
             item { SectionTitle(tr("settings.section_about")) }
             item {

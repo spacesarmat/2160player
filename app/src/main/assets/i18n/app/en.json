@@ -129,5 +129,20 @@
   "settings.smart_tracks": "Remember my track choices",
   "settings.smart_tracks_hint": "E.g. anime — Japanese audio with subtitles, movies — dub. Per series and per set of languages",
   "settings.smart_reset": "Forget track habits",
-  "settings.smart_reset_done": "Track habits cleared"
+  "settings.smart_reset_done": "Track habits cleared",
+  "settings.section_updates": "Updates",
+  "settings.update_auto": "Check for updates automatically",
+  "settings.update_auto_hint": "New versions from GitHub, at most twice a day",
+  "settings.update_check": "Check for updates",
+  "settings.update_checking": "Checking…",
+  "update.title": "Update available",
+  "update.version": "Version %1$s (you have %2$s)",
+  "update.install": "Update",
+  "update.later": "Later",
+  "update.skip": "Skip this version",
+  "update.downloading": "Downloading… %1$s",
+  "update.installing": "Installing…",
+  "update.up_to_date": "You have the latest version (%1$s)",
+  "update.failed": "Update failed: %1$s",
+  "update.close": "Close"
 }

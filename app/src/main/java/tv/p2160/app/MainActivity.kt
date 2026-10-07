@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
 
             CompositionLocalProvider(LocalStrings provides strings) {
                 P2160Theme(PlayerThemes.byId(s.themeId)) {
+                    // Автообновление из GitHub Releases: диалог поверх любого экрана.
+                    tv.p2160.app.update.UpdateDialog()
+                    androidx.compose.runtime.LaunchedEffect(Unit) { tv.p2160.app.update.Updater.autoCheck(applicationContext) }
                     when (screen) {
                         Screen.HOME -> HomeScreen(
                             store = store,

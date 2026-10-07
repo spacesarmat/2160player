@@ -25,7 +25,14 @@
 13. [Локализация](#13-локализация)
 14. [Blu-ray: ISO и BDMV](#14-blu-ray-iso-и-bdmv)
 15. [Потоки, жизненный цикл, ошибки, ограничения](#15-потоки-жизненный-цикл-ошибки-ограничения)
-16. [Справочник классов](#16-справочник-классов)
+16. [Ночной звук](#16-ночной-звук)
+17. [Умный выбор дорожек](#17-умный-выбор-дорожек)
+18. [Поиск вступлений по звуку и сводка по файлу](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)
+19. [DLNA/UPnP](#19-dlnaupnp)
+20. [IPTV: M3U, XMLTV, режим эфира](#20-iptv-m3u-xmltv-режим-эфира)
+21. [Торренты: модуль `source-torrent`](#21-торренты-модуль-source-torrent)
+22. [Функции приложения 2160 Player (не библиотеки)](#22-функции-приложения-2160-player-не-библиотеки)
+23. [Справочник классов](#23-справочник-классов)
 
 ---
 
@@ -43,8 +50,13 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | Blu-ray | Образы `.iso` и папки `BDMV` с файлов, `content://`, SMB и HTTP(S) (для ISO). Основной фильм выбирается автоматически, главы берутся из плейлиста диска. |
 | M2TS | Свой экстрактор 192-байтных пакетов: TrueHD (+ AC-3 ядро), LPCM, DTS-HD HRA/MA, E-AC-3, субтитры PGS, языки дорожек из MPLS. |
 | SMB | SMB 2/3 (smbj), сохранённые серверы с логином, список общих папок и файлов, `smb://` URI в любом месте API. |
+| DLNA/UPnP | Поиск медиасерверов по SSDP и по адресу, обзор ContentDirectory, воспроизведение по HTTP с внешними субтитрами (§19). |
+| IPTV | Разбор M3U/M3U8 и телегида XMLTV, хранилище плейлистов с избранным, режим эфира с переключением каналов (§20). |
+| Торренты | Отдельный модуль `source-torrent` (libtorrent4j): magnet/.torrent, просмотр во время загрузки по схеме `torrent://` (§21). |
+| Звук | «Ночной звук» (компрессия динамики + выделение диалогов) вручную или по расписанию; автоматический откат с passthrough на декодирование (§16). |
+| Дорожки | Обучаемый выбор озвучки и субтитров по сериалу и по набору языков файла (§17). |
 | Субтитры | Внешние SRT/ASS/SSA/VTT/TTML (автоопределение кодировки), автопоиск файлов рядом с видео (file:// и smb://), задержка, размер/цвет/обводка, **двойные субтитры** (вторая дорожка сверху). |
-| Главы и отрезки | Главы из контейнера (FFmpeg) и с Blu-ray; пропуск вступления/пересказа/титров/анонса: из Intent, из названий глав, из ручных отметок (на весь сериал). Режимы «кнопка» и «авто». |
+| Главы и отрезки | Главы из контейнера (FFmpeg) и с Blu-ray; пропуск вступления/пересказа/титров/анонса: из Intent, из названий глав, из ручных отметок (на весь сериал), автоопределение по звуку соседних серий (§18). Режимы «кнопка» и «авто». |
 | Продолжение просмотра | SQLite-история: позиция, аудио- и текстовая дорожка, скорость, задержка субтитров. Возврат позиции вызывающему приложению (MX Player/VLC-совместимо). |
 | UI | Телефон и Android TV (D-pad, пульт, цифровой ввод времени), жесты, PiP, превью кадров при перемотке, 6 тем оформления. |
 | Локализация | JSON-пакеты в assets, импорт/экспорт пользовательских переводов. Встроены `en`, `ru`. |
@@ -283,7 +295,8 @@ FFmpeg добавляет ~8 МБ на каждую ABI — используйт
 
 Библиотека добавляет в ваш манифест:
 
-- разрешения `INTERNET` и `ACCESS_NETWORK_STATE`;
+- разрешения `INTERNET`, `ACCESS_NETWORK_STATE` и `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA-серверов
+  по SSDP, `WifiManager.MulticastLock`);
 - `android:usesCleartextTraffic="true"` на `<application>` (IPTV и домашние серверы часто без HTTPS);
 - Activity `tv.p2160.core.Player2160Activity` — `exported="false"`, `singleTop`,
   `supportsPictureInPicture="true"`, тема `@style/Theme.P2160.Player`.
@@ -406,6 +419,7 @@ data class ExternalSubtitle(
 | `fun registerAction(action: PlayerAction)` / `fun unregisterAction(id: String)` | Свои кнопки в плеере (см. [§8](#8-свои-кнопки-в-плеере-playeraction)). |
 | `fun settings(context: Context): PlayerSettings` | Настройки (см. [§9](#9-настройки-и-темы)). |
 | `fun resumeStore(context: Context): ResumeStore` | История (см. [§10](#10-история-и-позиции-остановки)). |
+| `fun setLiveGuide(guide: LiveGuide?)` | Свой телегид для `liveTv`-запросов; `null` — встроенный `IptvStore` (см. [§20](#20-iptv-m3u-xmltv-режим-эфира)). |
 
 ```kotlin
 // Простой запуск
@@ -462,8 +476,8 @@ data class PlaybackResult(
 
 Константы: `ACTION_PLAY`, `EXTRA_TITLE`, `EXTRA_POSITION`, `EXTRA_FROM_START`, `EXTRA_HEADERS`,
 `EXTRA_RETURN_RESULT`, `EXTRA_SUBS`, `EXTRA_SUBS_NAME`, `EXTRA_SUBS_ENABLE`, `EXTRA_VLC_SUBTITLE`,
-`EXTRA_VIDEO_LIST`, `EXTRA_VIDEO_LIST_NAME`, `EXTRA_TITLES`, `EXTRA_MIME_TYPES`, `EXTRA_SEGMENTS`,
-`EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `RESULT_ACTION`, `RESULT_POSITION`,
+`EXTRA_VIDEO_LIST`, `EXTRA_VIDEO_LIST_NAME`, `EXTRA_TITLES`, `EXTRA_PLAYLIST`, `EXTRA_MIME_TYPES`,
+`EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_LIVE`, `RESULT_ACTION`, `RESULT_POSITION`,
 `RESULT_DURATION`, `RESULT_END_BY`, `END_BY_USER`, `END_BY_COMPLETION` — значения в таблицах §3.
 
 ### 5.4. `Player2160Activity`
@@ -518,7 +532,8 @@ class PlayerController(context: Context, request: PlaybackRequest)
 | `val secondaryCues: StateFlow<List<Cue>>` | Реплики вторых субтитров (их рисует `PlayerScreen`). |
 | `fun playPause()` | Пауза/продолжить; после конца — с начала; после ошибки — `prepare()`. |
 | `fun seekTo(positionMs: Long)` / `fun seekBy(deltaMs: Long)` | Перемотка (ограничивается длительностью). |
-| `fun next()` / `fun previous()` | Следующий/предыдущий элемент плейлиста. `previous()` после 5 с — к началу текущего. |
+| `fun next()` / `fun previous()` | Следующий/предыдущий элемент плейлиста. `previous()` после 5 с — к началу текущего. Для `liveTv` — то же, что `switchChannel(±1)`. |
+| `fun switchChannel(delta: Int)` | Переключить канал по кругу (для `liveTv`; при одном элементе ничего не делает). |
 | `fun setSpeed(speed: Float)` | Скорость 0.25–4. |
 | `fun setSpeedBoost(enabled: Boolean)` | Временное ×2 (удержание пальца); выключение возвращает прежнюю скорость. |
 | `fun select(option: TrackOption)` | Выбрать аудио/видео/текстовую дорожку из `state.*Tracks`. |
@@ -531,6 +546,11 @@ class PlayerController(context: Context, request: PlaybackRequest)
 | `fun skip(segment: SkipSegment)` | Пропустить отрезок; титры до конца файла при наличии следующего элемента — переход к нему. |
 | `fun markIntroStart()` / `fun markIntroEnd()` / `fun markCreditsStart()` / `fun clearMarks()` | Ручные отметки по текущей позиции (для сериала — на все серии). |
 | `suspend fun frameAt(positionMs: Long): Bitmap?` | Кадр для превью; `null`, если источник не позволяет. |
+| `fun setNightMode(enabled: Boolean)` | «Ночной звук» на лету для этого контроллера (ручное переключение отменяет расписание до `onNightScheduleChanged()`); `Settings` не меняет. См. [§16](#16-ночной-звук). |
+| `fun onNightScheduleChanged()` | Вызвать после изменения `nightAuto`/`nightStart/EndMinute`: сбрасывает ручное переключение и сразу применяет расписание. |
+| `fun dismissSmartHint()` | Скрыть подсказку `state.smartHint` («дорожки выбраны по привычке»). |
+| `fun report(): MediaReport` | Сводка по текущему файлу (см. [§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). |
+| `fun dismissWarnings()` | Очистить `state.warnings`. |
 | `fun retry()` | Повторить после ошибки. |
 | `fun dismissResumeHint()` / `fun restartFromBeginning()` | Подсказка «Продолжено с …». |
 | `fun result(): PlaybackResult` | Текущий результат (для возврата вызывающему). |
@@ -706,6 +726,12 @@ val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 | `marks` | `ManualMarks` | Ручные отметки. |
 | `speedBoost` | `Boolean` | Включено временное ускорение. |
 | `secondaryTextId` | `String?` | `Format.id` вторых субтитров. |
+| `nightMode` | `Boolean` | Ночной звук сейчас включён. |
+| `smartHint` | `String?` | Локализованная подсказка «Как обычно: …», если дорожки выбраны по привычке (§17). |
+| `warnings` | `List<String>` | Важные предупреждения из `report()` (программное декодирование 4K, Dolby Vision без декодера, HDR на SDR-экране); заполняются через ~2 с воспроизведения. |
+| `isLive` | `Boolean` | Прямой эфир: поток помечен как live (или `liveTv` и длительность неизвестна). |
+| `liveTv` | `Boolean` | Запрос — телеканалы (`PlaybackRequest.liveTv`). |
+| `subtitle` | `String?` | Подпись под названием; для каналов — текущая передача из `LiveGuide`. |
 
 ```kotlin
 data class TrackOption(
@@ -799,6 +825,22 @@ Player2160.settings(context).update {
 | `resizeMode` | `ResizeMode` = `FIT` | При открытии `PlayerScreen` |
 | `autoPlayNext` | `Boolean` = `true` | Переход к следующему элементу — для следующего контроллера; карточка «Следующая серия» — сразу |
 | `skipMode` | `SkipMode` = `BUTTON` | Сразу |
+| `nightMode` | `Boolean` = `false` | «Ночной звук» всегда (см. [§16](#16-ночной-звук)). При старте `PlayerController`; живой контроллер переключайте через `setNightMode()` |
+| `nightAuto` | `Boolean` = `false` | Включать ночной звук по расписанию `[nightStartMinute, nightEndMinute)`. Проверяется при старте и раз в минуту |
+| `nightStartMinute` | `Int` = `1380` (23:00) | Минуты от полуночи. Интервал может переходить через полночь |
+| `nightEndMinute` | `Int` = `600` (10:00) | Минуты от полуночи (конец не включается) |
+| `smartTracks` | `Boolean` = `true` | Запоминать ручной выбор дорожек и применять к похожим файлам (см. [§17](#17-умный-выбор-дорожек)). При старте элемента |
+
+`fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
+`nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
+
+`object NightSchedule` (`tv.p2160.core.settings`):
+
+| Член | Описание |
+|---|---|
+| `fun contains(start: Int, end: Int, minute: Int): Boolean` | Попадает ли минута в интервал; `start == end` — пустой интервал, `start > end` — через полночь (23:00–10:00). |
+| `fun nowMinute(): Int` | Текущая минута суток (`HOUR_OF_DAY * 60 + MINUTE`). |
+| `fun format(minute: Int): String` | `"23:00"`. |
 
 Перечисления:
 
@@ -1121,6 +1163,11 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 | `SmbConnections.*` | **Только фоновый** (сеть) |
 | `DiscSessions.open` | Только фоновый (внутреннее) |
 | `I18n.import/exportTemplate/available/apply` | Желательно фоновый (файлы и assets) |
+| `ContentDirectory.browse/browseAll`, `DlnaProbe.resolve`, `DeviceDescriptionParser.load` | **Только фоновый** (сеть, блокирующие) |
+| `DlnaServers.refresh`, `addByAddress` (suspend), `DlnaDiscovery.events` | Любой (сами уходят на `Dispatchers.IO`) |
+| `IptvStore.channels/guide` (suspend) | Любой (сами уходят на `Dispatchers.IO`) |
+| `TorrentEngine.addMagnet/addFromUri/prepare/awaitFiles/remove` (suspend) | Любой (сами уходят на `Dispatchers.IO`) |
+| `IntroDetector.detect` (suspend) | Любой (сам уходит на `Dispatchers.Default`/`IO`) |
 
 ### 15.2. Ошибки
 
@@ -1147,12 +1194,515 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 - Синглтоны (`PlayerSettings`, `ResumeStore`, `SmbServers`, `I18n`) и `PlayerExtensions` — общие на процесс; их SharedPreferences/БД имеют префикс `p2160_` и живут в данных вашего приложения.
 - `PlayerScreen` не принимает `Modifier` и всегда заполняет родителя — ограничивайте размер контейнером.
 - Работа с несколькими `PlayerController` одновременно технически возможна, но `nowPlaying` будет показывать последний обновивший.
+- Ночной звук работает только с PCM: пока он включён, passthrough на ресивер отключён (AC-3/DTS/TrueHD декодируются на устройстве).
+- `TrackPreferences`, `IntroDetector`, `IptvStore`, `DlnaServers`, `TorrentEngine` — тоже синглтоны процесса (`p2160_track_prefs`, `filesDir/intro`, `p2160_iptv` + `filesDir/iptv`, `p2160_dlna`, `filesDir/torrents`).
 
 ---
 
-## 16. Справочник классов
+## 16. Ночной звук
 
-### 16.1. Стабильный публичный API
+«Ночной звук»: громкие сцены тише, диалоги громче. Реализован как `NightAudioProcessor`
+(`tv.p2160.core.engine`, Media3 `AudioProcessor`), который всегда стоит в аудиоцепочке
+`PlayerController` и включается на лету, без пересоздания плеера.
+
+Обработка (PCM 16 бит):
+
+1. Выделение диалогов: в 5.1/7.1 центральный канал ×1.6, LFE ×0.4, остальные ×0.75; в стерео
+   усиливается «середина» (M/S: mid ×1.25, side ×0.7).
+2. Компрессор по пику кадра: порог −30 dBFS, 4:1, атака 5 мс, спад 300 мс, компенсация +9 дБ.
+3. Мягкий лимитер у ≈ −1 dBFS.
+
+Если ночной режим активен **при создании** контроллера, многоканальный звук дополнительно сводится в
+стерео (`NightAudioProcessor(downmixToStereo = true)`): ночью звук обычно идёт в динамики ТВ или
+наушники, а многие ТВ не принимают 6-канальный PCM.
+
+**Как включить**
+
+| Способ | Что происходит |
+|---|---|
+| `Settings.nightMode = true` | Включён всегда, начиная со следующего `PlayerController`. |
+| `Settings.nightAuto = true` + `nightStartMinute`/`nightEndMinute` | По расписанию (по умолчанию 23:00–10:00). Контроллер проверяет расписание при старте и раз в минуту и переключает режим на лету. |
+| `controller.setNightMode(enabled)` | Ручное переключение текущего сеанса (так работает пункт в панели аудио `PlayerScreen`). Расписание больше не трогает этот контроллер, пока не вызван `onNightScheduleChanged()`. `Settings` не меняется. |
+
+```kotlin
+// Расписание 22:30–08:00 и немедленное применение в открытом плеере
+Player2160.settings(context).update { it.copy(nightAuto = true, nightStartMinute = 22 * 60 + 30, nightEndMinute = 8 * 60) }
+controller.onNightScheduleChanged()
+
+// Состояние — в PlayerUiState
+val night = controller.state.value.nightMode
+```
+
+**Passthrough.** Сжатый звук (AC-3/E-AC-3/DTS/TrueHD), уходящий на ресивер «как есть», обработать
+нельзя. Поэтому `PlayerFactory` оборачивает `AudioSink` в `GuardedAudioSink` с флагом
+`PassthroughGuard.disabled`: пока флаг поднят, сжатые форматы объявляются неподдерживаемыми и
+рендерер выбирает декодер (системный или FFmpeg). Флаг поднимается:
+
+- при старте, если ночной режим активен;
+- при включении ночного режима, когда звук уже шёл passthrough, — аудиорендерер
+  переинициализируется (дорожка кратковременно выключается и включается);
+- автоматически при ошибке `PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED`: ТВ заявил
+  поддержку AC-3/DTS «на выход», но открыть такой `AudioTrack` не смог. Контроллер переключается на
+  декодирование и вызывает `prepare()`/`play()` — пользователь ошибки не видит.
+
+Выключение ночного режима passthrough обратно не включает (до следующего `PlayerController`).
+
+---
+
+## 17. Умный выбор дорожек
+
+Если у файла нет своей сохранённой записи в истории (`ResumeStore`) и `Settings.smartTracks = true`,
+`PlayerController` выбирает аудио и субтитры «по привычке», а ручной выбор пользователя
+(`select()` аудио/текста, `disableSubtitles()`) запоминает. Сохранённая позиция файла (§10) всегда
+важнее привычки; явно запрошенные внешние субтитры (`ExternalSubtitle.select`) — тоже.
+
+Привычка хранится под двумя ключами одновременно:
+
+| Ключ | Пример | Откуда |
+|---|---|---|
+| Сериал | `series:<ключ>` | `SegmentDetector.seriesKey` от имени файла или заголовка (как у ручных отметок §12). Точнее всего. |
+| Набор языков аудио файла | `ctx:en+ja+ru` | `TrackRules.contextKey` — отсортированные нормализованные языки аудиодорожек. «ja+ru → японская озвучка + русские субтитры». |
+
+При выборе сначала ищется привычка сериала, затем точный набор языков, затем **похожий** набор:
+коэффициент Жаккара `|A∩B| / |A∪B|` ≥ 0,5, и выбранный язык озвучки должен присутствовать в файле
+(`en+ru` подходит к `en+ru+uk`). Применённый выбор показывается подсказкой `PlayerUiState.smartHint`.
+
+```kotlin
+/** Что пользователь выбрал. */
+data class TrackChoice(
+    val audioLanguage: String?,
+    val audioHint: String?,       // "dub", "mvo", "dvo", "avo", "original", "commentary" — по названию дорожки
+    val textLanguage: String?,    // null — субтитры выключены
+    val textForced: Boolean = false,
+)
+
+/** Дорожка для правил (без Media3). */
+data class TrackCandidate(val index: Int, val language: String?, val label: String?, val channels: Int = 0, val forced: Boolean = false)
+```
+
+`object TrackRules` — чистая логика (тестируется на JVM):
+
+| Член | Описание |
+|---|---|
+| `fun contextKey(audio: List<TrackCandidate>): String?` | `"en+ja+ru"`; `null`, если языков нет. |
+| `fun normalizeLang(code: String?): String?` | `"rus"` → `"ru"`, `"en-US"` → `"en"`; `und` и пустое → `null`. |
+| `fun hintOf(label: String?): String?` | Тип озвучки по названию (`Дубляж`, `MVO`, `Оригинал`, `Комментарий`…). |
+| `fun pickAudio(choice, audio): TrackCandidate?` | Тот же язык → тот же тип озвучки → не комментарий → больше каналов. |
+| `fun pickText(choice, text): TrackCandidate?` | Тот же язык, предпочтительно с тем же флагом forced. |
+| `fun bestContext(stored: Map<String, TrackChoice>, languages: Set<String>): TrackChoice?` | Самая похожая привычка (Жаккар ≥ 0,5). |
+
+`class TrackPreferences` — хранилище (SharedPreferences `p2160_track_prefs`, JSON):
+
+| Член | Описание |
+|---|---|
+| `companion fun get(context: Context): TrackPreferences` | Синглтон. |
+| `fun forSeries(seriesKey: String?): TrackChoice?` | Привычка сериала. |
+| `fun forContext(contextKey: String?): TrackChoice?` | Точная или похожая привычка для набора языков. |
+| `fun remember(seriesKey: String?, contextKey: String?, choice: TrackChoice)` | Записать под обоими ключами. |
+| `fun clear()` | Забыть все привычки (пункт «Забыть привычки выбора дорожек» в настройках приложения). |
+
+```kotlin
+TrackPreferences.get(context).clear()                         // сбросить
+Player2160.settings(context).update { it.copy(smartTracks = false) }  // выключить
+```
+
+---
+
+## 18. Поиск вступлений по звуку и сводка по файлу
+
+### 18.1. Автоопределение вступления и титров
+
+Для файлов сериала (есть `SegmentDetector.seriesKey`) `PlayerController` через ~15 с после старта
+сравнивает звук начала текущей серии (10 мин) с началом 1–2 соседних элементов плейлиста того же
+сериала, а конец (6 мин) — с их концами. Общий отрезок 15–150 с в начале — вступление, у конца —
+титры. Найденные отрезки добавляются к `PlayerUiState.segments` с наименьшим приоритетом (после
+ручных отметок, `MediaEntry.segments`/Intent и глав, §12); отрезки с уверенностью < 0,6 показываются
+только кнопкой — в режиме `SkipMode.AUTO` они не пропускаются. Поиск не запускается для Blu-ray,
+`liveTv` и если вступление и титры уже известны.
+
+Отпечатки, результаты и шаблоны сериала кэшируются в `filesDir/intro`: для следующей серии обычно
+достаточно звука её самой. Звук читается через `MediaExtractor`, который для сетевых источников тянет
+весь поток за нужный отрезок, — на 4K-ремуксе по SMB/HTTP это гигабайты трафика.
+
+Публичная точка входа (`tv.p2160.core.intro`), если нужно искать отрезки самостоятельно:
+
+```kotlin
+class IntroDetector {
+    suspend fun detect(
+        current: Uri,
+        siblings: List<Uri>,                      // лучше всего предыдущая и следующая серии
+        headers: Map<String, String> = emptyMap(),
+        seriesKey: String? = null,                // SegmentDetector.seriesKey — для шаблонов сериала
+        durationMs: Long = -1,
+        preferredLanguage: String? = null,        // язык озвучки, чтобы сравнивать одну и ту же
+    ): DetectionResult
+    fun cached(current: Uri): DetectionResult?    // без декодирования; null — ещё не искали
+    companion object {
+        fun get(context: Context): IntroDetector
+        fun keyFor(uri: Uri): String
+        fun <T> pickSiblings(items: List<T>, index: Int, max: Int = 2): List<T>
+    }
+}
+
+data class DetectionResult(
+    val intro: SkipSegment? = null,
+    val credits: SkipSegment? = null,             // endMs = null — титры до конца файла
+    val introConfidence: Float = 0f,              // 0…1; для автопропуска разумно ≥ 0.6
+    val creditsConfidence: Float = 0f,
+) { val segments: List<SkipSegment> }
+```
+
+```kotlin
+val result = IntroDetector.get(context).detect(episodes[1], listOf(episodes[0], episodes[2]), seriesKey = "show")
+val segments = result.segments   // можно передать в MediaEntry.segments
+```
+
+Остальные классы пакета (`IntroAnalyzer`, `Fingerprinter`, `IntroMatcher`, `IntroStore`,
+`MediaCodecPcmDecoder`) — детали реализации.
+
+### 18.2. Сводка по файлу — `MediaReport`
+
+`controller.report()` собирает «что внутри и как это играет»: контейнер, длительность, видео
+(кодек и профиль, разрешение, fps, битрейт, HDR/Dolby Vision), выбранный декодер (аппаратный или
+программный — по реально инициализированному), аудиодорожки с пометкой, как играет каждая
+(passthrough / аппаратно / программно / FFmpeg / не поддерживается), субтитры (встроенные/внешние).
+В `PlayerScreen` это боковая панель с информацией о файле.
+
+```kotlin
+data class MediaReport(val sections: List<ReportSection>, val warnings: List<String>)
+data class ReportSection(val title: String, val rows: List<ReportRow>)
+data class ReportRow(val label: String, val value: String, val level: Level = Level.INFO) {
+    enum class Level { INFO, OK, WARN }
+}
+```
+
+Строки локализованы. `warnings` — то же, что появляется в `PlayerUiState.warnings`: программное
+декодирование видео (отдельно для 4K), Dolby Vision без аппаратного декодера, HDR на SDR-экране.
+`MediaReporter`/`ActiveDecoders` — внутренние.
+
+---
+
+## 19. DLNA/UPnP
+
+Пакет `tv.p2160.core.source.dlna`. Поиск медиасерверов (Jellyfin/Emby, Plex, MiniDLNA, Synology,
+Kodi, UMS, Serviio…), обзор их каталогов через ContentDirectory и воспроизведение элементов
+обычным HTTP-путём плеера. Своей схемы URI нет: играется прямая ссылка `<res>` сервера.
+
+### 19.1. Серверы — `DlnaServers`
+
+| Член | Описание |
+|---|---|
+| `companion fun get(context: Context): DlnaServers` | Синглтон. |
+| `val servers: StateFlow<List<KnownDlnaServer>>` | Найденные (по алфавиту) + добавленные вручную. `KnownDlnaServer(server: DlnaServer, manual: Boolean)`. |
+| `val searching: StateFlow<Boolean>` | Идёт поиск. |
+| `fun refresh(timeoutMs: Long = 5000)` | Новый цикл SSDP-поиска (если уже идёт — ничего). Результаты поиска живут в памяти. |
+| `fun find(udn: String): DlnaServer?` | Сервер по UDN. |
+| `suspend fun addByAddress(input: String): DlnaServer` | Добавить вручную (сохраняется в `p2160_dlna`). Бросает `DlnaException`, если не найден. |
+| `fun removeManual(udn: String)` | Удалить добавленный вручную. |
+
+Поиск — M-SEARCH (`MediaServer:1`, `ContentDirectory:1`, `ssdp:all`) на `239.255.255.250:1900` по всем
+IPv4-интерфейсам плюс приём NOTIFY alive/byebye; в результат попадают только устройства с сервисом
+ContentDirectory. На время поиска берётся `WifiManager.MulticastLock` (разрешение
+`CHANGE_WIFI_MULTICAST_STATE` добавляет библиотека). Низкоуровнево: `DlnaDiscovery.events(context, timeoutMs): Flow<DlnaDiscovery.Event>`
+(`Found(server)` / `Lost(udn)`), `SsdpDiscovery`.
+
+`addByAddress` (`DlnaProbe.resolve`) — для серверов, не видимых по SSDP (Docker в bridge-сети, другая
+подсеть, VPN). Принимает URL описания (`http://nas:8200/rootDesc.xml`), `host:port` (перебираются
+известные пути описаний) или только `host` (перебираются стандартные порты: 8200 MiniDLNA, 8096
+Jellyfin/Emby, 32469 Plex, 5001 UMS, 50001 Synology, 8895 Serviio).
+
+```kotlin
+data class DlnaServer(
+    val udn: String, val friendlyName: String, val manufacturer: String?, val modelName: String?,
+    val deviceType: String, val location: String,
+    val contentDirectoryControlUrl: String, val contentDirectoryType: String,
+    val icons: List<DlnaIcon> = emptyList(),
+) { val host: String; fun bestIcon(target: Int = 120): DlnaIcon? }
+```
+
+### 19.2. Обзор — `ContentDirectory`
+
+Методы **блокирующие** (сеть) — только `Dispatchers.IO`. Ошибки — `DlnaException` (`IOException`, есть `code`).
+
+| Член | Описание |
+|---|---|
+| `ContentDirectory(server: DlnaServer, http: DlnaHttp = UrlConnectionHttp())` | Клиент SOAP Browse (`BrowseDirectChildren`). |
+| `fun browse(objectId: String, start: Int = 0, count: Int = PAGE_SIZE): BrowsePage` | Одна страница; `ROOT_ID = "0"` — корень, `PAGE_SIZE = 200`. |
+| `fun browseAll(objectId: String, pageSize: Int = PAGE_SIZE, limit: Int = 10_000): List<DlnaObject>` | Все дети с постраничной загрузкой (терпит серверы с `TotalMatches=0` и игнорирующие `StartingIndex`). |
+
+`DlnaObject` — `DlnaContainer` (папка: `id`, `title`, `childCount`, `albumArtUrl`) или `DlnaItem`
+(`resources: List<DlnaResource>`, `subtitles: List<DlnaSubtitle>`, `kind: DlnaMediaKind` —
+`VIDEO/AUDIO/IMAGE/OTHER`, `bestResource`, `durationMs`, `size`, `date`, `artist`, `album`).
+`bestResource` — HTTP-ресурс нужного типа: сначала оригинал (без транскодирования `DLNA.ORG_CI=1`),
+затем наибольшее разрешение, размер и битрейт. Внешние субтитры берутся из `<res>` с типом
+субтитров и Samsung-расширения `sec:CaptionInfoEx`.
+
+### 19.3. Воспроизведение — `DlnaPlayback`
+
+| Член | Описание |
+|---|---|
+| `fun mediaEntry(item: DlnaItem): MediaEntry?` | URI = `bestResource.url`, заголовок, MIME (для HLS/DASH), внешние субтитры (имя `RU.srt` — по расширению плеер определяет формат). `null` — нет воспроизводимого ресурса. |
+| `fun request(items: List<DlnaItem>, index: Int): PlaybackRequest?` | Плейлист из элементов папки (без ресурса — пропускаются), старт с `index`. |
+
+```kotlin
+val dlna = DlnaServers.get(context)
+dlna.refresh()
+val server = dlna.servers.first { it.isNotEmpty() }.first().server
+
+val items = withContext(Dispatchers.IO) {
+    ContentDirectory(server).browseAll(ContentDirectory.ROOT_ID)
+}
+val folder = items.filterIsInstance<DlnaContainer>().first()
+val videos = withContext(Dispatchers.IO) { ContentDirectory(server).browseAll(folder.id) }
+    .filterIsInstance<DlnaItem>().filter { it.kind == DlnaMediaKind.VIDEO }
+DlnaPlayback.request(videos, 0)?.let { Player2160.play(context, it) }
+```
+
+---
+
+## 20. IPTV: M3U, XMLTV, режим эфира
+
+### 20.1. Режим эфира
+
+`PlaybackRequest(liveTv = true)` (extra `tv.p2160.extra.LIVE`, §3.3) — элементы считаются
+телеканалами: нет продолжения с места, истории, глав и поиска вступлений; вместо полосы перемотки —
+«Эфир»; стрелки вверх/вниз при скрытой панели, CH+/CH−, `next()/previous()` переключают каналы по
+кругу (`switchChannel`); под названием — `PlayerUiState.subtitle` из `LiveGuide` (обновляется раз в 30 с).
+
+```kotlin
+fun interface LiveGuide { fun describe(entry: MediaEntry, nowMs: Long): String? }   // tv.p2160.core.api
+
+// Свой телегид; вызывается с главного потока — отвечайте из памяти
+Player2160.setLiveGuide { entry, now -> myEpg.current(entry.uri, now)?.title }
+Player2160.setLiveGuide(null)   // вернуть встроенный (IptvStore)
+```
+
+Тот же объект доступен как `PlayerExtensions.liveGuide`.
+
+### 20.2. Разбор M3U — `M3uParser`
+
+`M3uParser.parse(text: String, baseUrl: String? = null): M3uPlaylist` — терпим к реальным спискам: BOM,
+CRLF, атрибуты без кавычек и с запятыми, `#EXTGRP`, `#EXTVLCOPT` (`http-user-agent`, `http-referrer`,
+`http-origin`), `#KODIPROP` (`…stream_headers`/`…manifest_headers`), `#EXTHTTP` (JSON), заголовки после
+`url|User-Agent=…&Referer=…`, название на следующей строке, относительные URL (относительно `baseUrl`),
+повторы URL (id получают суффикс `#2`, `#3`…).
+
+```kotlin
+data class M3uPlaylist(
+    val channels: List<IptvChannel>,
+    val epgUrls: List<String> = emptyList(),          // url-tvg / x-tvg-url / tvg-url из #EXTM3U
+    val headerAttributes: Map<String, String> = emptyMap(),
+    val looksLikeHls: Boolean = false,                // это сам HLS-поток, а не список каналов
+) { val groups: List<String> }
+
+data class IptvChannel(
+    val id: String, val name: String, val url: String,
+    val groups: List<String> = emptyList(),           // group-title (через ';') или #EXTGRP
+    val tvgId: String? = null, val tvgName: String? = null, val logo: String? = null,
+    val number: Int? = null,                          // tvg-chno
+    val userAgent: String? = null, val referrer: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    val catchup: String? = null, val catchupDays: Int? = null, val catchupSource: String? = null,
+    val attributes: Map<String, String> = emptyMap(), // все атрибуты #EXTINF (ключи в нижнем регистре)
+) { val group: String?; fun httpHeaders(): Map<String, String> }
+```
+
+### 20.3. Телегид XMLTV
+
+| Класс | Описание |
+|---|---|
+| `XmltvParser.parse(input: InputStream, parser: XmlPullParser, nowMs: Long, filter: EpgFilter? = null, pastMs = 6 ч, futureMs = 24 ч): EpgData` | Потоковый разбор XMLTV (gzip распознаётся автоматически). Хранит передачи в окне `[now − pastMs, now + futureMs]`, не более 300 на канал. `parser` — `android.util.Xml.newPullParser()`. |
+| `EpgFilter(channels: Collection<IptvChannel>)` | Оставить только каналы плейлиста (по `tvg-id` и названиям) — экономит память на больших EPG. |
+| `EpgData` | `programmes: Map<String, List<EpgProgramme>>`, `channelNames`, `isEmpty`, `plus` (слияние источников), `trimmed(fromMs)`. |
+| `EpgGuide(data)` | Сопоставление каналу: `tvg-id` точно → без суффикса `@HD/@SD` → нормализованное название. `keyFor(channel)`, `programmes(channel)`, `nowNext(channel, nowMs): NowNext?`. |
+| `EpgProgramme(startMs, stopMs, title, description)` | `isOn(nowMs)`, `progress(nowMs)`. `NowNext(now, next)`. |
+| `EpgCodec.encode/decode` | Компактный текстовый формат кэша. |
+
+### 20.4. Хранилище — `IptvStore`
+
+Синглтон (`IptvStore.get(context)`): плейлисты (`p2160_iptv`), кэш каналов (`filesDir/iptv/<id>.m3u`,
+исходный текст) и отфильтрованной EPG (`<id>.epg`), избранное, последний канал. Реализует
+`LiveGuide`: подпись «Передача · 18:00–19:00» по URL канала (это встроенный телегид плеера).
+
+```kotlin
+data class IptvPlaylist(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val source: String,            // http(s)://…, content://…, file://…
+    val epgUrl: String? = null,    // свой EPG вместо url-tvg (можно несколько через запятую)
+    val userAgent: String? = null, // для плейлиста, EPG и потоков без своего UA
+    val updatedAt: Long = 0, val epgUpdatedAt: Long = 0, val channelCount: Int = 0,
+    val error: String? = null,     // последняя ошибка обновления; IptvStore.ERROR_EMPTY / ERROR_HLS — маркеры
+) { val isLocal: Boolean }
+```
+
+| Член | Описание |
+|---|---|
+| `val playlists: StateFlow<List<IptvPlaylist>>` | Список; `get(id)`, `save(playlist)` (смена источника/EPG сбрасывает кэш), `delete(id)`. |
+| `suspend fun channels(id, forceRefresh = false, maxAgeHours = 24): M3uPlaylist` | Из кэша, если свежий (локальный файл перечитывается только по `forceRefresh`), иначе загрузка. При ошибке сети — старый кэш и `error`; без кэша — исключение. |
+| `suspend fun guide(id, forceRefresh = false): EpgGuide?` | EPG с диска, если моложе 12 ч и покрывает ≥ 3 ч вперёд, иначе загрузка всех источников. `null` — источников нет. |
+| `fun cachedChannels(id)` / `fun cachedGuide(id)` / `val guideVersion: StateFlow<Int>` | Без загрузки; счётчик обновлений EPG. |
+| `fun epgUrls(playlist, parsed): List<String>` | Свой `epgUrl` или адреса из `#EXTM3U`. |
+| `favourites: StateFlow<Map<String, Set<String>>>`, `isFavourite`, `toggleFavourite(playlistId, channelId)` | Избранное. |
+| `lastChannel(playlistId)`, `setLastChannel(...)`, `lastPlaylist()`, `lastChannelChanges` | Последний канал (обновляется и при переключении каналов в плеере). |
+| `fun playbackRequest(playlistId: String, channels: List<IptvChannel>, index: Int): PlaybackRequest` | `liveTv = true`, элементы — каналы (не более `IptvPlayback.MAX_ITEMS = 1000` вокруг `index` — лимит Binder), заголовки — `IptvPlayback.headersFor(channel, playlist.userAgent)`; включает подпись EPG в плеере. |
+
+```kotlin
+val iptv = IptvStore.get(context)
+val playlist = IptvPlaylist(name = "Дом", source = "https://example.com/tv.m3u")
+iptv.save(playlist)
+val parsed = iptv.channels(playlist.id)
+val news = parsed.channels.filter { "Новости" in it.groups }
+Player2160.play(context, iptv.playbackRequest(playlist.id, news, index = 0))
+launch { iptv.guide(playlist.id) }   // подгрузить телегид для подписи «сейчас»
+```
+
+Без `IptvStore` достаточно `PlaybackRequest(items, liveTv = true, headers = …)` — подписи не будет
+(или будет из вашего `LiveGuide`). Ограничение: заголовки запроса общие на весь плейлист — берутся у
+стартового канала.
+
+---
+
+## 21. Торренты: модуль `source-torrent`
+
+Отдельный Android-модуль `:source-torrent` (пакет `tv.p2160.torrent`) на libtorrent4j: нативные
+библиотеки добавляют ~6–8 МБ на ABI, поэтому в `player-core` их нет. Плеер читает файлы торрента
+по схеме `torrent://` — через точку расширения `RoutingDataSource.registerScheme`, так что
+torrent-URI работают в `PlaybackRequest`, `PlayerScreen`, истории и «Продолжить просмотр».
+
+**Подключение.** В Maven модуль не публикуется — только исходниками (как вариант 1a/1b в
+[EMBEDDING.md](EMBEDDING.md#1-подключение)):
+
+```kotlin
+// settings.gradle.kts
+include(":player-core", ":source-torrent")
+// или includeBuild("../2160player") { dependencySubstitution {
+//     substitute(module("tv.p2160:player-core")).using(project(":player-core"))
+//     substitute(module("tv.p2160:source-torrent")).using(project(":source-torrent"))
+// } }
+
+// app/build.gradle.kts
+dependencies {
+    implementation(project(":player-core"))
+    implementation(project(":source-torrent"))   // тянет org.libtorrent4j:libtorrent4j(-android-*) 2.1.0-39 из Maven Central
+}
+```
+
+ProGuard-правила (`-keep class org.libtorrent4j.** { *; }`) подключаются автоматически.
+Разрешений сверх `INTERNET` не нужно; данные хранятся в `getExternalFilesDir(null)/torrent-data`
+(или `filesDir`), индекс — в `filesDir/torrents`.
+
+**Формат URI**
+
+```
+torrent://<info-hash, 40 hex в нижнем регистре>/<индекс файла>/<имя файла>
+```
+
+Имя — только для отображения (заголовок, расширение для определения формата и субтитров).
+`TorrentEngine.uriFor(id, file)` строит URI, `TorrentEngine.parseUri(uri): Pair<String, Int>?` — разбирает.
+
+**Воспроизведение magnet**
+
+```kotlin
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        TorrentEngine.install(this)   // регистрирует torrent:// в плеере; libtorrent не запускает
+    }
+}
+
+lifecycleScope.launch {
+    val engine = TorrentEngine.get(context)
+    val id = engine.addMagnet("magnet:?xt=urn:btih:…")              // или голый info-hash
+    val files = engine.awaitFiles(id, timeoutMs = 60_000) ?: return@launch   // null — нет метаданных
+    val video = files.filter { it.isVideo }.maxBy { it.size }
+    Player2160.play(context, engine.prepare(id, video.index))
+}
+```
+
+`prepare` выбирает файл (остальные перестают качаться) и возвращает `PlaybackRequest`: все видео
+торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт — с выбранного; субтитры из
+торрента подключаются к видео с тем же базовым именем. Чтение блокируется, пока нужные куски не
+скачаны; приоритеты кусков выставляются по позициям всех открытых потоков (перемотка работает).
+
+`class TorrentEngine` (синглтон, `get(context)`):
+
+| Член | Описание |
+|---|---|
+| `companion fun install(context: Context)` | Зарегистрировать схему `torrent://` (вызывать в `Application.onCreate`). |
+| `companion const val SCHEME = "torrent"`, `IDLE_PAUSE_MS` (10 мин) | Торрент без чтения дольше `IDLE_PAUSE_MS` ставится на паузу. |
+| `suspend fun addMagnet(text: String): String` | magnet или голый хеш (40 hex / 32 base32) → id. `IllegalArgumentException`, если не magnet. |
+| `suspend fun addTorrentBytes(bytes: ByteArray): String` / `suspend fun addFromUri(uri: Uri): String` | `.torrent` (`IllegalArgumentException`, если не bencode); `addFromUri` понимает `magnet:`, `content://`, `file://`, `http(s)://` (файл до 16 МБ). |
+| `suspend fun awaitFiles(id: String, timeoutMs: Long): List<TorrentFile>?` | Ждать метаданные. |
+| `fun files(id: String): List<TorrentFile>?` | Файлы из сессии или сохранённой записи. |
+| `suspend fun prepare(id: String, fileIndex: Int): PlaybackRequest` | См. выше (ждёт метаданные до 120 с, иначе `IOException`). |
+| `val torrents: StateFlow<List<TorrentItem>>` | Все торренты (`StoredTorrent` + живые `TorrentStats`: скорость, пиры, прогресс, буфер). |
+| `val engineError: StateFlow<String?>` | Ошибка запуска (например, нет нативной библиотеки под ABI). |
+| `val settings: TorrentSettings` | `state: StateFlow<TorrentPrefs>`, `update { }`: `cacheLimitGb = 20`, `keepFiles = false`, `maxAgeDays = 7`, `maxConnections = 200`, `uploadLimitKb = 0`. |
+| `suspend fun remove(id: String, deleteFiles: Boolean)` / `suspend fun deleteData(id: String)` | Удалить торрент / только скачанные данные. |
+| `fun dhtNodes(): Long` | Узлов DHT (для экрана ожидания метаданных). |
+
+Кэш чистится автоматически по `CleanupPolicy` (лимит размера, возраст, `keepFiles`).
+`MagnetLink.parse(text)` / `MagnetLink.looksLikeMagnet(text)` проверяют ввод без запуска сессии.
+`TorrentSession` (сессия libtorrent и блокирующие потоки чтения, без Android) и `TorrentDataSource`
+публичны, но для встраивания достаточно `TorrentEngine`.
+
+Приложение 2160 Player дополнительно открывает magnet-ссылки и `.torrent`-файлы извне
+(`TorrentOpenActivity`: `VIEW` со схемой `magnet`, MIME `application/x-bittorrent`, расширение `.torrent`).
+
+---
+
+## 22. Функции приложения 2160 Player (не библиотеки)
+
+Код ниже живёт в модуле `app` и в `player-core` **не входит**; описан как поведение и протокол.
+
+### 22.1. «Продолжить на другом устройстве» (`tv.p2160.app.handoff`)
+
+Пока приложение на экране (`ProcessLifecycleOwner` onStart/onStop), `Handoff` поднимает HTTP-сервер на
+случайном порту и объявляет его по mDNS/DNS-SD как `_p2160._tcp` (имя сервиса — имя устройства,
+TXT-атрибут `id` — случайный id экземпляра). Другие экземпляры находят его через `NsdManager`.
+Без облака и без авторизации — только локальная сеть.
+
+| Запрос | Ответ |
+|---|---|
+| `GET /now` | `200` + JSON текущего `Player2160.nowPlaying` или `204`, если ничего не играет / нечем поделиться. |
+| `POST /play` (JSON, ≤ 64 КБ) | `200 {}`; на принимающем устройстве — диалог «… предлагает продолжить здесь» (`HandoffReceiveActivity`), при согласии — `Player2160.play` с той же позиции и заголовками. |
+| `GET /stream/<token>/<имя>` | Раздача локального файла (`content://`, `file://`) с поддержкой `Range` (`206 Partial Content`). Токен выдаётся при публикации `/now`/отправке. |
+
+```json
+{ "uri": "smb://nas/Movies/Film.mkv", "title": "Фильм", "position": 764000, "duration": 7200000,
+  "playing": true, "headers": {}, "from": "Galaxy S21" }
+```
+
+Сетевые URI (`smb`, `http(s)`, `rtsp`, `rtmp`) передаются как есть; локальные файлы — как
+`http://<IPv4 устройства>:<порт>/stream/<token>/<имя>`; прочие схемы (`torrent://` и т.п.) не передаются.
+В плеере это кнопка «Отправить на устройство» — обычный `PlayerAction` (`id = "handoff"`),
+зарегистрированный приложением через `Player2160.registerAction`.
+
+### 22.2. Автообновление (`tv.p2160.app.update.Updater`)
+
+Только для APK из GitHub Releases (не для Google Play):
+
+- запрос `https://api.github.com/repos/spacesarmat/2160player/releases/latest`; версия — `tag_name`
+  без префикса `v` (теги вида `v<versionName>`), сравнивается с `BuildConfig.VERSION_NAME` по числам
+  `1.2.3` (суффиксы `-beta` игнорируются);
+- из ассетов `*.apk` выбирается первый, чьё имя содержит `-<abi>-` для ABI из `Build.SUPPORTED_ABIS`
+  (по порядку), иначе содержащий `universal`;
+- APK скачивается в `cacheDir/update` и ставится через `PackageInstaller` (сессия `MODE_FULL_INSTALL`,
+  на Android 12+ `USER_ACTION_NOT_REQUIRED`); подтверждение системы показывает `UpdateReceiver`.
+  Нужно разрешение `REQUEST_INSTALL_PACKAGES` (есть в манифесте приложения) и подпись тем же ключом;
+- тихая проверка при запуске — не чаще раза в 12 ч, если включена настройка «Проверять обновления»
+  (по умолчанию включена в release и выключена в debug-сборке); версию можно пропустить («Пропустить
+  версию» — больше не предлагается при автопроверке). Ручная проверка — кнопкой в настройках.
+
+Состояние — `Updater.state: StateFlow<UpdateState>` (`Idle`, `Checking`, `UpToDate`, `Available(info)`,
+`Downloading(info, progress)`, `Installing`, `Failed(message)`); настройки — SharedPreferences `p2160_update`.
+
+---
+
+## 23. Справочник классов
+
+### 23.1. Стабильный публичный API
 
 | Пакет | Класс | Раздел |
 |---|---|---|
@@ -1160,17 +1710,28 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 | | `PlaybackRequest`, `MediaEntry`, `ExternalSubtitle`, `PlaybackResult` | §5.1 |
 | | `IntentApi` | §3, §5.3 |
 | | `NowPlaying`, `PlayerAction`, `PlayerExtensions` | §7, §8 |
+| | `LiveGuide` | §20.1 |
 | | `SkipSegment`, `SegmentType`, `Chapter` | §12 |
 | `tv.p2160.core` | `Player2160Activity`, `PlayerViewModel` | §5.4, §6.2 |
 | `tv.p2160.core.engine` | `PlayerController`, `PlayerUiState`, `TrackOption` | §6.1, §7.2 |
 | | `ManualMarks`, `SegmentDetector`, `TimeInput` | §12 |
+| | `NightAudioProcessor`, `PassthroughGuard` | §16 |
+| | `TrackPreferences`, `TrackRules`, `TrackChoice`, `TrackCandidate` | §17 |
+| | `MediaReport`, `ReportSection`, `ReportRow` | §18.2 |
+| `tv.p2160.core.intro` | `IntroDetector`, `DetectionResult` | §18.1 |
 | `tv.p2160.core.ui` | `PlayerScreen`, `PlayerTheme`, `PlayerThemes`, `P2160Theme` | §6, §9.3 |
-| `tv.p2160.core.settings` | `PlayerSettings`, `Settings`, `SubtitleStyle`, `DecoderPreference`, `ResizeMode`, `SkipMode`, `SubtitleEdge` | §9 |
+| `tv.p2160.core.settings` | `PlayerSettings`, `Settings`, `NightSchedule`, `SubtitleStyle`, `DecoderPreference`, `ResizeMode`, `SkipMode`, `SubtitleEdge` | §9 |
 | `tv.p2160.core.resume` | `ResumeStore`, `ResumeEntry` | §10 |
 | `tv.p2160.core.source.smb` | `SmbServers`, `SmbServer`, `SmbPath`, `SmbEntry`, `SmbConnections` | §11 |
+| `tv.p2160.core.source.dlna` | `DlnaServers`, `KnownDlnaServer`, `DlnaServer`, `DlnaIcon`, `DlnaDiscovery`, `DlnaProbe`, `ContentDirectory`, `BrowsePage`, `DlnaObject`, `DlnaContainer`, `DlnaItem`, `DlnaResource`, `DlnaSubtitle`, `DlnaMediaKind`, `DlnaPlayback`, `DlnaException` | §19 |
+| `tv.p2160.core.iptv` | `IptvStore`, `IptvPlaylist`, `IptvPlayback`, `M3uParser`, `M3uPlaylist`, `IptvChannel`, `XmltvParser`, `EpgFilter`, `EpgData`, `EpgGuide`, `EpgProgramme`, `NowNext`, `EpgCodec` | §20 |
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
+| `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
-### 16.2. Публичные, но внутренние
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `Peer`, `RemoteSession`;
+`tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`.
+
+### 23.2. Публичные, но внутренние
 
 Следующие классы объявлены `public` (библиотека не использует explicit API mode), но являются
 деталями реализации; их сигнатуры могут меняться:
@@ -1178,7 +1739,14 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 - `tv.p2160.core.ui`: `ControlButton`, `SeekBar`, `PanelRow`, `SidePanel`, `Panel`, `PanelActions`,
   `SPEED_PRESETS`, `TapSeekLayer`, `ScrubPreview`, `SpeedBoostBadge`, `DigitEntryOverlay`,
   `SkipButton`, `NextEpisodeCard`, `GoToTimeDialog`, `formatTime`, `formatSpeed`, `formatDelta`;
-- `tv.p2160.core.engine.SecondarySubtitles`;
+- `tv.p2160.core.engine`: `SecondarySubtitles`, `MediaReporter`, `ActiveDecoders`;
+- `tv.p2160.core.intro`: `IntroAnalyzer`, `IntroMatcher`, `Fingerprinter`, `Fingerprint`, `IntroStore`,
+  `MediaCodecPcmDecoder`, `PcmSource`;
+- `tv.p2160.core.source.dlna`: `SsdpDiscovery`, `SsdpMessage`, `DlnaDiscoveryListener`,
+  `MulticastLockProvider`, `AndroidMulticastLock`, `DeviceDescriptionParser`, `DidlParser`, `XmlLite`,
+  `XmlNode`, `DlnaHttp`, `UrlConnectionHttp`, `HttpResult`, `DlnaPlaybackSpec`, `DlnaSubtitleSpec`;
+- `tv.p2160.torrent`: `TorrentSession`, `SessionConfig`, `TorrentDataSource`, `PiecePlanner`,
+  `CleanupPolicy`, `NaturalOrder`;
 - `tv.p2160.core.bluray.*` (`DiscSessions`, `DiscSession`, `BlurayDisc`, `UdfFileSystem`, парсеры MPLS/CLPI,
   `RandomAccessSource` и реализации, `DiscDataSource`, `DiscMediaSourceFactory`…);
 - `tv.p2160.core.m2ts.*` (`M2tsExtractor`, `M2tsExtractorsFactory`, `BlurayTsPayloadReaderFactory`,

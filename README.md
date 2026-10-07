@@ -10,13 +10,26 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 ## Возможности
 
 - **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MPEG-2, VC-1 там, где устройство их не умеет; passthrough на ресивер.
-- **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок.
+- **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок; **DLNA/UPnP**-серверы (Jellyfin, Plex, Kodi, NAS) с автопоиском в сети.
+- **IPTV:** M3U-плейлисты с группами и логотипами, телегид XMLTV, режим эфира (без перемотки, текущая передача под названием канала).
+- **Торренты:** magnet-ссылки и `.torrent`-файлы, просмотр во время загрузки (libtorrent), выбор файла из раздачи.
 - **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) — автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
 - **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео, задержка, стиль, **двойные субтитры**.
 - **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
 - **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению.
 - **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
+- **Умный выбор дорожек:** плеер запоминает ручной выбор озвучки и субтитров — отдельно для сериала и для набора языков (аниме — японский с субтитрами, фильмы — дубляж).
+- **Ночной звук:** сжатие динамики и громкие диалоги, по расписанию (по умолчанию 23:00–10:00), настраивается прямо в плеере.
+- **Определение вступления** по звуку между сериями, **информация о файле** (кодеки, HDR, битрейт), превью при перемотке с пульта.
+- **Продолжить на другом устройстве:** передача просмотра между телефоном и ТВ в локальной сети с той же позиции.
+- **Автообновление** из GitHub Releases: проверка при запуске (можно выключить в настройках), загрузка APK под архитектуру устройства, установка в пару нажатий.
 - **6 тем** оформления, **локализация** JSON-пакетами (ru, en) с импортом пользовательских переводов.
+
+## Установка
+
+Скачайте APK из [последнего релиза](https://github.com/spacesarmat/2160player/releases/latest):
+`arm64-v8a` — большинство современных телефонов и приставок, `armeabi-v7a` — старые 32-битные ТВ,
+`universal` — если не уверены. Дальше приложение обновляется само (Настройки → Обновления).
 
 ## Скриншоты
 
@@ -63,6 +76,29 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 
 APK: `app/build/outputs/apk/debug/`. applicationId: `tv.p2160.player` (release), `tv.p2160.player.debug` (debug).
 
+### Релиз
+
+Релизы подписываются одним ключом — иначе автообновление не сможет поставить новую версию поверх старой.
+Ключ и пароли лежат в `keystore.properties` в корне проекта (не в git):
+
+```properties
+storeFile=/path/to/2160player-release.jks
+storePassword=...
+keyAlias=2160player
+keyPassword=...
+```
+
+или в переменных окружения `P2160_KEYSTORE`, `P2160_KEYSTORE_PASSWORD`, `P2160_KEY_ALIAS`, `P2160_KEY_PASSWORD`.
+
+```sh
+./gradlew :app:assembleRelease -Pp2160.versionName=0.2.0 -Pp2160.versionCode=3
+gh release create v0.2.0 app/build/outputs/apk/release/*.apk --title "2160 Player 0.2.0" --notes "..."
+```
+
+Тег релиза — `v<versionName>`; приложение сравнивает его со своей версией и берёт APK, в имени
+которого есть ABI устройства (`-arm64-v8a-`, `-armeabi-v7a-`…), иначе `universal`. `versionCode`
+каждого релиза должен быть больше предыдущего.
+
 ## Структура проекта
 
 ```
@@ -71,10 +107,13 @@ player-core/            библиотека плеера (tv.p2160.core)
   engine/               PlayerController, сборка ExoPlayer, дорожки, двойные субтитры, отрезки
   ui/                   Compose: PlayerScreen, панели, жесты, темы
   bluray/, m2ts/        чтение ISO/UDF и BDMV, MPLS/CLPI, экстрактор M2TS
-  source/               SMB (smbj), маршрутизация источников, произвольный доступ
+  source/               SMB (smbj), DLNA, маршрутизация источников, произвольный доступ
+  iptv/                 M3U, XMLTV
   settings/, resume/, i18n/, subtitle/
   src/main/assets/i18n/core/   языковые пакеты ядра
-app/                    приложение 2160 Player: главный экран, история, SMB-браузер, настройки
+source-torrent/         торренты (libtorrent4j), схема torrent://
+app/                    приложение 2160 Player: главный экран, история, сеть, IPTV, торренты,
+                        передача между устройствами (handoff/), автообновление (update/), настройки
 samples/embed-demo/     пример встраивания библиотеки
 design/                 исходники логотипа и баннера
 docs/                   документация
@@ -99,9 +138,14 @@ TBD.
 ## English
 
 **2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
-decoders and a Jetpack Compose UI. It plays local files, HTTP/HLS/DASH/RTSP streams, SMB shares
+decoders and a Jetpack Compose UI. It plays local files, HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
-intro/credits skipping, dual subtitles, resume with track memory, themes and JSON language packs.
+intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
+learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
+themes, JSON language packs and self-updates from GitHub Releases.
+
+Install: grab an APK from the [latest release](https://github.com/spacesarmat/2160player/releases/latest)
+(`arm64-v8a` for most devices, `armeabi-v7a` for older 32-bit TVs, `universal` if unsure).
 
 The `player-core` module is an embeddable library:
 

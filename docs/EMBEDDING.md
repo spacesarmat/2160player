@@ -166,8 +166,9 @@ android {
 }
 ```
 
-Манифест трогать не нужно: библиотека сама добавит `Player2160Activity`, `INTERNET` и
-`usesCleartextTraffic`. ProGuard-правила подключаются автоматически (`consumer-rules.pro`).
+Манифест трогать не нужно: библиотека сама добавит `Player2160Activity`, разрешения `INTERNET`,
+`ACCESS_NETWORK_STATE`, `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA) и `usesCleartextTraffic`.
+Торренты — отдельный модуль `:source-torrent` ([API.md §21](API.md#21-торренты-модуль-source-torrent)). ProGuard-правила подключаются автоматически (`consumer-rules.pro`).
 
 ---
 

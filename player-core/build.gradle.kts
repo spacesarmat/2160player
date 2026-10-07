@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.media3.exoplayer.smoothstreaming)
     implementation(libs.media3.exoplayer.rtsp)
     implementation(libs.media3.ui)
+    implementation(libs.media3.session)
     implementation(libs.nextlib.media3ext)
     implementation(libs.nextlib.mediainfo)
     implementation(libs.smbj)
@@ -88,6 +89,12 @@ afterEvaluate {
                     name.set("2160 Player core")
                     description.set("Embeddable Android media player: Media3 + FFmpeg, Blu-ray ISO/BDMV, SMB, Compose UI.")
                     url.set("https://github.com/spacesarmat/2160player")
+                    licenses {
+                        license {
+                            name.set("GNU General Public License v3.0")
+                            url.set("https://www.gnu.org/licenses/gpl-3.0.html")
+                        }
+                    }
                 }
             }
         }

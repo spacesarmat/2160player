@@ -299,7 +299,10 @@ FFmpeg добавляет ~8 МБ на каждую ABI — используйт
   по SSDP, `WifiManager.MulticastLock`);
 - `android:usesCleartextTraffic="true"` на `<application>` (IPTV и домашние серверы часто без HTTPS);
 - Activity `tv.p2160.core.Player2160Activity` — `exported="false"`, `singleTop`,
-  `supportsPictureInPicture="true"`, тема `@style/Theme.P2160.Player`.
+  `supportsPictureInPicture="true"`, тема `@style/Theme.P2160.Player`;
+- сервис `tv.p2160.core.engine.PlaybackService` (`MediaSessionService`, `foregroundServiceType="mediaPlayback"`)
+  и разрешения `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` — уведомление с управлением
+  и фоновое воспроизведение (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)).
 
 Внутри вашего приложения Activity доступна без изменений. Чтобы **другие** приложения могли
 открывать видео через ваш APK (как это делает 2160 Player), переопределите её в своём манифесте:
@@ -419,6 +422,7 @@ data class ExternalSubtitle(
 | `fun registerAction(action: PlayerAction)` / `fun unregisterAction(id: String)` | Свои кнопки в плеере (см. [§8](#8-свои-кнопки-в-плеере-playeraction)). |
 | `fun settings(context: Context): PlayerSettings` | Настройки (см. [§9](#9-настройки-и-темы)). |
 | `fun resumeStore(context: Context): ResumeStore` | История (см. [§10](#10-история-и-позиции-остановки)). |
+| `fun pause()` | Пауза активного плеера с любого потока (например, после передачи просмотра на другое устройство). Без открытого плеера ничего не делает. |
 | `fun setLiveGuide(guide: LiveGuide?)` | Свой телегид для `liveTv`-запросов; `null` — встроенный `IptvStore` (см. [§20](#20-iptv-m3u-xmltv-режим-эфира)). |
 
 ```kotlin
@@ -830,6 +834,7 @@ Player2160.settings(context).update {
 | `nightStartMinute` | `Int` = `1380` (23:00) | Минуты от полуночи. Интервал может переходить через полночь |
 | `nightEndMinute` | `Int` = `600` (10:00) | Минуты от полуночи (конец не включается) |
 | `smartTracks` | `Boolean` = `true` | Запоминать ручной выбор дорожек и применять к похожим файлам (см. [§17](#17-умный-выбор-дорожек)). При старте элемента |
+| `backgroundPlayback` | `Boolean` = `false` | Продолжать видео (звуком, без декодирования картинки), когда плеер свёрнут или экран выключен. Аудио без видео играет в фоне всегда (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)) |
 
 `fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
@@ -1196,6 +1201,28 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 - Работа с несколькими `PlayerController` одновременно технически возможна, но `nowPlaying` будет показывать последний обновивший.
 - Ночной звук работает только с PCM: пока он включён, passthrough на ресивер отключён (AC-3/DTS/TrueHD декодируются на устройстве).
 - `TrackPreferences`, `IntroDetector`, `IptvStore`, `DlnaServers`, `TorrentEngine` — тоже синглтоны процесса (`p2160_track_prefs`, `filesDir/intro`, `p2160_iptv` + `filesDir/iptv`, `p2160_dlna`, `filesDir/torrents`).
+
+### 15.4. Фоновое воспроизведение и MediaSession
+
+Каждый `PlayerController` при создании регистрирует `MediaSession` (Media3) и запускает
+`PlaybackService`. Это даёт:
+
+- уведомление с управлением, карточку на экране блокировки, кнопки гарнитуры, Bluetooth и часов;
+- фоновое воспроизведение: при уходе `Player2160Activity` с экрана (кнопка «Домой», выключение экрана,
+  закрытие окна PiP) аудио без видео продолжает играть всегда, видео — если `Settings.backgroundPlayback = true`.
+  В фоне видеодорожка отключается (`PlayerController.setInBackground(true)`), при возврате включается снова;
+- нажатие на уведомление открывает `Player2160Activity`.
+
+Одновременно активна одна сессия: новый контроллер заменяет предыдущую, `release()` её закрывает и
+останавливает сервис. Встраивая `PlayerScreen` в свою Activity, вызывайте
+`controller.setInBackground(true/false)` и `player.pause()` в `onStop`/`onStart` по тем же правилам.
+
+### 15.5. Dolby Vision без декодера
+
+Если устройство не умеет Dolby Vision файла (чаще всего профиль 7 — UHD Blu-ray-ремуксы; S21 и
+большинство телефонов), Media3 отбросила бы видеодорожку. Плеер подменяет формат на совместимый
+базовый кодек (HEVC/AVC/AV1) прямо в экстракторе — играет базовый слой HDR10, а `report()` показывает
+«Dolby Vision (profile N)» с предупреждением. Профиль 5 (без совместимого слоя) не подменяется.
 
 ---
 
@@ -1677,7 +1704,8 @@ TXT-атрибут `id` — случайный id экземпляра). Дру�
 Сетевые URI (`smb`, `http(s)`, `rtsp`, `rtmp`) передаются как есть; локальные файлы — как
 `http://<IPv4 устройства>:<порт>/stream/<token>/<имя>`; прочие схемы (`torrent://` и т.п.) не передаются.
 В плеере это кнопка «Отправить на устройство» — обычный `PlayerAction` (`id = "handoff"`),
-зарегистрированный приложением через `Player2160.registerAction`.
+зарегистрированный приложением через `Player2160.registerAction`. После успешной отправки текущее
+воспроизведение ставится на паузу (`Player2160.pause()`).
 
 ### 22.2. Автообновление (`tv.p2160.app.update.Updater`)
 

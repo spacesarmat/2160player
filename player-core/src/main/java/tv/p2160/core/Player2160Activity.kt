@@ -129,12 +129,25 @@ class Player2160Activity : ComponentActivity() {
         inPip = isInPictureInPictureMode
     }
 
+    override fun onStart() {
+        super.onStart()
+        vm.controller?.setInBackground(false)
+    }
+
     override fun onStop() {
         super.onStop()
-        // В PiP продолжаем играть; закрытие окна PiP тоже приходит сюда — тогда ставим на паузу.
         val controller = vm.controller ?: return
-        if (!inPip || isFinishing) controller.player.pause()
         controller.saveProgress()
+        if (isFinishing) {
+            controller.player.pause()
+            return
+        }
+        // В PiP играем дальше; закрытие окна PiP тоже приходит сюда — тогда решаем как при сворачивании.
+        if (inPip && !isChangingConfigurations) return
+        // Аудио играет в фоне всегда, видео — если включено фоновое воспроизведение (звук без картинки).
+        val s = controller.state.value
+        val background = controller.player.playWhenReady && (!s.hasVideo || PlayerSettings.get(this).current.backgroundPlayback)
+        if (background) controller.setInBackground(true) else controller.player.pause()
     }
 
     private fun finishWithResult() {

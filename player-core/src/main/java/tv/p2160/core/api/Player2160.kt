@@ -49,6 +49,12 @@ object Player2160 {
 
     fun unregisterAction(id: String) = PlayerExtensions.unregister(id)
 
+    /**
+     * Поставить текущее воспроизведение на паузу (с любого потока). Например, после передачи
+     * просмотра на другое устройство. Ничего не делает, если плеер не открыт.
+     */
+    fun pause() = tv.p2160.core.engine.PlaybackSessions.pause()
+
     /** Свой телегид для эфирных запросов ([PlaybackRequest.liveTv]); null — встроенный IPTV. */
     fun setLiveGuide(guide: LiveGuide?) {
         PlayerExtensions.liveGuide = guide

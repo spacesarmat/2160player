@@ -145,5 +145,7 @@
   "update.up_to_date": "You have the latest version (%1$s)",
   "update.failed": "Update failed: %1$s",
   "update.close": "Close",
-  "app.back_to_exit": "Press Back again to exit"
+  "app.back_to_exit": "Press Back again to exit",
+  "settings.background": "Video in background",
+  "settings.background_hint": "Keep the sound playing when the player is minimized or the screen is off. Music and audio always play in background"
 }

@@ -245,7 +245,18 @@ class PlayerController(
         player.addListener(listener)
         player.addAnalyticsListener(analytics)
         player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        PlaybackSessions.attach(appContext, this)
         scope.launch { start() }
+    }
+
+    /**
+     * Плеер ушёл с экрана, но звук продолжается (фоновое воспроизведение): видео не декодируем,
+     * чтобы не тратить батарею; при возврате дорожка включается снова.
+     */
+    fun setInBackground(background: Boolean) {
+        val params = player.trackSelectionParameters
+        if (params.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) == background) return
+        player.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, background).build()
     }
 
     private suspend fun start() {
@@ -786,6 +797,7 @@ class PlayerController(
     }
 
     fun release() {
+        PlaybackSessions.detach(appContext, this)
         saveProgress()
         publishNowPlaying()
         PlayerExtensions.publish(PlayerExtensions.nowPlaying.value?.copy(isPlaying = false))

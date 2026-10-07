@@ -56,6 +56,8 @@ data class Settings(
     val nightEndMinute: Int = 10 * 60,
     /** Запоминать ручной выбор дорожек и применять его к похожим файлам и сериям. */
     val smartTracks: Boolean = true,
+    /** Продолжать видео со звуком, когда плеер свёрнут или экран выключен (аудиофайлы играют в фоне всегда). */
+    val backgroundPlayback: Boolean = false,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -125,6 +127,7 @@ class PlayerSettings private constructor(context: Context) {
             nightStartMinute = prefs.getInt("night_start", d.nightStartMinute),
             nightEndMinute = prefs.getInt("night_end", d.nightEndMinute),
             smartTracks = prefs.getBoolean("smart_tracks", d.smartTracks),
+            backgroundPlayback = prefs.getBoolean("background_playback", d.backgroundPlayback),
         )
     }
 
@@ -152,6 +155,7 @@ class PlayerSettings private constructor(context: Context) {
             .putInt("night_start", s.nightStartMinute)
             .putInt("night_end", s.nightEndMinute)
             .putBoolean("smart_tracks", s.smartTracks)
+            .putBoolean("background_playback", s.backgroundPlayback)
             .apply()
     }
 

@@ -129,6 +129,8 @@ class HandoffSendActivity : ComponentActivity() {
                                     sending = true
                                     scope.launch {
                                         val ok = withContext(Dispatchers.IO) { Handoff.push(this@HandoffSendActivity, peer, now) }
+                                        // Просмотр продолжился на другом устройстве — здесь ставим на паузу.
+                                        if (ok) Player2160.pause()
                                         Toast.makeText(
                                             this@HandoffSendActivity,
                                             if (ok) strings.format("handoff.sent", peer.name) else strings["handoff.failed"],

@@ -76,7 +76,8 @@ object MediaReporter {
             }
             val dv = isDolbyVision(video)
             if (dv) {
-                val dvDecoder = hasDecoder(MimeTypes.VIDEO_DOLBY_VISION, hardwareOnly = true)
+                // Маркер — плеер уже переключился на базовый слой: декодера Dolby Vision нет или он не умеет этот профиль.
+                val dvDecoder = DolbyVisionFallback.marker(video) == null && hasDecoder(MimeTypes.VIDEO_DOLBY_VISION, hardwareOnly = true)
                 if (!dvDecoder) {
                     rows += ReportRow("Dolby Vision", t["info.dv_fallback"], ReportRow.Level.WARN)
                     warnings += t["info.warn_dv"]
@@ -149,11 +150,14 @@ object MediaReporter {
     }
 
     private fun isDolbyVision(f: Format): Boolean =
+        DolbyVisionFallback.marker(f) != null ||
         f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
             f.codecs?.let { it.startsWith("dvh") || it.startsWith("dva") || it.startsWith("dav1") } == true
 
     private fun hdrName(f: Format): String? = when {
-        isDolbyVision(f) -> "Dolby Vision" + (f.codecs?.split('.')?.getOrNull(1)?.toIntOrNull()?.let { " (profile $it)" } ?: "")
+        isDolbyVision(f) -> "Dolby Vision" + (
+            (DolbyVisionFallback.marker(f)?.profile ?: DolbyVisionFallback.profile(f.codecs))?.let { " (profile $it)" } ?: ""
+        )
         f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> if (f.colorInfo?.hdrStaticInfo != null) "HDR10" else "HDR10 / PQ"
         f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG"
         else -> null

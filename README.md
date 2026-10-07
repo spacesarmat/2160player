@@ -22,7 +22,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **Умный выбор дорожек:** плеер запоминает ручной выбор озвучки и субтитров — отдельно для сериала и для набора языков (аниме — японский с субтитрами, фильмы — дубляж).
 - **Ночной звук:** сжатие динамики и громкие диалоги, по расписанию (по умолчанию 23:00–10:00), настраивается прямо в плеере.
 - **Определение вступления** по звуку между сериями, **информация о файле** (кодеки, HDR, битрейт), превью при перемотке с пульта.
-- **Продолжить на другом устройстве:** передача просмотра между телефоном и ТВ в локальной сети с той же позиции; на исходном устройстве — пауза.
+- **Продолжить на другом устройстве:** передача просмотра между телефоном и ТВ в одной сети Wi-Fi с той же позиции; на исходном устройстве — пауза. Если в сети несколько плееров — защита кодом (код на сутки или свой, вводится один раз для каждого нового устройства).
 - **Фоновое воспроизведение:** уведомление с управлением, экран блокировки, гарнитура и Bluetooth; музыка играет в фоне всегда, видео — по настройке.
 - **Dolby Vision** на устройствах без декодера (профиль 7 из UHD-ремуксов) играет базовым слоем HDR10, а не теряет картинку.
 - **Автообновление** из GitHub Releases: проверка при запуске (можно выключить в настройках), загрузка APK под архитектуру устройства, установка в пару нажатий.
@@ -159,7 +159,7 @@ The `player-core` module is an embeddable library:
   activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
   `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
   results are returned in MX Player and VLC formats.
-- **Library** — `implementation("tv.p2160:player-core:0.1.6")` (module, composite build, mavenLocal
+- **Library** — `implementation("tv.p2160:player-core:0.1.7")` (module, composite build, mavenLocal
   or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
   `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
   Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for

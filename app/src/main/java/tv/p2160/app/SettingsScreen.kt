@@ -2,6 +2,8 @@ package tv.p2160.app
 
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import tv.p2160.app.handoff.Handoff
+import tv.p2160.app.handoff.HandoffAuth
 import tv.p2160.app.update.UpdateState
 import tv.p2160.app.update.Updater
 
@@ -259,6 +261,57 @@ fun SettingsScreen(
                 }
             }
             item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
+
+            item { SectionTitle(tr("settings.section_handoff")) }
+            item {
+                val context = LocalContext.current
+                var mode by remember { mutableStateOf(HandoffAuth.mode) }
+                var revision by remember { mutableStateOf(0) }
+                val modes = listOf(
+                    Choice(strings["settings.handoff_off"], HandoffAuth.Mode.OFF, strings["settings.handoff_off_hint"]),
+                    Choice(strings["settings.handoff_daily"], HandoffAuth.Mode.DAILY, strings["settings.handoff_daily_hint"]),
+                    Choice(strings["settings.handoff_custom"], HandoffAuth.Mode.CUSTOM, strings["settings.handoff_custom_hint"]),
+                )
+                fun setMode(m: HandoffAuth.Mode) {
+                    HandoffAuth.mode = m
+                    mode = m
+                    Handoff.restart(context)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingRow(tr("settings.handoff_protection"), value = modes.first { it.value == mode }.label, hint = tr("settings.handoff_protection_hint")) {
+                        ask(strings["settings.handoff_protection"], modes, mode) { m ->
+                            if (m == HandoffAuth.Mode.CUSTOM && !HandoffAuth.isValidCustomCode(HandoffAuth.customCode)) {
+                                textInput = TextRequest(strings["settings.handoff_custom_set"], strings["settings.handoff_custom_rule"], "") { code ->
+                                    if (HandoffAuth.isValidCustomCode(code)) { HandoffAuth.customCode = code; setMode(m) }
+                                }
+                            } else {
+                                setMode(m)
+                            }
+                        }
+                    }
+                    when (mode) {
+                        HandoffAuth.Mode.DAILY -> SettingRow(
+                            tr("settings.handoff_code"),
+                            value = HandoffAuth.currentCode().chunked(3).joinToString(" "),
+                            hint = tr("settings.handoff_code_hint"),
+                        ) {}
+                        HandoffAuth.Mode.CUSTOM -> SettingRow(tr("settings.handoff_custom_set"), value = "•".repeat(HandoffAuth.customCode.length), hint = tr("settings.handoff_custom_rule")) {
+                            textInput = TextRequest(strings["settings.handoff_custom_set"], strings["settings.handoff_custom_rule"], "") { code ->
+                                if (HandoffAuth.isValidCustomCode(code)) { HandoffAuth.customCode = code; revision++ }
+                            }
+                        }
+                        HandoffAuth.Mode.OFF -> Unit
+                    }
+                    val trusted = remember(revision) { HandoffAuth.trustedDevices() }
+                    SettingRow(
+                        tr("settings.handoff_forget"),
+                        hint = if (trusted.isEmpty()) tr("settings.handoff_forget_none") else strings.format("settings.handoff_forget_hint", trusted.joinToString(", ")),
+                    ) {
+                        HandoffAuth.forgetAll()
+                        revision++
+                    }
+                }
+            }
 
             item { SectionTitle(tr("settings.section_updates")) }
             item {

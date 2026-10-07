@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import android.os.SystemClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -125,6 +126,8 @@ class PlayerController(
     private val segmentStore = SegmentStore.get(appContext)
     private val analyzer = MediaAnalyzer(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
+    private var passthroughRetryAt = 0L
 
     private val built = PlayerFactory.build(appContext, settings.current, request.headers, config)
     val player: ExoPlayer get() = built.player
@@ -225,9 +228,21 @@ class PlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            // ТВ заявил поддержку AC3/DTS «на выход», но открыть такой поток не смог —
-            // переходим на декодирование звука и продолжаем без ошибки.
+            // Выход не открыл сжатый поток (AC3/DTS «на ресивер»). Сразу после переключения звука это бывает
+            // временно (Realtek: прежний выход ещё не закрыт, createTrack -38) — через секунду пробуем ещё раз.
+            // Не вышло и при повторе — ТВ действительно не умеет: декодируем сами, без ошибки.
             if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED && !built.passthrough.disabled) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - passthroughRetryAt > 10_000) {
+                    passthroughRetryAt = now
+                    val play = player.playWhenReady
+                    scope.launch {
+                        delay(1000)
+                        player.prepare()
+                        player.playWhenReady = play
+                    }
+                    return
+                }
                 built.passthrough.disabled = true
                 built.passthrough.failed = true
                 player.prepare()

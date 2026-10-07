@@ -1331,7 +1331,7 @@ class App : Application() {
 | Динамическое планирование | `ExoPlayer.Builder.experimentalSetDynamicSchedulingEnabled(true)`: цикл воспроизведения просыпается, только когда рендерерам есть работа. |
 | Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер — до 128 МБ. |
 | Видео в фоне | Видеодорожка отключается (`setInBackground`), звук без видео может уйти в offload. |
-| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, смена скорости поддерживается). Media3 включает offload только для звука без видео; ночной звук (обработка PCM) его выключает. |
+| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, без требования смены скорости — при смене скорости Media3 сам выходит из offload). Media3 включает offload только для звука без видео и для форматов, которые умеет отдавать на аудиочип (MP3, AAC, Opus, AC3/E-AC3/DTS; FLAC — нет, он декодируется аппаратным или программным декодером); ночной звук (обработка PCM) его выключает. |
 | Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле — режим выключается и сохраняется. |
 | Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана — без счёта; потом декодирует сам. |
 

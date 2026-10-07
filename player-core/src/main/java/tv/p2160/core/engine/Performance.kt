@@ -111,7 +111,8 @@ internal fun offloadPreferences(enabled: Boolean): AudioOffloadPreferences =
     else AudioOffloadPreferences.Builder()
         .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
         .setIsGaplessSupportRequired(false)
-        .setIsSpeedChangeSupportRequired(true)
+        // Не требуем смены скорости в offload: многие чипы её не умеют — при смене скорости Media3 сам выйдет из offload.
+        .setIsSpeedChangeSupportRequired(false)
         .build()
 
 /**

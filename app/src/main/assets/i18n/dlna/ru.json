@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "code": "ru",
+    "name": "Русский",
+    "author": "2160 Player"
+  },
+  "dlna.section": "Медиасерверы (DLNA)",
+  "dlna.searching": "Ищем медиасерверы…",
+  "dlna.none": "Медиасерверы не найдены",
+  "dlna.refresh": "Искать снова",
+  "dlna.add": "Добавить медиасервер",
+  "dlna.add_hint": "По адресу, если он не нашёлся сам",
+  "dlna.address": "Адрес сервера",
+  "dlna.address_hint": "IP, хост:порт или адрес описания, например 192.168.1.10:8096",
+  "dlna.connect": "Подключить",
+  "dlna.checking": "Ищем медиасервер…",
+  "dlna.not_found": "По этому адресу медиасервер не найден",
+  "dlna.remove": "Удалить",
+  "dlna.manual": "Добавлен вручную",
+  "dlna.empty": "Папка пуста",
+  "dlna.error": "Ошибка сервера: %1$s",
+  "dlna.items": "Объектов: %1$d",
+  "dlna.transcoded": "перекодирование",
+  "dlna.subtitles": "субтитры"
+}

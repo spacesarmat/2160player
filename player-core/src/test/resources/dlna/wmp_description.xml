@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+<specVersion><major>1</major><minor>0</minor></specVersion>
+<device>
+<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+<friendlyName>DESKTOP-PC : 1 :</friendlyName>
+<manufacturer>Microsoft Corporation</manufacturer>
+<modelName>Windows Media Player Sharing</modelName>
+<modelNumber>12.0</modelNumber>
+<UDN>uuid:2b1a0b6a-4d0e-4b7c-9f6a-1234567890ab</UDN>
+<iconList>
+<icon><mimetype>image/jpeg</mimetype><width>120</width><height>120</height><depth>24</depth><url>/upnphost/udhisapi.dll?content=uuid:3a1f</url></icon>
+</iconList>
+<serviceList>
+<service>
+<serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>
+<serviceId>urn:upnp-org:serviceId:ContentDirectory</serviceId>
+<controlURL>/upnphost/udhisapi.dll?control=uuid:2b1a0b6a-4d0e-4b7c-9f6a-1234567890ab+urn:upnp-org:serviceId:ContentDirectory</controlURL>
+<eventSubURL>/upnphost/udhisapi.dll?event=uuid:2b1a0b6a-4d0e-4b7c-9f6a-1234567890ab+urn:upnp-org:serviceId:ContentDirectory</eventSubURL>
+<SCPDURL>/upnphost/udhisapi.dll?content=uuid:5e4a</SCPDURL>
+</service>
+</serviceList>
+</device>
+</root>

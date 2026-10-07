@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <specVersion><major>1</major><minor>0</minor></specVersion>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>
+    <friendlyName>Home Router</friendlyName>
+    <UDN>uuid:upnp-InternetGatewayDevice-1_0-001122334455</UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:Layer3Forwarding:1</serviceType>
+        <controlURL>/upnp/control/L3F</controlURL>
+      </service>
+    </serviceList>
+    <deviceList>
+      <device>
+        <deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
+        <UDN>uuid:upnp-WANDevice-1_0-001122334455</UDN>
+      </device>
+    </deviceList>
+  </device>
+</root>

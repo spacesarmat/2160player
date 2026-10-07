@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "code": "en",
+    "name": "English",
+    "author": "2160 Player"
+  },
+  "dlna.section": "Media servers (DLNA)",
+  "dlna.searching": "Looking for media servers…",
+  "dlna.none": "No media servers found",
+  "dlna.refresh": "Search again",
+  "dlna.add": "Add media server",
+  "dlna.add_hint": "By address, if it is not found automatically",
+  "dlna.address": "Server address",
+  "dlna.address_hint": "IP, host:port or description URL, e.g. 192.168.1.10:8096",
+  "dlna.connect": "Connect",
+  "dlna.checking": "Looking for a media server…",
+  "dlna.not_found": "No media server found at this address",
+  "dlna.remove": "Remove",
+  "dlna.manual": "Added manually",
+  "dlna.empty": "This folder is empty",
+  "dlna.error": "Server error: %1$s",
+  "dlna.items": "Items: %1$d",
+  "dlna.transcoded": "transcoded",
+  "dlna.subtitles": "subtitles"
+}

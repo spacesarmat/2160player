@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Корневое устройство без ContentDirectory, медиасервер вложен в deviceList; есть URLBase с путём. -->
+<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:dlna="urn:schemas-dlna-org:device-1-0">
+  <specVersion><major>1</major><minor>0</minor></specVersion>
+  <URLBase>http://192.168.1.20:50001/upnp/</URLBase>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType>
+    <friendlyName>DiskStation</friendlyName>
+    <manufacturer>Synology Inc</manufacturer>
+    <modelName>DS920+</modelName>
+    <UDN>uuid:73796E6F-6473-6D00-0000-001132aabbcc</UDN>
+    <iconList>
+      <icon><mimetype>image/png</mimetype><width>256</width><height>256</height><depth>24</depth><url>icons/big.png</url></icon>
+    </iconList>
+    <deviceList>
+      <device>
+        <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+        <friendlyName>DiskStation Media Server &amp; Video</friendlyName>
+        <manufacturer>Synology Inc</manufacturer>
+        <modelName>DS920+</modelName>
+        <UDN>uuid:73796E6F-6473-6D00-0000-001132aabbcd</UDN>
+        <serviceList>
+          <service>
+            <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+            <controlURL>cm/control</controlURL>
+          </service>
+          <service>
+            <serviceType>urn:schemas-upnp-org:service:ContentDirectory:2</serviceType>
+            <serviceId>urn:upnp-org:serviceId:ContentDirectory</serviceId>
+            <controlURL>cd/control</controlURL>
+            <eventSubURL>cd/event</eventSubURL>
+            <SCPDURL>cd/scpd.xml</SCPDURL>
+          </service>
+        </serviceList>
+      </device>
+    </deviceList>
+  </device>
+</root>

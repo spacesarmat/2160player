@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:BrowseResponse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+<Result><![CDATA[<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"><item id="{ffd5b0b6-5f2b-4c3d-a9c3-plex}223" parentID="{ffd5b0b6-5f2b-4c3d-a9c3-plex}22" restricted="1"><dc:title>Interstellar</dc:title><upnp:class>object.item.videoItem.movie</upnp:class><dc:date>2014-11-05</dc:date><upnp:albumArtURI dlna:profileID="JPEG_TN">http://192.168.1.5:32469/proxy/a1b2/albumart.jpg</upnp:albumArtURI><res duration="2:49:03.000" resolution="1280x720" protocolInfo="http-get:*:video/mp4:DLNA.ORG_PN=AVC_MP4_HP_HD_AAC;DLNA.ORG_OP=10;DLNA.ORG_CI=1">http://192.168.1.5:32469/object/223/file.mp4?transcode=1</res><res size="31876543210" duration="2:49:03.000" bitrate="3145728" resolution="3840x2160" protocolInfo="http-get:*:video/x-matroska:DLNA.ORG_OP=01;DLNA.ORG_CI=0">http://192.168.1.5:32469/object/223/file.mkv</res><res protocolInfo="http-get:*:image/jpeg:DLNA.ORG_PN=JPEG_TN">http://192.168.1.5:32469/proxy/a1b2/albumart.jpg</res></item><item id="{ffd5b0b6-5f2b-4c3d-a9c3-plex}224" parentID="{ffd5b0b6-5f2b-4c3d-a9c3-plex}22" restricted="1"><dc:title>Song</dc:title><upnp:class>object.item.audioItem.musicTrack</upnp:class><upnp:artist>Artist</upnp:artist><upnp:album>Album</upnp:album><res duration="0:03:30" protocolInfo="http-get:*:audio/flac:*" size="31000000">http://192.168.1.5:32469/object/224/file.flac</res></item></DIDL-Lite>]]></Result>
+<NumberReturned>2</NumberReturned>
+<TotalMatches>2</TotalMatches>
+<UpdateID>3</UpdateID>
+</u:BrowseResponse>
+</s:Body>
+</s:Envelope>

@@ -337,6 +337,11 @@ fun SettingsScreen(
 
             item { SectionTitle(tr("settings.section_about")) }
             item {
+                var sharing by remember { mutableStateOf(false) }
+                SettingRow(tr("share.title"), hint = tr("share.settings_hint")) { sharing = true }
+                if (sharing) tv.p2160.app.share.ShareAppDialog(onDismiss = { sharing = false })
+            }
+            item {
                 val context = LocalContext.current
                 val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty() }
                 Text(

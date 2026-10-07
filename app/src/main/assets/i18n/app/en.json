@@ -183,5 +183,17 @@
   "handoff.pair_deny": "Deny",
   "handoff.pair_allowed": "“%1$s” connected",
   "handoff.pair_denied": "The device denied the connection",
-  "handoff.pair_waiting": "A request appeared on “%1$s” — tap Allow there"
+  "handoff.pair_waiting": "A request appeared on “%1$s” — tap Allow there",
+  "share.title": "Share the app",
+  "share.settings_hint": "As a file, over Wi-Fi with a QR code or as a link — works offline too",
+  "share.file": "Send the file",
+  "share.file_hint": "Quick Share, Bluetooth, Telegram, email… Works offline",
+  "share.wifi": "Share over Wi-Fi",
+  "share.wifi_hint": "QR code and address: another device downloads the app straight from this one",
+  "share.link": "GitHub link",
+  "share.link_hint": "The recipient needs internet",
+  "share.link_text": "2160 Player — a player for phones and Android TV:",
+  "share.abi_warning": "This file only fits %1$s devices. For older 32-bit TVs download the ARM build from the releases page.",
+  "share.wifi_none": "No Wi-Fi connection. Connect to a network or turn on the phone's hotspot.",
+  "share.wifi_steps": "On another device on the same network scan the QR code or open the address in a browser (on TV — in Downloader). Keep this window open while it downloads. No router: turn on the hotspot on the phone and connect the other device to it."
 }

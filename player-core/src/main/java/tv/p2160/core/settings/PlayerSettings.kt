@@ -63,6 +63,11 @@ data class Settings(
     val backgroundAudio: Boolean = true,
     /** При нажатии «Домой» во время видео — окно «картинка в картинке» (если устройство умеет). */
     val pictureInPicture: Boolean = true,
+    /**
+     * Задержка звука относительно картинки, мс: > 0 — звук позже, < 0 — раньше (Bluetooth-наушники
+     * и саундбары обычно отстают — ставят отрицательное значение). Общая для всех файлов: зависит от устройства вывода.
+     */
+    val audioDelayMs: Int = 0,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -135,6 +140,7 @@ class PlayerSettings private constructor(context: Context) {
             backgroundPlayback = prefs.getBoolean("background_playback", d.backgroundPlayback),
             backgroundAudio = prefs.getBoolean("background_audio", d.backgroundAudio),
             pictureInPicture = prefs.getBoolean("picture_in_picture", d.pictureInPicture),
+            audioDelayMs = prefs.getInt("audio_delay", d.audioDelayMs),
         )
     }
 
@@ -165,6 +171,7 @@ class PlayerSettings private constructor(context: Context) {
             .putBoolean("background_playback", s.backgroundPlayback)
             .putBoolean("background_audio", s.backgroundAudio)
             .putBoolean("picture_in_picture", s.pictureInPicture)
+            .putInt("audio_delay", s.audioDelayMs)
             .apply()
     }
 

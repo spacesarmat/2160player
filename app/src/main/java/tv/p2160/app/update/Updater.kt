@@ -199,7 +199,9 @@ object Updater {
 
     /** APK под первую поддерживаемую ABI устройства, иначе универсальный. */
     fun pickAsset(names: List<String>, abis: List<String>): String? =
-        abis.firstNotNullOfOrNull { abi -> names.firstOrNull { "-$abi-" in it } }
+        // ARM-устройствам — общий ARM-APK: установленный файл потом подойдёт и для «Поделиться» на любой телефон/ТВ.
+        names.firstOrNull { "-arm-" in it }?.takeIf { abis.any { it.startsWith("arm") } }
+            ?: abis.firstNotNullOfOrNull { abi -> names.firstOrNull { "-$abi-" in it } }
             ?: names.firstOrNull { "universal" in it }
 
     /** Сравнение версий вида 1.2.3 (суффиксы вроде -beta игнорируются). */

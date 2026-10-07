@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -495,6 +497,19 @@ fun PlayerScreen(
                 }
             }
 
+            // Таймер сна идёт — небольшая подпись сверху (в PiP не показываем).
+            if ((state.sleepRemainingMs != null || state.sleepAtEnd) && !inPictureInPicture) {
+                Text(
+                    state.sleepRemainingMs?.let { tr("player.sleep_in", formatTime(it)) } ?: tr("player.sleep_at_end"),
+                    color = theme.onSurface.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = if (controlsVisible) 76.dp else 16.dp, end = 24.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(theme.surface.copy(alpha = 0.7f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+
             state.resumedFromMs?.let { from ->
                 if (!inPictureInPicture) {
                     Row(
@@ -550,6 +565,9 @@ fun PlayerScreen(
                                 settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
                                 controller.onNightScheduleChanged()
                             },
+                            onAudioDelay = controller::setAudioDelay,
+                            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
+                            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
                             onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
                             onSpeed = controller::setSpeed,
                             onAutoVideo = controller::autoVideo,
@@ -598,17 +616,9 @@ private fun Controls(
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(state.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val position = if (state.playlistSize > 1) tr("player.playlist_position", state.playlistIndex + 1, state.playlistSize) else null
-                    val secondLine = listOfNotNull(position, state.subtitle).joinToString("  ·  ")
-                    if (secondLine.isNotEmpty()) {
-                        Text(secondLine, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+            // Телефон в портрете: кнопки не помещаются рядом с названием — переносим их во второй ряд (с прокруткой).
+            val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+            val actionButtons: @Composable () -> Unit = {
                 val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
                 val context = LocalContext.current
                 extraActions.forEach { action ->
@@ -623,7 +633,28 @@ private fun Controls(
                 ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
                 ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
+                ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
                 ControlButton(Icons.Default.AspectRatio, tr("player.video"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(state.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val position = if (state.playlistSize > 1) tr("player.playlist_position", state.playlistIndex + 1, state.playlistSize) else null
+                    val secondLine = listOfNotNull(position, state.subtitle).joinToString("  ·  ")
+                    if (secondLine.isNotEmpty()) {
+                        Text(secondLine, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (!narrow) actionButtons()
+            }
+            if (narrow) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { actionButtons() }
             }
 
             Spacer(Modifier.weight(1f))

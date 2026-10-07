@@ -29,6 +29,11 @@ class UpdaterTest {
         assertEquals(names[1], Updater.pickAsset(names, listOf("armeabi-v7a", "armeabi")))
         assertEquals(names[2], Updater.pickAsset(names, listOf("x86_64")))
         assertNull(Updater.pickAsset(listOf("notes.txt"), listOf("x86_64")))
+        // Есть общий ARM-APK — ARM-устройства берут его, x86 — свой.
+        val withArm = names + "2160player-0.2.0-arm-release.apk" + "2160player-0.2.0-x86_64-release.apk"
+        assertEquals("2160player-0.2.0-arm-release.apk", Updater.pickAsset(withArm, listOf("arm64-v8a", "armeabi-v7a")))
+        assertEquals("2160player-0.2.0-arm-release.apk", Updater.pickAsset(withArm, listOf("armeabi-v7a")))
+        assertEquals("2160player-0.2.0-x86_64-release.apk", Updater.pickAsset(withArm, listOf("x86_64")))
     }
 
     @Test

@@ -66,6 +66,7 @@ enum class Panel(val titleKey: String) {
     VIDEO("player.video"),
     CHAPTERS("player.chapters"),
     INFO("player.info"),
+    SLEEP("player.sleep"),
 }
 
 val SPEED_PRESETS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f)
@@ -79,6 +80,12 @@ class PanelActions(
     val onNightMode: (Boolean) -> Unit,
     /** Изменение настроек расписания ночного звука (вкл/выкл, начало, конец в минутах от полуночи). */
     val onNightSchedule: (auto: Boolean, start: Int, end: Int) -> Unit,
+    /** Задержка звука, мс (> 0 — звук позже картинки). */
+    val onAudioDelay: (Int) -> Unit,
+    /** Таймер сна: минуты или null — выключить. */
+    val onSleepTimer: (Int?) -> Unit,
+    /** Таймер сна «в конце серии». */
+    val onSleepAtEnd: () -> Unit,
     /** Сводка по файлу строится по запросу (дорого: опрос кодеков). */
     val report: () -> MediaReport,
     val onSubtitleSize: (Float) -> Unit,
@@ -162,6 +169,16 @@ fun SidePanel(
                             )
                         }
                     }
+                    item(key = "audio-delay") {
+                        Stepper(
+                            label = tr("panel.audio_delay"),
+                            value = tr("panel.ms", state.audioDelayMs),
+                            onMinus = { actions.onAudioDelay(state.audioDelayMs - 50) },
+                            onPlus = { actions.onAudioDelay(state.audioDelayMs + 50) },
+                            onReset = { actions.onAudioDelay(0) },
+                        )
+                    }
+                    item(key = "audio-delay-hint") { Hint(tr("panel.audio_delay_hint")) }
                     if (state.audioTracks.isEmpty()) item { Hint(tr("panel.no_audio")) }
                     items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }) { (i, t) ->
                         PanelRow(
@@ -172,6 +189,25 @@ fun SidePanel(
                             modifier = if (t.selected || i == 0 && state.audioTracks.none { it.selected }) Modifier.focusRequester(focus) else Modifier,
                         )
                     }
+                }
+
+                Panel.SLEEP -> {
+                    val active = state.sleepRemainingMs != null || state.sleepAtEnd
+                    item(key = "sleep-off") {
+                        PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
+                            modifier = if (!active) Modifier.focusRequester(focus) else Modifier)
+                    }
+                    items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }) { minutes ->
+                        PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
+                    }
+                    item(key = "sleep-end") {
+                        PanelRow(tr("panel.sleep_end"), selected = state.sleepAtEnd, onClick = actions.onSleepAtEnd,
+                            modifier = if (state.sleepAtEnd) Modifier.focusRequester(focus) else Modifier)
+                    }
+                    state.sleepRemainingMs?.let { left ->
+                        item(key = "sleep-left") { Hint(tr("panel.sleep_left", formatTime(left))) }
+                    }
+                    item(key = "sleep-hint") { Hint(tr("panel.sleep_hint")) }
                 }
 
                 Panel.SUBTITLES -> {

@@ -46,9 +46,13 @@ android {
     }
 
     // Отдельные APK под архитектуры: FFmpeg занимает ~8 МБ на каждую ABI.
+    // Обычная сборка — APK под каждую архитектуру + universal. С -Pp2160.abi=arm — один APK сразу под
+    // arm64-v8a и armeabi-v7a (~31 МБ): ставится на любой телефон и ТВ, поэтому годится для «Поделиться».
+    val armOnly = findProperty("p2160.abi") == "arm"
+    if (armOnly) defaultConfig.ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
     splits {
         abi {
-            isEnable = true
+            isEnable = !armOnly
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
             isUniversalApk = true
@@ -86,6 +90,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.zxing.core)   // QR-код для «Поделиться по Wi-Fi»
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

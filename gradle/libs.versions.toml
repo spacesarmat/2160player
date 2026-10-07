@@ -9,6 +9,7 @@ lifecycle = "2.11.0"
 coreKtx = "1.19.1"
 coroutines = "1.11.0"
 libtorrent4j = "2.1.0-39"
+zxing = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -32,6 +33,7 @@ media3-session = { module = "androidx.media3:media3-session", version.ref = "med
 nextlib-media3ext = { module = "io.github.anilbeesetti:nextlib-media3ext", version.ref = "nextlib" }
 nextlib-mediainfo = { module = "io.github.anilbeesetti:nextlib-mediainfo", version.ref = "nextlib" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 junit = { module = "junit:junit", version = "4.13.2" }
 kxml2 = { module = "net.sf.kxml:kxml2", version = "2.3.0" }
 smbj = { module = "com.hierynomus:smbj", version = "0.15.0" }

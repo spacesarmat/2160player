@@ -122,5 +122,16 @@
   "info.more": "Details",
   "smart.applied": "As usual: %1$s",
   "smart.subs": "subtitles: %1$s",
-  "smart.no_subs": "no subtitles"
+  "smart.no_subs": "no subtitles",
+  "panel.audio_delay": "Audio delay",
+  "panel.audio_delay_hint": "Minus plays sound earlier than the picture — for lagging Bluetooth headphones or soundbars. Remembered for all files",
+  "panel.ms": "%1$+d ms",
+  "panel.sleep_off": "Off",
+  "panel.sleep_minutes": "In %1$d min",
+  "panel.sleep_end": "At the end of the episode",
+  "panel.sleep_left": "%1$s left",
+  "panel.sleep_hint": "Sound fades out and the player pauses",
+  "player.sleep": "Sleep timer",
+  "player.sleep_in": "Sleep in %1$s",
+  "player.sleep_at_end": "Sleep at the end"
 }

@@ -105,6 +105,12 @@ data class PlayerUiState(
     val liveTv: Boolean = false,
     /** Подпись под названием (для каналов — текущая передача из EPG). */
     val subtitle: String? = null,
+    /** Задержка звука, мс (> 0 — звук позже картинки). */
+    val audioDelayMs: Int = 0,
+    /** Таймер сна: сколько осталось до паузы, мс; null — выключен (или стоит «в конце серии»). */
+    val sleepRemainingMs: Long? = null,
+    /** Таймер сна «в конце серии»: пауза, когда закончится текущий файл. */
+    val sleepAtEnd: Boolean = false,
 )
 
 /**
@@ -112,6 +118,9 @@ data class PlayerUiState(
  * позицию/дорожки/скорость, периодически сохраняет прогресс, управляет субтитрами.
  * Все методы вызываются с главного потока.
  */
+/** Предел задержки звука в обе стороны, мс. */
+const val AUDIO_DELAY_LIMIT_MS = 2_000
+
 @OptIn(UnstableApi::class)
 class PlayerController(
     context: Context,
@@ -128,6 +137,9 @@ class PlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
     private var passthroughRetryAt = 0L
+    /** Таймер сна: момент паузы (SystemClock.elapsedRealtime) или 0 — выключен. */
+    private var sleepAtMs = 0L
+    private var sleepFadeJob: Job? = null
 
     private val built = PlayerFactory.build(appContext, settings.current, request.headers, config)
     val player: ExoPlayer get() = built.player
@@ -224,7 +236,13 @@ class PlayerController(
             if (playbackState == Player.STATE_ENDED) {
                 completed = true
                 saveProgress()
+                if (_state.value.sleepAtEnd) cancelSleepTimer()
             }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // Таймер «в конце серии» сработал: плеер встал на паузу в конце файла.
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && _state.value.sleepAtEnd) cancelSleepTimer()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -264,6 +282,8 @@ class PlayerController(
         player.addListener(listener)
         player.addAnalyticsListener(analytics)
         player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        built.passthrough.audioDelayUs = settings.current.audioDelayMs * 1000L
+        _state.update { it.copy(audioDelayMs = settings.current.audioDelayMs) }
         PlaybackSessions.attach(appContext, this)
         scope.launch { start() }
     }
@@ -665,6 +685,60 @@ class PlayerController(
         if (wanted != built.night.enabled) applyNight(wanted)
     }
 
+    /** Задержка звука, мс (> 0 — звук позже картинки); сохраняется в настройках — общая для всех файлов. */
+    fun setAudioDelay(ms: Int) {
+        val value = ms.coerceIn(-AUDIO_DELAY_LIMIT_MS, AUDIO_DELAY_LIMIT_MS)
+        built.passthrough.audioDelayUs = value * 1000L
+        settings.update { it.copy(audioDelayMs = value) }
+        _state.update { it.copy(audioDelayMs = value) }
+    }
+
+    /**
+     * Таймер сна: через [minutes] минут звук плавно затихает и плеер встаёт на паузу.
+     * null или 0 — выключить.
+     */
+    fun setSleepTimer(minutes: Int?) {
+        cancelSleepTimer()
+        if (minutes == null || minutes <= 0) return
+        sleepAtMs = SystemClock.elapsedRealtime() + minutes * 60_000L
+        _state.update { it.copy(sleepRemainingMs = minutes * 60_000L, sleepAtEnd = false) }
+    }
+
+    /** Таймер сна «в конце серии»: пауза, когда закончится текущий файл (без автоперехода к следующему). */
+    fun setSleepAtEndOfItem() {
+        cancelSleepTimer()
+        player.pauseAtEndOfMediaItems = true
+        _state.update { it.copy(sleepAtEnd = true, sleepRemainingMs = null) }
+    }
+
+    fun cancelSleepTimer() {
+        sleepAtMs = 0
+        sleepFadeJob?.cancel()
+        sleepFadeJob = null
+        player.volume = 1f
+        player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        _state.update { it.copy(sleepRemainingMs = null, sleepAtEnd = false) }
+    }
+
+    /** Раз в полсекунды: обновить остаток таймера; время вышло — 8 секунд затихания и пауза. */
+    private fun tickSleepTimer() {
+        if (sleepAtMs == 0L || sleepFadeJob != null) return
+        val left = sleepAtMs - SystemClock.elapsedRealtime()
+        if (left > 0) {
+            _state.update { it.copy(sleepRemainingMs = left) }
+            return
+        }
+        sleepFadeJob = scope.launch {
+            for (step in 15 downTo 0) {
+                player.volume = step / 16f
+                delay(500)
+            }
+            player.pause()
+            saveProgress()
+            cancelSleepTimer()
+        }
+    }
+
     fun setSubtitleDelay(ms: Long) {
         player.subtitleDelayMilliseconds = ms
         _state.update { it.copy(subtitleDelayMs = ms) }
@@ -852,6 +926,7 @@ class PlayerController(
                 delay(500)
                 refresh()
                 maybeAutoSkip()
+                tickSleepTimer()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()

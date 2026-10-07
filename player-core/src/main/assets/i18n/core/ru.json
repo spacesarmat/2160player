@@ -122,5 +122,16 @@
   "info.more": "Подробнее",
   "smart.applied": "Как обычно: %1$s",
   "smart.subs": "субтитры: %1$s",
-  "smart.no_subs": "без субтитров"
+  "smart.no_subs": "без субтитров",
+  "panel.audio_delay": "Задержка звука",
+  "panel.audio_delay_hint": "Минус — звук раньше картинки: если Bluetooth-наушники или саундбар отстают. Запоминается для всех файлов",
+  "panel.ms": "%1$+d мс",
+  "panel.sleep_off": "Выключен",
+  "panel.sleep_minutes": "Через %1$d мин",
+  "panel.sleep_end": "В конце серии",
+  "panel.sleep_left": "Осталось %1$s",
+  "panel.sleep_hint": "Звук плавно затихнет, плеер встанет на паузу",
+  "player.sleep": "Таймер сна",
+  "player.sleep_in": "Сон через %1$s",
+  "player.sleep_at_end": "Сон в конце серии"
 }

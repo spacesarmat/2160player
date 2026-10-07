@@ -14,11 +14,17 @@ class PassthroughGuard {
 
     /** Выход не смог открыть сжатый поток (AUDIO_TRACK_INIT_FAILED) — passthrough больше не включаем. */
     @Volatile var failed: Boolean = false
+
+    /** Задержка звука, мкс (> 0 — звук позже картинки). См. [GuardedAudioSink.getCurrentPositionUs]. */
+    @Volatile var audioDelayUs: Long = 0
 }
 
 /**
  * Обёртка AudioSink: когда [PassthroughGuard.disabled], сообщает, что сжатые форматы не
  * поддерживаются, — рендерер выбирает декодер (системный или FFmpeg) и отдаёт PCM.
+ * Ещё она сдвигает аудиочасы на [PassthroughGuard.audioDelayUs]: видео синхронизируется по ним,
+ * поэтому сдвиг часов вперёд показывает картинку раньше (звук «позже»), назад — позже (звук «раньше»).
+ * Работает и для PCM, и для passthrough на ресивер.
  */
 @OptIn(UnstableApi::class)
 internal class GuardedAudioSink(sink: AudioSink, private val guard: PassthroughGuard) : ForwardingAudioSink(sink) {
@@ -28,4 +34,10 @@ internal class GuardedAudioSink(sink: AudioSink, private val guard: PassthroughG
 
     override fun getFormatSupport(format: Format): Int =
         if (blocked(format)) AudioSink.SINK_FORMAT_UNSUPPORTED else super.getFormatSupport(format)
+
+    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+        val position = super.getCurrentPositionUs(sourceEnded)
+        if (position == AudioSink.CURRENT_POSITION_NOT_SET) return position
+        return (position + guard.audioDelayUs).coerceAtLeast(0)
+    }
 }

@@ -306,6 +306,11 @@ object Handoff {
                 val from = json.optString("from", "?")
                 HandoffReceiveActivity.show(ctx, json.toString(), from)
             }
+            // «Поделиться приложением» по Wi-Fi: сам APK, без защиты кодом (это приложение, не просмотр).
+            method == "GET" && path.startsWith("/app") -> {
+                serveFile(ctx, Uri.fromFile(java.io.File(ctx.applicationInfo.sourceDir)), headers["range"], out,
+                    type = "application/vnd.android.package-archive", fileName = tv.p2160.app.share.ShareApp.fileName())
+            }
             method == "GET" && path.startsWith("/stream/") -> {
                 val token = path.removePrefix("/stream/").substringBefore('/')
                 val uri = shared[token] ?: return respond(out, 404, "")
@@ -323,7 +328,14 @@ object Handoff {
         return String(body, 0, r)
     }
 
-    private fun serveFile(context: Context, uri: Uri, range: String?, out: OutputStream) {
+    private fun serveFile(
+        context: Context,
+        uri: Uri,
+        range: String?,
+        out: OutputStream,
+        type: String = "application/octet-stream",
+        fileName: String? = null,
+    ) {
         RandomAccessSources.open(context, uri).use { src ->
             val size = src.size
             var start = 0L
@@ -339,7 +351,8 @@ object Handoff {
             val head = buildString {
                 append("HTTP/1.1 $status\r\n")
                 append("Accept-Ranges: bytes\r\n")
-                append("Content-Type: application/octet-stream\r\n")
+                append("Content-Type: $type\r\n")
+                if (fileName != null) append("Content-Disposition: attachment; filename=\"$fileName\"\r\n")
                 append("Content-Length: ${end - start + 1}\r\n")
                 if (m != null) append("Content-Range: bytes $start-$end/$size\r\n")
                 append("Connection: close\r\n\r\n")
@@ -418,6 +431,13 @@ object Handoff {
             isPlaying = json.optBoolean("playing"),
             headers = headers,
         )
+    }
+
+    /** `http://<IPv4>:<порт>` сервера этого устройства или null, если сервер не запущен / нет сети. */
+    fun baseUrl(): String? {
+        val port = server?.localPort ?: return null
+        val ip = localIpv4() ?: return null
+        return "http://$ip:$port"
     }
 
     private fun localIpv4(): String? = runCatching {

@@ -125,6 +125,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.INTRO_START` | `Int`/`Long` (мс) | Начало вступления (по умолчанию 0). Учитывается только вместе с `INTRO_END`. |
 | `tv.p2160.extra.INTRO_END` | `Int`/`Long` (мс) | Конец вступления. |
 | `tv.p2160.extra.CREDITS_START` | `Int`/`Long` (мс) | Начало финальных титров (до конца файла). |
+| `tv.p2160.extra.LIVE` | `Boolean` | Плейлист — телеканалы (`PlaybackRequest.liveTv`): без продолжения с места и истории, «Эфир» вместо полосы перемотки, стрелки вверх/вниз (и CH+/CH−, цифры) переключают каналы по кругу. |
 
 Субтитры, MIME из `Intent.type` и отрезки относятся только к **стартовому** элементу плейлиста.
 
@@ -352,12 +353,14 @@ data class PlaybackRequest(
     val startPositionMs: Long? = null,
     val headers: Map<String, String> = emptyMap(),
     val returnResult: Boolean = false,
+    val liveTv: Boolean = false,
 )
 ```
 
 | Параметр | Описание |
 |---|---|
 | `items` | Плейлист, минимум один элемент (иначе `IllegalArgumentException`). |
+| `liveTv` | Элементы — телеканалы (IPTV). Позиции не сохраняются, вместо полосы перемотки — «Эфир», стрелки вверх/вниз при скрытой панели переключают канал, под названием — текущая передача из `LiveGuide` (`Player2160.setLiveGuide`; по умолчанию — EPG плейлистов `tv.p2160.core.iptv.IptvStore`). |
 | `startIndex` | С какого элемента начать (приводится к допустимому диапазону). |
 | `startPositionMs` | Позиция старта для `startIndex`. `null` — продолжить с сохранённой позиции (если включено `Settings.autoResume` и сохранено > 5 с); `0` — строго с начала. |
 | `headers` | HTTP-заголовки для всех сетевых запросов (видео, субтитры, ISO по HTTP). |

@@ -36,6 +36,8 @@ object IntentApi {
     const val EXTRA_INTRO_START = "tv.p2160.extra.INTRO_START"
     const val EXTRA_INTRO_END = "tv.p2160.extra.INTRO_END"
     const val EXTRA_CREDITS_START = "tv.p2160.extra.CREDITS_START"
+    /** Boolean: плейлист — телеканалы (см. [PlaybackRequest.liveTv]). */
+    const val EXTRA_LIVE = "tv.p2160.extra.LIVE"
 
     /** Результат в формате MX Player. */
     const val RESULT_ACTION = "com.mxtech.intent.result.VIEW"
@@ -85,6 +87,7 @@ object IntentApi {
             startPositionMs = position,
             headers = parseHeaders(intent),
             returnResult = intent.getBooleanExtra(EXTRA_RETURN_RESULT, false),
+            liveTv = intent.getBooleanExtra(EXTRA_LIVE, false),
         )
     }
 
@@ -112,6 +115,7 @@ object IntentApi {
             putExtra(EXTRA_HEADERS, request.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
         }
         putExtra(EXTRA_RETURN_RESULT, request.returnResult)
+        if (request.liveTv) putExtra(EXTRA_LIVE, true)
     }
 
     fun buildResult(result: PlaybackResult): Intent = Intent(RESULT_ACTION).apply {

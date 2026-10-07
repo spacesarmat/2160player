@@ -32,6 +32,7 @@ nextlib-media3ext = { module = "io.github.anilbeesetti:nextlib-media3ext", versi
 nextlib-mediainfo = { module = "io.github.anilbeesetti:nextlib-mediainfo", version.ref = "nextlib" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { module = "junit:junit", version = "4.13.2" }
+kxml2 = { module = "net.sf.kxml:kxml2", version = "2.3.0" }
 smbj = { module = "com.hierynomus:smbj", version = "0.15.0" }
 smbj-rpc = { module = "com.rapid7.client:dcerpc", version = "0.12.13" }
 

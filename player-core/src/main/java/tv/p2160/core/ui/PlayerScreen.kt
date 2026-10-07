@@ -129,6 +129,9 @@ fun PlayerScreen(
     var goToDialog by remember { mutableStateOf(false) }
     // Карточка «Следующая серия»: отменена для текущего элемента плейлиста.
     var nextDismissedFor by remember { mutableIntStateOf(-1) }
+    // Плашка канала после переключения стрелками (IPTV).
+    var zapTick by remember { mutableIntStateOf(0) }
+    var zapVisible by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
     // Когда панель скрыта, фокус держит сам экран — иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
@@ -162,10 +165,26 @@ fun PlayerScreen(
             keyScrubbing = false
         }
     }
+    LaunchedEffect(zapTick) {
+        if (zapTick == 0) return@LaunchedEffect
+        zapVisible = true
+        delay(4_000)
+        zapVisible = false
+    }
+    fun zap(delta: Int) { controller.switchChannel(delta); zapTick++ }
+    // Цифры: в эфире — номер канала в списке, иначе — время.
+    fun commit(value: String) {
+        if (state.liveTv) {
+            val target = value.toIntOrNull()?.minus(1)?.takeIf { it in 0 until state.playlistSize } ?: return
+            if (target != state.playlistIndex) zap(target - state.playlistIndex)
+        } else {
+            commitDigits(value, state.durationMs, controller::seekTo)
+        }
+    }
     LaunchedEffect(digits) {
         if (digits.isEmpty()) return@LaunchedEffect
         delay(1_500)
-        commitDigits(digits, state.durationMs, controller::seekTo)
+        commit(digits)
         digits = ""
     }
     LaunchedEffect(state.resumedFromMs) { if (state.resumedFromMs != null) { delay(7_000); controller.dismissResumeHint() } }
@@ -207,8 +226,8 @@ fun PlayerScreen(
     }
 
     // Отрезок, для которого показываем кнопку «Пропустить» (титры с переходом к следующей серии — отдельно).
-    val nearEnd = state.hasNext && state.durationMs > 60_000 && state.durationMs - state.positionMs in 1..15_000
-    val creditsWithNext = state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
+    val nearEnd = !state.isLive && !state.liveTv && state.hasNext && state.durationMs > 60_000 && state.durationMs - state.positionMs in 1..15_000
+    val creditsWithNext = !state.liveTv && state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
     val showNextCard = creditsWithNext && nextDismissedFor != state.playlistIndex && !inPictureInPicture && settings.autoPlayNext
     val skippable = state.activeSegment?.takeIf { !creditsWithNext }
 
@@ -242,6 +261,8 @@ fun PlayerScreen(
                         Key.MediaRewind -> { seekWithFlash(-stepMs * 3); return@onPreviewKeyEvent true }
                         Key.MediaNext -> { if (state.playlistSize > 1) controller.next() else controller.nextChapter(); return@onPreviewKeyEvent true }
                         Key.MediaPrevious -> { if (state.playlistSize > 1) controller.previous() else controller.previousChapter(); return@onPreviewKeyEvent true }
+                        Key.ChannelUp -> if (state.liveTv) { zap(1); return@onPreviewKeyEvent true }
+                        Key.ChannelDown -> if (state.liveTv) { zap(-1); return@onPreviewKeyEvent true }
                     }
                     if (panel != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
                     // Цифры: одна — проценты, несколько — время.
@@ -249,7 +270,7 @@ fun PlayerScreen(
                     if (digits.isNotEmpty()) {
                         when (e.key) {
                             Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                                commitDigits(digits, state.durationMs, controller::seekTo); digits = ""; return@onPreviewKeyEvent true
+                                commit(digits); digits = ""; return@onPreviewKeyEvent true
                             }
                             Key.Back, Key.Escape, Key.Backspace -> { digits = ""; return@onPreviewKeyEvent true }
                         }
@@ -264,6 +285,8 @@ fun PlayerScreen(
                     }
                     val throttled = repeat > 0 && repeat % 3 != 0
                     // Управление скрыто: стрелки перематывают, OK — пауза (или «Пропустить»), вверх/вниз — показать панель.
+                    // Телеканалы: влево/вправо — панель (перематывать эфир некуда), вверх/вниз — переключение.
+                    if (state.liveTv && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) { show(); return@onPreviewKeyEvent true }
                     when (e.key) {
                         Key.DirectionLeft -> { if (!throttled) keyScrub(-step); true }
                         Key.DirectionRight -> { if (!throttled) keyScrub(step); true }
@@ -272,7 +295,10 @@ fun PlayerScreen(
                             if (seg != null) controller.skip(seg) else { controller.playPause(); show() }
                             true
                         }
-                        Key.DirectionUp, Key.DirectionDown, Key.Menu -> { show(); true }
+                        // Телеканалы: вверх — предыдущий, вниз — следующий.
+                        Key.DirectionUp -> { if (state.liveTv && state.playlistSize > 1) zap(-1) else show(); true }
+                        Key.DirectionDown -> { if (state.liveTv && state.playlistSize > 1) zap(1) else show(); true }
+                        Key.Menu -> { show(); true }
                         else -> false
                     }
                 },
@@ -290,8 +316,10 @@ fun PlayerScreen(
                     },
                     onCenterDoubleTap = controller::playPause,
                     onSeek = { delta -> controller.seekBy(delta); if (controlsVisible) poke() },
-                    onScrubStart = { scrubBase = state.positionMs; scrubTarget = state.positionMs },
-                    onScrub = { fraction ->
+                    onScrubStart = { if (!state.liveTv) { scrubBase = state.positionMs; scrubTarget = state.positionMs } },
+                    onScrub = scrub@{ fraction ->
+                        // Эфир телеканала свайпом не перематываем.
+                        if (state.liveTv) return@scrub
                         // Ширина экрана = 20 % длительности, но не меньше 90 с и не больше 10 мин.
                         val range = (state.durationMs / 5).coerceIn(90_000, 600_000)
                         scrubTarget = (scrubBase + (fraction * range).toLong()).coerceIn(0, state.durationMs.coerceAtLeast(0))
@@ -357,6 +385,16 @@ fun PlayerScreen(
                     SpeedBoostBadge(theme, Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 24.dp))
                 }
                 if (digits.isNotEmpty()) DigitEntryOverlay(digits, theme, Modifier.align(Alignment.Center))
+                if (zapVisible && !controlsVisible && state.liveTv) {
+                    ChannelBanner(
+                        number = state.playlistIndex + 1,
+                        title = state.title,
+                        subtitle = state.subtitle,
+                        theme = theme,
+                        modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(start = 24.dp, top = 24.dp),
+                    )
+                }
 
                 val bottomOffset = if (controlsVisible) 110.dp else 32.dp
                 skippable?.let { seg ->
@@ -534,8 +572,10 @@ private fun Controls(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(state.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (state.playlistSize > 1) {
-                        Text(tr("player.playlist_position", state.playlistIndex + 1, state.playlistSize), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                    val position = if (state.playlistSize > 1) tr("player.playlist_position", state.playlistIndex + 1, state.playlistSize) else null
+                    val secondLine = listOfNotNull(position, state.subtitle).joinToString("  ·  ")
+                    if (secondLine.isNotEmpty()) {
+                        Text(secondLine, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
@@ -584,7 +624,8 @@ private fun Controls(
 
             Spacer(Modifier.weight(1f))
 
-            SeekBar(
+            // Эфир без окна перемотки (или телеканал) — без полосы, только «Эфир».
+            if (!state.isLive || (!state.liveTv && state.durationMs > 0)) SeekBar(
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
                 bufferedMs = state.bufferedMs,
@@ -618,12 +659,46 @@ private fun Controls(
                 if (state.speed != 1f) {
                     Text("${formatSpeed(state.speed)}×  ", color = theme.accent, style = MaterialTheme.typography.bodyMedium)
                 }
-                Text(
-                    if (state.durationMs > 0) "−${formatTime(state.durationMs - state.positionMs)} / ${formatTime(state.durationMs)}" else if (state.isBuffering) "" else tr("player.live"),
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (state.isLive) {
+                    LiveBadge()
+                } else {
+                    Text(
+                        if (state.durationMs > 0) "−${formatTime(state.durationMs - state.positionMs)} / ${formatTime(state.durationMs)}" else if (state.isBuffering) "" else tr("player.live"),
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
+        }
+    }
+}
+
+/** Красная плашка «Эфир». */
+@Composable
+private fun LiveBadge() {
+    Row(
+        Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFD32F2F)).padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
+        Spacer(Modifier.width(6.dp))
+        Text(tr("player.live"), color = Color.White, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** Номер, название канала и текущая передача — после переключения с пульта. */
+@Composable
+private fun ChannelBanner(number: Int, title: String, subtitle: String?, theme: PlayerTheme, modifier: Modifier = Modifier) {
+    Row(
+        modifier.widthIn(max = 560.dp).clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.92f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(number.toString(), color = theme.accent, style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text(title, color = theme.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            subtitle?.let { Text(it, color = theme.muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

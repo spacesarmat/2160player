@@ -33,6 +33,15 @@ class PlayerAction(
     val onClick: (context: Context, nowPlaying: NowPlaying?) -> Unit,
 )
 
+/**
+ * Телегид для эфирных запросов ([PlaybackRequest.liveTv]): подпись под названием канала,
+ * обычно текущая передача из EPG. Вызывается с главного потока примерно раз в 30 с —
+ * должен отвечать быстро (из памяти), null — подписи нет.
+ */
+fun interface LiveGuide {
+    fun describe(entry: MediaEntry, nowMs: Long): String?
+}
+
 /** Глобальные точки расширения плеера. */
 object PlayerExtensions {
     private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
@@ -40,6 +49,9 @@ object PlayerExtensions {
 
     private val _actions = MutableStateFlow<List<PlayerAction>>(emptyList())
     val actions: StateFlow<List<PlayerAction>> = _actions.asStateFlow()
+
+    /** Свой телегид; null — встроенный (каналы из IPTV-плейлистов [tv.p2160.core.iptv.IptvStore]). */
+    @Volatile var liveGuide: LiveGuide? = null
 
     internal fun publish(value: NowPlaying?) {
         _nowPlaying.value = value

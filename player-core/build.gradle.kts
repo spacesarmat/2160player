@@ -69,6 +69,8 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    // XmlPullParser для JVM-тестов разбора XMLTV (на устройстве — android.util.Xml)
+    testImplementation(libs.kxml2)
 }
 
 // Публикация: mavenLocal (./gradlew :player-core:publishReleasePublicationToMavenLocal)

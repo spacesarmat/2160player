@@ -28,6 +28,8 @@ data class MediaEntry(
  * @param startPositionMs позиция старта для [startIndex]; `null` — продолжить с сохранённого места.
  * @param headers HTTP-заголовки для сетевых источников (User-Agent, Referer, Authorization…).
  * @param returnResult вернуть вызывающему приложению позицию остановки (см. [PlaybackResult]).
+ * @param liveTv элементы — телеканалы (IPTV): без продолжения с места и истории, «Эфир» вместо
+ *   полосы перемотки, переключение каналов стрелками вверх/вниз, текущая передача из [LiveGuide].
  */
 data class PlaybackRequest(
     val items: List<MediaEntry>,
@@ -35,6 +37,7 @@ data class PlaybackRequest(
     val startPositionMs: Long? = null,
     val headers: Map<String, String> = emptyMap(),
     val returnResult: Boolean = false,
+    val liveTv: Boolean = false,
 ) {
     init {
         require(items.isNotEmpty()) { "PlaybackRequest requires at least one item" }

@@ -49,6 +49,11 @@ object Player2160 {
 
     fun unregisterAction(id: String) = PlayerExtensions.unregister(id)
 
+    /** Свой телегид для эфирных запросов ([PlaybackRequest.liveTv]); null — встроенный IPTV. */
+    fun setLiveGuide(guide: LiveGuide?) {
+        PlayerExtensions.liveGuide = guide
+    }
+
     class PlayContract : ActivityResultContract<PlaybackRequest, PlaybackResult?>() {
         override fun createIntent(context: Context, input: PlaybackRequest): Intent =
             intent(context, input.copy(returnResult = true))

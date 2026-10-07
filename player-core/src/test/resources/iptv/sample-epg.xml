@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="test">
+  <channel id="Russia24.ru">
+    <display-name lang="ru">Россия 24</display-name>
+    <display-name lang="en">Russia-24</display-name>
+    <icon src="http://logo/r24.png"/>
+  </channel>
+  <channel id="2x2.ru">
+    <display-name>2x2</display-name>
+  </channel>
+  <channel id="perviy">
+    <display-name>Первый канал</display-name>
+  </channel>
+  <channel id="unused">
+    <display-name>Never Used</display-name>
+  </channel>
+  <programme start="20261007090000 +0300" stop="20261007100000 +0300" channel="Russia24.ru">
+    <title lang="ru">Вести</title>
+    <desc lang="ru">Новости &amp; погода</desc>
+  </programme>
+  <programme start="20261007100000 +0300" stop="20261007110000 +0300" channel="Russia24.ru">
+    <title lang="ru">Вести. Экономика</title>
+    <sub-title>Выпуск 2</sub-title>
+  </programme>
+  <programme start="20261007110000 +0300" stop="20261007120000 +0300" channel="Russia24.ru">
+    <title>Вести. Спорт</title>
+  </programme>
+  <programme start="20261001060000 +0000" stop="20261001070000 +0000" channel="Russia24.ru">
+    <title>Old news</title>
+  </programme>
+  <programme start="20261020060000 +0000" stop="20261020070000 +0000" channel="Russia24.ru">
+    <title>Far future</title>
+  </programme>
+  <programme start="20261007063000" channel="2x2.ru">
+    <title>Cartoon A</title>
+  </programme>
+  <programme start="20261007073000" channel="2x2.ru">
+    <title>Cartoon B</title>
+  </programme>
+  <programme start="20261007060000 +0000" stop="20261007080000 +0000" channel="perviy">
+    <title>Доброе утро</title>
+  </programme>
+  <programme start="20261007060000 +0000" stop="20261007080000 +0000" channel="unused">
+    <title>Nobody watches</title>
+  </programme>
+  <programme start="20261007060000 +0000" stop="20261007080000 +0000" channel="Russia24.ru">
+    <title></title>
+  </programme>
+</tv>

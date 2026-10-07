@@ -42,6 +42,7 @@ import tv.p2160.core.intro.IntroDetector
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.NowPlaying
 import tv.p2160.core.api.PlayerExtensions
+import tv.p2160.core.iptv.IptvStore
 import tv.p2160.core.api.SegmentType
 import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.settings.SkipMode
@@ -96,6 +97,12 @@ data class PlayerUiState(
     val smartHint: String? = null,
     /** Важные предупреждения о воспроизведении (показываются при старте). */
     val warnings: List<String> = emptyList(),
+    /** Прямой эфир: длительность неизвестна или поток помечен как live. */
+    val isLive: Boolean = false,
+    /** Запрос — телеканалы ([PlaybackRequest.liveTv]): стрелки вверх/вниз переключают каналы. */
+    val liveTv: Boolean = false,
+    /** Подпись под названием (для каналов — текущая передача из EPG). */
+    val subtitle: String? = null,
 )
 
 /**
@@ -121,7 +128,7 @@ class PlayerController(
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
 
-    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, nightMode = settings.current.nightModeAt(NightSchedule.nowMinute())))
+    private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, liveTv = request.liveTv, nightMode = settings.current.nightModeAt(NightSchedule.nowMinute())))
     /** Пользователь переключил ночной звук вручную в этом просмотре — расписание больше не вмешивается. */
     private var nightOverridden = false
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
@@ -254,10 +261,12 @@ class PlayerController(
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
     private fun onItemStarted(index: Int, explicitStart: Long?) {
         completed = false
-        val entry = keyAt(index)?.let(store::get)
+        // Телеканалы: ни продолжения с места, ни сохранённых дорожек — сразу эфир.
+        val entry = if (request.liveTv) null else keyAt(index)?.let(store::get)
         val s = settings.current
 
         val resumeFrom = when {
+            request.liveTv -> null
             explicitStart != null -> explicitStart.takeIf { it > 0 }
             !s.autoResume || entry == null || entry.finished -> null
             entry.positionMs > 5_000 -> entry.positionMs
@@ -265,7 +274,7 @@ class PlayerController(
         }
         resumeFrom?.let { player.seekTo(index, it) }
 
-        val speed = entry?.speed?.takeIf { it != 1f } ?: s.defaultSpeed
+        val speed = if (request.liveTv) 1f else entry?.speed?.takeIf { it != 1f } ?: s.defaultSpeed
         player.playbackParameters = PlaybackParameters(speed)
         player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
 
@@ -275,9 +284,18 @@ class PlayerController(
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
-        _state.update { it.copy(resumedFromMs = resumeFrom, error = null, title = titleAt(index)) }
+        _state.update { it.copy(resumedFromMs = resumeFrom, error = null, title = titleAt(index), subtitle = liveSubtitle(index)) }
         applyPendingSelections(player.currentTracks)
-        loadChaptersAndSegments(index)
+        // Главы и поиск вступления в эфире бессмысленны (и FFmpeg повис бы на бесконечном потоке).
+        if (!request.liveTv) loadChaptersAndSegments(index)
+    }
+
+    /** Текущая передача канала из телегида (свой [PlayerExtensions.liveGuide] или встроенный IPTV). */
+    private fun liveSubtitle(index: Int): String? {
+        if (!request.liveTv) return null
+        val entry = request.items.getOrNull(index) ?: return null
+        val guide = PlayerExtensions.liveGuide ?: IptvStore.get(appContext)
+        return runCatching { guide.describe(entry, System.currentTimeMillis()) }.getOrNull()?.ifBlank { null }
     }
 
     private fun loadChaptersAndSegments(index: Int) {
@@ -483,11 +501,27 @@ class PlayerController(
 
     fun seekBy(deltaMs: Long) = seekTo(player.currentPosition + deltaMs)
 
-    fun next() { if (player.hasNextMediaItem()) { saveProgress(); player.seekToNextMediaItem() } }
+    fun next() {
+        if (request.liveTv) return switchChannel(1)
+        if (player.hasNextMediaItem()) { saveProgress(); player.seekToNextMediaItem() }
+    }
 
     fun previous() {
+        if (request.liveTv) return switchChannel(-1)
         if (player.currentPosition > 5_000 || !player.hasPreviousMediaItem()) player.seekTo(0)
         else { saveProgress(); player.seekToPreviousMediaItem() }
+    }
+
+    /** Переключение канала по кругу (для [PlaybackRequest.liveTv]); после ошибки поток открывается заново. */
+    fun switchChannel(delta: Int) {
+        val count = player.mediaItemCount
+        if (count < 2) return
+        val target = Math.floorMod(player.currentMediaItemIndex + delta, count)
+        player.seekToDefaultPosition(target)
+        if (player.playbackState == Player.STATE_IDLE || player.playerError != null) player.prepare()
+        player.playWhenReady = true
+        _state.update { it.copy(error = null) }
+        refresh()
     }
 
     fun setSpeed(speed: Float) {
@@ -660,6 +694,8 @@ class PlayerController(
 
     /** Кадр для превью при перемотке; null — источник не позволяет. */
     suspend fun frameAt(positionMs: Long): Bitmap? {
+        // Кадр из бесконечного эфира FFmpeg не достанет — только зря нагрузит сеть.
+        if (request.liveTv) return null
         val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri ?: return null
         return runCatching { analyzer.frameAt(uri, positionMs) }.getOrNull()
     }
@@ -722,7 +758,7 @@ class PlayerController(
     }
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
-        if (player.isCurrentMediaItemLive) return
+        if (request.liveTv || player.isCurrentMediaItemLive) return
         val key = keyAt(index) ?: return
         val entry = request.items.getOrNull(index) ?: return
         val tracks = player.currentTracks
@@ -774,6 +810,11 @@ class PlayerController(
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()
+                // Подпись обновляем раз в 30 с; пока телегид грузится — чаще.
+                if (request.liveTv && ticks % (if (_state.value.subtitle == null) 10 else 60) == 0) {
+                    val subtitle = liveSubtitle(player.currentMediaItemIndex)
+                    if (subtitle != _state.value.subtitle) _state.update { it.copy(subtitle = subtitle) }
+                }
                 // Через пару секунд после старта, когда декодеры выбраны, — показываем важные предупреждения.
                 if (warningsShownFor != player.currentMediaItemIndex && player.isPlaying && player.currentPosition > 2_000) {
                     warningsShownFor = player.currentMediaItemIndex
@@ -831,8 +872,9 @@ class PlayerController(
                 subtitleDelayMs = p.subtitleDelayMilliseconds,
                 hasVideo = tracks.isEmpty || tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, true),
                 videoAspect = if (video.height > 0) video.width * video.pixelWidthHeightRatio / video.height else 0f,
-                hasNext = p.hasNextMediaItem(),
-                hasPrevious = p.hasPreviousMediaItem(),
+                hasNext = if (request.liveTv) p.mediaItemCount > 1 else p.hasNextMediaItem(),
+                hasPrevious = if (request.liveTv) p.mediaItemCount > 1 else p.hasPreviousMediaItem(),
+                isLive = p.isCurrentMediaItemLive || (request.liveTv && duration <= 0),
                 playlistIndex = p.currentMediaItemIndex,
                 title = titleAt(p.currentMediaItemIndex),
                 chapters = chapters,

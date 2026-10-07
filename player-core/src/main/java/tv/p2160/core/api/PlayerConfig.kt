@@ -8,9 +8,10 @@ package tv.p2160.core.api
 data class PlayerConfig(
     /**
      * Предел буфера в байтах. 4K-ремукс с большим битрейтом без предела съедает ~130 МБ —
-     * на слабых ТВ и приставках это нехватка памяти. [UNLIMITED] — правило Media3 по умолчанию.
+     * на слабых ТВ и приставках это нехватка памяти. [AUTO] (по умолчанию) — по памяти устройства
+     * ([DeviceProfile.bufferTargetBytes]: 24–128 МБ), [UNLIMITED] — правило Media3.
      */
-    val bufferTargetBytes: Int = 64 * 1024 * 1024,
+    val bufferTargetBytes: Int = AUTO,
     /** Сколько держать в буфере, мс: минимум и максимум (пока позволяет [bufferTargetBytes]). */
     val minBufferMs: Int = 50_000,
     val maxBufferMs: Int = 50_000,
@@ -40,5 +41,7 @@ data class PlayerConfig(
     companion object {
         /** Без предела буфера в байтах — правило Media3. */
         const val UNLIMITED = -1
+        /** Предел буфера по памяти устройства ([DeviceProfile.bufferTargetBytes]). */
+        const val AUTO = -2
     }
 }

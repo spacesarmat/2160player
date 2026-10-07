@@ -112,6 +112,8 @@ data class PlayerUiState(
     val sleepRemainingMs: Long? = null,
     /** Таймер сна «в конце серии»: пауза, когда закончится текущий файл. */
     val sleepAtEnd: Boolean = false,
+    /** Частота кадров текущего видео (для подбора частоты экрана); -1 — неизвестна. */
+    val videoFrameRate: Float = -1f,
 )
 
 /**
@@ -121,6 +123,9 @@ data class PlayerUiState(
  */
 /** Предел задержки звука в обе стороны, мс. */
 const val AUDIO_DELAY_LIMIT_MS = 2_000
+
+/** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
+private const val PASSTHROUGH_RETRIES = 3
 
 @OptIn(UnstableApi::class)
 class PlayerController(
@@ -138,6 +143,24 @@ class PlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
     private var passthroughRetryAt = 0L
+    private var passthroughRetries = 0
+    /** Смена режима дисплея (частоту под видео переключает система или мы) — сбои звука после неё временные. */
+    private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+        override fun onDisplayChanged(displayId: Int) {
+            // Событие приходит и от яркости/состояния — интересует только смена режима (частоты, разрешения).
+            val mode = displayMode(displayId)
+            if (mode != lastDisplayMode) {
+                lastDisplayMode = mode
+                onDisplaySwitching()
+            }
+        }
+    }
+    private var lastDisplayMode = displayMode(android.view.Display.DEFAULT_DISPLAY)
+
+    private fun displayMode(displayId: Int): Int =
+        appContext.getSystemService(android.hardware.display.DisplayManager::class.java)?.getDisplay(displayId)?.mode?.modeId ?: -1
     /** Таймер сна: момент паузы (SystemClock.elapsedRealtime) или 0 — выключен. */
     private var sleepAtMs = 0L
     private var sleepFadeJob: Job? = null
@@ -206,6 +229,33 @@ class PlayerController(
     private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
 
+    private val statsCollector = StatsCollector(
+        built.player,
+        built.allocator,
+        built.bufferTargetBytes.toLong(),
+        decoders = { decoders },
+        tunneling = { built.player.trackSelectionParameters.let { it is androidx.media3.exoplayer.trackselection.DefaultTrackSelector.Parameters && it.tunnelingEnabled } },
+        frameRate = { _state.value.videoFrameRate },
+    )
+    /** Частота кадров, вычисленная по меткам кадров (если в заголовке её нет). */
+    @Volatile private var detectedFrameRate = -1f
+    private val frameRateProbe = FrameRateProbe { fps ->
+        detectedFrameRate = fps
+        scope.launch { refresh() }
+    }
+    /** Живая статистика для слоя поверх видео; null — сбор выключен ([setStatsEnabled]). */
+    val stats: StateFlow<PlaybackStats?> get() = statsCollector.stats
+
+    /** UI переключает режим экрана (частота под видео): ближайшие 12 с сбои открытия звука временные. */
+    fun onDisplaySwitching() {
+        built.passthrough.displaySwitchUntil = SystemClock.elapsedRealtime() + 12_000
+    }
+
+    /** Включить/выключить сбор статистики (опрос памяти раз в 2 с — только пока слой виден). */
+    fun setStatsEnabled(enabled: Boolean) {
+        if (enabled) statsCollector.start(scope) else statsCollector.stop()
+    }
+
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) = refresh()
 
@@ -248,16 +298,20 @@ class PlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            // Выход не открыл сжатый поток (AC3/DTS «на ресивер»). Сразу после переключения звука это бывает
-            // временно (Realtek: прежний выход ещё не закрыт, createTrack -38) — через секунду пробуем ещё раз.
-            // Не вышло и при повторе — ТВ действительно не умеет: декодируем сами, без ошибки.
+            // Выход не открыл сжатый поток (AC3/DTS «на ресивер»). Сразу после переключения звука или смены
+            // режима экрана (HDMI заново согласует звук с ресивером) это бывает временно: Realtek отвечает
+            // createTrack -38 несколько секунд. Повторяем до 3 раз через 2 с (и без счёта, пока меняется режим
+            // экрана). Не вышло — ТВ действительно не умеет: декодируем сами, без ошибки.
             if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED && !built.passthrough.disabled) {
                 val now = SystemClock.elapsedRealtime()
-                if (now - passthroughRetryAt > 10_000) {
+                if (now - passthroughRetryAt > 30_000) passthroughRetries = 0
+                val switching = now < built.passthrough.displaySwitchUntil
+                if (switching || passthroughRetries < PASSTHROUGH_RETRIES) {
+                    if (!switching) passthroughRetries++
                     passthroughRetryAt = now
                     val play = player.playWhenReady
                     scope.launch {
-                        delay(1000)
+                        delay(2_000)
                         player.prepare()
                         player.playWhenReady = play
                     }
@@ -266,6 +320,20 @@ class PlayerController(
                 built.passthrough.disabled = true
                 built.passthrough.failed = true
                 player.prepare()
+                player.play()
+                return
+            }
+            // Туннельный режим на этом устройстве не работает (ошибка декодера/вывода видео) — выключаем насовсем и продолжаем.
+            val params = player.trackSelectionParameters
+            if (params is androidx.media3.exoplayer.trackselection.DefaultTrackSelector.Parameters && params.tunnelingEnabled &&
+                error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED
+            ) {
+                player.trackSelectionParameters = params.buildUpon().setTunnelingEnabled(false).build()
+                settings.update { it.copy(tunneling = false) }
+                _state.update { it.copy(warnings = it.warnings + i18n.current["player.tunneling_off"]) }
+                val position = player.currentPosition
+                player.prepare()
+                player.seekTo(position)
                 player.play()
                 return
             }
@@ -283,6 +351,11 @@ class PlayerController(
     init {
         player.addListener(listener)
         player.addAnalyticsListener(analytics)
+        player.addAnalyticsListener(statsCollector.analytics)
+        player.addAudioOffloadListener(statsCollector.offloadListener)
+        player.setVideoFrameMetadataListener(frameRateProbe)
+        appContext.getSystemService(android.hardware.display.DisplayManager::class.java)
+            ?.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
         player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
         built.passthrough.audioDelayUs = settings.current.audioDelayMs * 1000L
         _state.update { it.copy(audioDelayMs = settings.current.audioDelayMs) }
@@ -313,6 +386,8 @@ class PlayerController(
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
     private fun onItemStarted(index: Int, explicitStart: Long?) {
         completed = false
+        detectedFrameRate = -1f
+        frameRateProbe.reset()
         // Телеканалы: ни продолжения с места, ни сохранённых дорожек — сразу эфир.
         val entry = if (request.liveTv || !config.restoreFromHistory) null else keyAt(index)?.let(store::get)
         val s = settings.current
@@ -662,6 +737,10 @@ class PlayerController(
 
     private fun applyNight(enabled: Boolean) {
         built.night.enabled = enabled
+        // В offload обработка звука не работает — на время ночного звука offload выключаем.
+        val offload = settings.current.audioOffload && !enabled
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setAudioOffloadPreferences(offloadPreferences(offload)).build()
         var reinit = false
         // Обход декодера (passthrough) следует за ночным звуком в обе стороны:
         // включили — декодируем, чтобы обработка заработала; выключили — снова отдаём ресиверу многоканал.
@@ -931,6 +1010,8 @@ class PlayerController(
         analyzeJob?.cancel()
         introJob?.cancel()
         coverJob?.cancel()
+        statsCollector.stop()
+        appContext.getSystemService(android.hardware.display.DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         scope.cancel()
         analyzer.release()
         discs.values.forEach(DiscSessions::close)
@@ -1021,6 +1102,7 @@ class PlayerController(
                 chapterIndex = chapters.indexOfLast { ch -> ch.startMs <= position },
                 segments = segments,
                 activeSegment = if (skipMode == SkipMode.OFF) null else segments.firstOrNull { s -> s.contains(position, duration) },
+                videoFrameRate = p.videoFormat?.frameRate?.takeIf { f -> f > 0f } ?: detectedFrameRate,
             )
         }
     }

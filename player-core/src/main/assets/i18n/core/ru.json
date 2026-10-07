@@ -133,5 +133,18 @@
   "panel.sleep_hint": "Звук плавно затихнет, плеер встанет на паузу",
   "player.sleep": "Таймер сна",
   "player.sleep_in": "Сон через %1$s",
-  "player.sleep_at_end": "Сон в конце серии"
+  "player.sleep_at_end": "Сон в конце серии",
+  "panel.stats_overlay": "Статистика поверх видео",
+  "panel.stats_overlay_hint": "Декодеры, кадры, буфер, сеть, процессор и память",
+  "stats.video": "Видео",
+  "stats.frames": "Кадры",
+  "stats.dropped": "пропущено",
+  "stats.audio": "Звук",
+  "stats.buffer": "Буфер",
+  "stats.network": "Сеть",
+  "stats.display": "Экран",
+  "stats.tunneling": "туннель",
+  "stats.hardware": "аппаратно",
+  "stats.software": "программно",
+  "player.tunneling_off": "Туннельный режим на этом устройстве не работает — выключен."
 }

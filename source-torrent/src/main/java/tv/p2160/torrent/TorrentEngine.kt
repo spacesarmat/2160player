@@ -64,7 +64,7 @@ class TorrentEngine private constructor(context: Context) {
     /** Согласие смотреть торренты по мобильному интернету в режиме [NetworkMode.WIFI_ONLY] (до возврата на Wi-Fi). */
     @Volatile private var mobileAllowed = false
 
-    private val session: TorrentSession = TorrentSession(settings.state.value.sessionConfig(monitor.state.value.metered), object : TorrentSession.Callbacks {
+    private val session: TorrentSession = TorrentSession(settings.state.value.sessionConfig(monitor.state.value.metered).copy(lowMemory = settings.lowMemory), object : TorrentSession.Callbacks {
         override fun onMetadata(id: String, torrent: ByteArray?) {
             torrent?.let { runCatching { store.torrentFile(id).writeBytes(it) } }
             val files = session.files(id).orEmpty()
@@ -91,7 +91,7 @@ class TorrentEngine private constructor(context: Context) {
         // Новые лимиты применяем к работающей сессии.
         scope.launch {
             settings.state.drop(1).collect { prefs ->
-                runCatching { session.applyConfig(prefs.sessionConfig(device.value.metered)) }
+                runCatching { session.applyConfig(prefs.sessionConfig(device.value.metered).copy(lowMemory = settings.lowMemory)) }
                 runCatching { applyRules() }
                 cleanup()
             }
@@ -100,7 +100,7 @@ class TorrentEngine private constructor(context: Context) {
         scope.launch {
             device.drop(1).collect { state ->
                 if (!state.metered) mobileAllowed = false
-                runCatching { session.applyConfig(settings.state.value.sessionConfig(state.metered)) }
+                runCatching { session.applyConfig(settings.state.value.sessionConfig(state.metered).copy(lowMemory = settings.lowMemory)) }
                 runCatching { applyRules() }
                 refresh()
             }

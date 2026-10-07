@@ -181,7 +181,7 @@ object MediaReporter {
     }.getOrDefault(false)
 
     /** Программные декодеры: FFmpeg (nextlib) и системные c2.android/OMX.google. */
-    private fun isSoftware(name: String): Boolean {
+    fun isSoftware(name: String): Boolean {
         val n = name.lowercase()
         return "ffmpeg" in n || n.startsWith("c2.android.") || n.startsWith("omx.google.") || n.startsWith("c2.google.")
     }

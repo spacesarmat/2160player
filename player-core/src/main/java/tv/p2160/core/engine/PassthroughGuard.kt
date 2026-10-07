@@ -17,6 +17,12 @@ class PassthroughGuard {
 
     /** Задержка звука, мкс (> 0 — звук позже картинки). См. [GuardedAudioSink.getCurrentPositionUs]. */
     @Volatile var audioDelayUs: Long = 0
+
+    /**
+     * До этого момента (SystemClock.elapsedRealtime) идёт смена режима экрана: HDMI заново согласует звук,
+     * и ошибка открытия выхода временная — не повод навсегда уходить с передачи на ресивер.
+     */
+    @Volatile var displaySwitchUntil: Long = 0
 }
 
 /**

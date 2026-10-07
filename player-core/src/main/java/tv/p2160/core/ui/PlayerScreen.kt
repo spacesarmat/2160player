@@ -313,6 +313,15 @@ fun PlayerScreen(
                 },
         ) {
             VideoSurface(controller, settings.subtitleStyle, resizeMode, controlsVisible && !inPictureInPicture)
+            // Частота экрана под частоту кадров (ТВ).
+            MatchDisplayFrameRate(controller, settings.frameRateMatching && state.hasVideo, state.videoFrameRate)
+            // Статистика поверх видео: собирается, только пока слой включён и виден.
+            val showStats = settings.statsOverlay && !inPictureInPicture
+            LaunchedEffect(showStats) { controller.setStatsEnabled(showStats) }
+            val stats by controller.stats.collectAsStateWithLifecycle()
+            stats?.takeIf { showStats }?.let {
+                StatsOverlay(it, Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = if (controlsVisible) 88.dp else 16.dp))
+            }
             if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle)
 
             // Слой жестов: тап — показать/скрыть, двойной (и более) тап по краям — накопительная перемотка.
@@ -577,6 +586,7 @@ fun PlayerScreen(
                             onMarkIntroEnd = controller::markIntroEnd,
                             onMarkCredits = controller::markCreditsStart,
                             onClearMarks = controller::clearMarks,
+                            onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
                         ),
                     )
                 }

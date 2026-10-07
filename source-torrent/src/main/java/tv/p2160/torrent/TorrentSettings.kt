@@ -65,7 +65,7 @@ data class TorrentPrefs(
     companion object {
         val CACHE_LIMITS = listOf(5, 10, 20, 50, 100, 0)
         val MAX_AGE_DAYS = listOf(1, 3, 7, 14, 30)
-        val CONNECTIONS = listOf(50, 100, 200, 400)
+        val CONNECTIONS = listOf(50, 80, 100, 200, 400)
         val UPLOAD_LIMITS = listOf(0, 100, 500, 1024, 5 * 1024)
         val MOBILE_DOWNLOAD_LIMITS = listOf(0, 512, 1024, 2 * 1024, 5 * 1024)
         /** Отдача по сети с оплатой трафика, байт/с. */
@@ -79,8 +79,11 @@ class TorrentSettings internal constructor(context: Context) {
     private val _state = MutableStateFlow(load())
     val state: StateFlow<TorrentPrefs> = _state.asStateFlow()
 
+    /** Слабое устройство: по умолчанию меньше соединений (каждое — буферы в памяти). */
+    val lowMemory: Boolean = tv.p2160.core.api.DeviceProfile.lowMemory(context)
+
     private fun load(): TorrentPrefs {
-        val d = TorrentPrefs()
+        val d = TorrentPrefs(maxConnections = if (lowMemory) 80 else 200)
         return TorrentPrefs(
             cacheLimitGb = prefs.getInt("cache_limit_gb", d.cacheLimitGb),
             keepFiles = prefs.getBoolean("keep_files", d.keepFiles),

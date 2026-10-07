@@ -10,6 +10,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.upstream.DefaultAllocator
+import tv.p2160.core.api.DeviceProfile
 import tv.p2160.core.api.PlayerConfig
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -32,6 +34,10 @@ internal class BuiltPlayer(
     val secondarySubtitles: SecondarySubtitles,
     val night: NightAudioProcessor,
     val passthrough: PassthroughGuard,
+    /** Память буфера (для статистики: сколько занято). */
+    val allocator: DefaultAllocator,
+    /** Итоговый предел буфера, байт (0 — без предела). */
+    val bufferTargetBytes: Int,
 ) {
     fun release() {
         decoderManager.detach()
@@ -77,6 +83,10 @@ internal object PlayerFactory {
                     .setExceedRendererCapabilitiesIfNecessary(true)
                     .setExceedAudioConstraintsIfNecessary(true)
                     .setExceedVideoConstraintsIfNecessary(true)
+                    // Туннельный режим (ТВ): кадры идут прямо в дисплей, синхронизацию делает железо.
+                    .setTunnelingEnabled(settings.tunneling)
+                    // Аудио offload для звука без видео (музыка, видео в фоне); ночной звук требует обработки — тогда нет.
+                    .setAudioOffloadPreferences(offloadPreferences(settings.audioOffload && !nightNow))
                     .build()
             )
         }
@@ -103,8 +113,15 @@ internal object PlayerFactory {
         val m2tsExtractors = M2tsExtractorsFactory(fallback = extractors, hintsForUri = DiscMediaSourceFactory::hintsFor)
 
         // Предел буфера: без него 4K-ремукс держит ~130 МБ, и слабые ТВ падают от нехватки памяти.
+        // По умолчанию — по памяти устройства (24–128 МБ).
+        val bufferBytes = when (config.bufferTargetBytes) {
+            PlayerConfig.AUTO -> DeviceProfile.bufferTargetBytes(context)
+            else -> config.bufferTargetBytes.coerceAtLeast(0)
+        }
+        val allocator = DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE)
         val loadControl = DefaultLoadControl.Builder()
-            .setTargetBufferBytes(config.bufferTargetBytes.takeIf { it > 0 } ?: C.LENGTH_UNSET)
+            .setAllocator(allocator)
+            .setTargetBufferBytes(bufferBytes.takeIf { it > 0 } ?: C.LENGTH_UNSET)
             .setBufferDurationsMs(config.minBufferMs, config.maxBufferMs, config.bufferForPlaybackMs, config.bufferForPlaybackAfterRebufferMs)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
@@ -123,9 +140,11 @@ internal object PlayerFactory {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(settings.seekStepSeconds * 1000L)
             .setSeekForwardIncrementMs(settings.seekStepSeconds * 1000L)
+            // Цикл воспроизведения просыпается, только когда рендерерам есть что делать, — меньше пробуждений процессора.
+            .experimentalSetDynamicSchedulingEnabled(true)
             .build()
 
         decoderManager.attach(player)
-        return BuiltPlayer(player, decoderManager, secondarySubtitles, night, passthrough)
+        return BuiltPlayer(player, decoderManager, secondarySubtitles, night, passthrough, allocator, bufferBytes)
     }
 }

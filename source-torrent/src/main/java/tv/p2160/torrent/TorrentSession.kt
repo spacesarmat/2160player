@@ -61,6 +61,8 @@ data class SessionConfig(
      */
     val posixDiskIo: Boolean = false,
     val userAgent: String = "2160Player/0.1 libtorrent/2.0",
+    /** Слабое устройство (мало памяти): короче списки пиров и меньше одновременных загрузок. */
+    val lowMemory: Boolean = false,
     /** Публичные трекеры, добавляемые к magnet-ссылкам (ускоряют получение метаданных). */
     val extraTrackers: List<String> = DEFAULT_TRACKERS,
 ) {
@@ -183,8 +185,13 @@ class TorrentSession(
         connectionsLimit(c.maxConnections.coerceAtLeast(10))
         uploadRateLimit(c.uploadLimit.coerceAtLeast(0))
         downloadRateLimit(c.downloadLimit.coerceAtLeast(0))
-        activeDownloads(8)
-        activeSeeds(4)
+        activeDownloads(if (c.lowMemory) 3 else 8)
+        activeSeeds(if (c.lowMemory) 2 else 4)
+        if (c.lowMemory) {
+            // Каждый известный пир — память; libtorrent по умолчанию помнит до 3000 на торрент.
+            setInteger(settings_pack.int_types.max_peerlist_size.swigValue(), 800)
+            setInteger(settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
+        }
         // Для потока важнее быстро отказаться от медленного пира, чем ждать его.
         setInteger(settings_pack.int_types.piece_timeout.swigValue(), 10)
         setInteger(settings_pack.int_types.request_timeout.swigValue(), 20)

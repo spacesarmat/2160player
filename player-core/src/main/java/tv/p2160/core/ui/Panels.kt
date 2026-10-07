@@ -97,6 +97,8 @@ class PanelActions(
     val onMarkIntroEnd: () -> Unit,
     val onMarkCredits: () -> Unit,
     val onClearMarks: () -> Unit,
+    /** Слой «Статистика» поверх видео. */
+    val onStatsOverlay: (Boolean) -> Unit = {},
 )
 
 /** Боковая панель справа: на ТВ удобна для D-pad, на телефоне не перекрывает всё видео. */
@@ -290,6 +292,15 @@ fun SidePanel(
 
                 Panel.INFO -> {
                     val report = actions.report()
+                    item(key = "stats") {
+                        PanelRow(
+                            text = tr("panel.stats_overlay"),
+                            secondary = tr("panel.stats_overlay_hint"),
+                            selected = settings.statsOverlay,
+                            onClick = { actions.onStatsOverlay(!settings.statsOverlay) },
+                            modifier = Modifier.focusRequester(focus),
+                        )
+                    }
                     if (report.warnings.isNotEmpty()) {
                         item(key = "warn") {
                             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -302,7 +313,7 @@ fun SidePanel(
                     report.sections.forEachIndexed { si, section ->
                         item(key = "sec$si") { Hint(section.title) }
                         items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }) { (ri, row) ->
-                            InfoRow(row, modifier = if (si == 0 && ri == 0) Modifier.focusRequester(focus).focusable() else Modifier.focusable())
+                            InfoRow(row, modifier = Modifier.focusable())
                         }
                     }
                 }

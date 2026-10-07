@@ -133,5 +133,18 @@
   "panel.sleep_hint": "Sound fades out and the player pauses",
   "player.sleep": "Sleep timer",
   "player.sleep_in": "Sleep in %1$s",
-  "player.sleep_at_end": "Sleep at the end"
+  "player.sleep_at_end": "Sleep at the end",
+  "panel.stats_overlay": "Stats for nerds",
+  "panel.stats_overlay_hint": "Decoders, frames, buffer, network, CPU and memory",
+  "stats.video": "Video",
+  "stats.frames": "Frames",
+  "stats.dropped": "dropped",
+  "stats.audio": "Audio",
+  "stats.buffer": "Buffer",
+  "stats.network": "Network",
+  "stats.display": "Display",
+  "stats.tunneling": "tunneled",
+  "stats.hardware": "hardware",
+  "stats.software": "software",
+  "player.tunneling_off": "Tunneled playback does not work on this device — turned off."
 }

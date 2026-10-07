@@ -24,7 +24,7 @@
 12. [Главы и пропускаемые отрезки](#12-главы-и-пропускаемые-отрезки)
 13. [Локализация](#13-локализация)
 14. [Blu-ray: ISO и BDMV](#14-blu-ray-iso-и-bdmv)
-15. [Потоки, жизненный цикл, ошибки, ограничения](#15-потоки-жизненный-цикл-ошибки-ограничения)
+15. [Потоки, жизненный цикл, ошибки, ограничения](#15-потоки-жизненный-цикл-ошибки-ограничения) (15.7 — производительность)
 16. [Ночной звук](#16-ночной-звук)
 17. [Умный выбор дорожек](#17-умный-выбор-дорожек)
 18. [Поиск вступлений по звуку и сводка по файлу](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)
@@ -568,6 +568,8 @@ class PlayerController(
 | `fun dismissSmartHint()` | Скрыть подсказку `state.smartHint` («дорожки выбраны по привычке»). |
 | `fun report(): MediaReport` | Сводка по текущему файлу (см. [§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). |
 | `fun dismissWarnings()` | Очистить `state.warnings`. |
+| `val stats: StateFlow<PlaybackStats?>` / `fun setStatsEnabled(enabled: Boolean)` | Живая статистика (§15.7): собирается, только пока включена (`null` — выключена). |
+| `fun onDisplaySwitching()` | Сообщить, что сейчас меняется режим экрана: ближайшие 12 с сбои открытия звука на ресивер считаются временными. Смену режима плеер замечает и сам (`DisplayManager`). |
 | `fun setInBackground(background: Boolean)` | Плеер ушёл с экрана, но звук продолжается: `true` отключает декодирование видео, `false` возвращает его (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)). |
 | `fun setAudioDelay(ms: Int)` | Задержка звука относительно картинки, мс (> 0 — звук позже, < 0 — раньше; предел ±`AUDIO_DELAY_LIMIT_MS` = 2000). Сдвигает аудиочасы, по которым синхронизируется видео; работает и для PCM, и для passthrough. Сохраняется в `Settings.audioDelayMs` — общая для всех файлов. |
 | `fun setSleepTimer(minutes: Int?)` | Таймер сна: через N минут звук за 8 с затихает и плеер встаёт на паузу; `null`/`0` — выключить. Остаток — в `state.sleepRemainingMs`. |
@@ -769,6 +771,7 @@ val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 | `audioDelayMs` | `Int` | Текущая задержка звука, мс. |
 | `sleepRemainingMs` | `Long?` | Таймер сна: сколько осталось до паузы; `null` — выключен (или стоит «в конце серии»). |
 | `sleepAtEnd` | `Boolean` | Таймер сна «в конце серии». |
+| `videoFrameRate` | `Float` | Частота кадров видео (из заголовка или по меткам кадров); `-1` — неизвестна. Для частоты экрана (§15.7). |
 
 ```kotlin
 data class TrackOption(
@@ -871,6 +874,10 @@ Player2160.settings(context).update {
 | `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` — пауза при сворачивании |
 | `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео — окно PiP (если устройство поддерживает); `false` — без PiP, дальше по `backgroundPlayback` |
 | `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 — звук позже картинки, < 0 — раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер — `setAudioDelay()` |
+| `frameRateMatching` | `Boolean` = `false` | Частота экрана под видео (§15.7): ТВ переключается в 23,976/24/25/50 Гц. |
+| `tunneling` | `Boolean` = `false` | Туннельный режим вывода видео (Android TV). При ошибке декодера выключается сам и сохраняется `false`. |
+| `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип. Не действует, пока включён ночной звук. |
+| `statsOverlay` | `Boolean` = `false` | Слой «Статистика» поверх видео (§15.7); переключается и в панели «Сведения» плеера. |
 
 `fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
@@ -1287,7 +1294,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 
 | Поле | По умолчанию | Что делает |
 |---|---|---|
-| `bufferTargetBytes` | `64 МБ` | Предел буфера в байтах. Без него 4K-ремукс держит ~130 МБ — слабые ТВ падают от нехватки памяти. `PlayerConfig.UNLIMITED` — правило Media3. |
+| `bufferTargetBytes` | `PlayerConfig.AUTO` | Предел буфера в байтах. Без него 4K-ремукс держит ~130 МБ — слабые ТВ падают от нехватки памяти. `AUTO` — по памяти устройства (`DeviceProfile.bufferTargetBytes`: четверть кучи Java, но не больше 1/24 всей памяти; 24–128 МБ, на low-RAM — до 32 МБ), `UNLIMITED` — правило Media3, число — свой предел. |
 | `minBufferMs` / `maxBufferMs` | `50 000` / `50 000` | Сколько держать в буфере (пока позволяет предел в байтах). |
 | `bufferForPlaybackMs` / `bufferForPlaybackAfterRebufferMs` | `1 000` / `2 000` | Сколько набрать перед стартом и после подгрузки. |
 | `connectTimeoutMs` / `readTimeoutMs` | `30 000` / `60 000` | Тайм-ауты HTTP(S). У торрентов свой тайм-аут ожидания частей (`TorrentPrefs`). |
@@ -1312,6 +1319,42 @@ class App : Application() {
     }
 }
 ```
+
+### 15.7. Производительность: буфер, частота экрана, статистика
+
+Что движок делает для меньшей нагрузки на процессор, память и батарею:
+
+| Механизм | Как работает |
+|---|---|
+| Вывод видео | `SurfaceView` (`PlayerView`): кадры идут в аппаратный композитор без копий через GPU; HDR — сразу на дисплей. |
+| Декодеры | Аппаратные `MediaCodec` в приоритете, FFmpeg (nextlib) — только для того, что устройство не умеет. Программное декодирование видео видно в сводке и предупреждении при старте. |
+| Динамическое планирование | `ExoPlayer.Builder.experimentalSetDynamicSchedulingEnabled(true)`: цикл воспроизведения просыпается, только когда рендерерам есть работа. |
+| Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер — до 128 МБ. |
+| Видео в фоне | Видеодорожка отключается (`setInBackground`), звук без видео может уйти в offload. |
+| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, смена скорости поддерживается). Media3 включает offload только для звука без видео; ночной звук (обработка PCM) его выключает. |
+| Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле — режим выключается и сохраняется. |
+| Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана — без счёта; потом декодирует сам. |
+
+**Частота экрана под видео** (`Settings.frameRateMatching`, `FrameRateMatcher`). Пока плеер на экране, окно
+просит режим дисплея с тем же разрешением и частотой, кратной частоте кадров (точное совпадение важнее
+кратности: для 23,976 — 23,976 или 47,952 Гц, иначе 24 Гц). На время переключения (HDMI пересинхронизируется
+1–3 с) воспроизведение на паузе. Если частоты нет в заголовке (часто MKV), она вычисляется по меткам первых
+48 кадров (`VideoFrameMetadataListener`) и приводится к стандартной. При выходе из плеера — режим по умолчанию.
+`FrameRateMatcher.bestMode(modes, current, fps)` и `apply(activity, player, fps)` можно использовать и в своём
+экране. Media3 дополнительно сообщает частоту поверхности (`Surface.setFrameRate`, только бесшовно) — некоторые
+ТВ (например, Dune) по ней переключаются сами.
+
+**Статистика** (`Settings.statsOverlay`, `PlayerController.stats`). `PlaybackStats`: видео- и аудиодекодер
+(аппаратный/программный), разрешение, кодек, частота кадров, показано/пропущено кадров, буфер (секунды, байты и
+предел), оценка скорости сети, passthrough/offload/туннель, загрузка процессора процессом (% одного ядра, из
+`/proc/self/stat`), память (PSS, куча Java, нативная куча). Сбор — раз в секунду (память — раз в 2 с) и только
+пока слой включён.
+
+**Замеры (Dune TV, 32-битный ARM, release-сборки, 60 с после 40 с прогрева).** Ремукс 1080p H.264 + DTS-HD 5.1
+на ресивер: процесс плеера ~22 % одного ядра (из 6), PSS ~140–160 МБ (у новой версии буфер больше — 96 МБ против
+64 МБ). Тест 720p: ~20 %. Если передача на ресивер срывается и DTS-HD декодируется программно — ~50 % ядра и
+пропуски кадров на 32-битных ТВ; поэтому повторы открытия выхода важны. Туннельный режим на этом ТВ не дал
+выигрыша (декодер Realtek его не поддерживает). Отладочные сборки в 2–3 раза тяжелее релизных — мерить нужно release.
 
 ---
 
@@ -1787,6 +1830,7 @@ lifecycleScope.launch {
 | `network: NetworkMode` | `ANY` — по любой сети. `SEED_WIFI` (по умолчанию) — просматриваемый торрент работает везде, фоновые по сети с оплатой трафика ждут Wi-Fi, отдача урезается до `TorrentPrefs.METERED_UPLOAD_LIMIT` (16 КБ/с: совсем выключить её нельзя, а при 1 КБ/с не устанавливаются даже соединения с пирами). `WIFI_ONLY` — по сети с оплатой трафика всё на паузе до `allowMobileData()`; дальше как `SEED_WIFI`. |
 | `seedPolicy: SeedPolicy` | Когда скачанный и не просматриваемый торрент перестаёт раздаваться: `ALWAYS`, `RATIO` (отдано не меньше размера выбранных файлов, `TorrentStats.uploadedTotal`), `DAY` (24 ч в состоянии «загружено», `TorrentStats.finishedSeconds`), `NEVER`. Торрент без выбранных файлов «скачанным» не считается. |
 | `seedOnlyCharging` | Фоновые торренты ждут зарядку; просмотр работает всегда. |
+| (слабое устройство) | `DeviceProfile.lowMemory` (low-RAM или < 2 ГБ): по умолчанию 80 соединений вместо 200, меньше одновременных загрузок и короче списки пиров (`SessionConfig.lowMemory`). |
 | `mobileDownloadLimitKb` | Ограничение загрузки по сети с оплатой трафика (`MOBILE_DOWNLOAD_LIMITS`: 0, 512, 1024, 2048, 5120 КБ/с). |
 
 `TorrentPrefs.sessionConfig(metered)` строит настройки сессии с учётом сети. Приложение 2160 Player перед
@@ -1972,6 +2016,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 |---|---|---|
 | `tv.p2160.core.api` | `Player2160`, `Player2160.PlayContract` | §5.2 |
 | | `PlayerConfig` | §15.6 |
+| | `DeviceProfile` | §15.7 |
 | | `PlaybackRequest`, `MediaEntry`, `ExternalSubtitle`, `PlaybackResult` | §5.1 |
 | | `IntentApi` | §3, §5.3 |
 | | `NowPlaying`, `PlayerAction`, `PlayerExtensions` | §7, §8 |
@@ -1979,6 +2024,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | | `SkipSegment`, `SegmentType`, `Chapter` | §12 |
 | `tv.p2160.core` | `Player2160Activity`, `PlayerViewModel` | §5.4, §6.2 |
 | `tv.p2160.core.engine` | `PlayerController`, `PlayerUiState`, `TrackOption` | §6.1, §7.2 |
+| | `PlaybackStats`, `FrameRateMatcher` | §15.7 |
 | | `ManualMarks`, `SegmentDetector`, `TimeInput` | §12 |
 | | `NightAudioProcessor`, `PassthroughGuard` | §16 |
 | | `TrackPreferences`, `TrackRules`, `TrackChoice`, `TrackCandidate` | §17 |

@@ -264,6 +264,10 @@ fun SettingsScreen(
                     ask(strings["settings.decoder"], decoders, s.decoder) { v -> update { it.copy(decoder = v) } }
                 }
             }
+            item { ToggleRow(tr("settings.frame_rate"), tr("settings.frame_rate_hint"), s.frameRateMatching) { v -> update { it.copy(frameRateMatching = v) } } }
+            item { ToggleRow(tr("settings.tunneling"), tr("settings.tunneling_hint"), s.tunneling) { v -> update { it.copy(tunneling = v) } } }
+            item { ToggleRow(tr("settings.audio_offload"), tr("settings.audio_offload_hint"), s.audioOffload) { v -> update { it.copy(audioOffload = v) } } }
+            item { ToggleRow(tr("settings.stats_overlay"), tr("settings.stats_overlay_hint"), s.statsOverlay) { v -> update { it.copy(statsOverlay = v) } } }
             item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
 
             item { SectionTitle(tr("settings.section_minimize")) }

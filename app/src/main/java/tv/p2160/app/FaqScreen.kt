@@ -58,7 +58,7 @@ internal object Faq {
     /** Разделы: ключ заголовка → вопросы (id). */
     val sections: List<Pair<String, List<String>>> = listOf(
         "faq.section.install" to listOf("which_apk", "update", "update_failed", "tv_install", "share"),
-        "faq.section.picture" to listOf("scale", "dv", "hdr_dark", "no_video"),
+        "faq.section.picture" to listOf("scale", "dv", "hdr_dark", "no_video", "frame_rate", "stats"),
         "faq.section.sound" to listOf("no_sound", "night", "audio_delay", "background"),
         "faq.section.subtitles" to listOf("external_subs", "subs_delay", "dual_subs", "smart_tracks"),
         "faq.section.sources" to listOf("open_file_tv", "smb", "dlna", "iptv", "covers"),

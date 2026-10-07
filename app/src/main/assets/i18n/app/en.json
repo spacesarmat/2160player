@@ -227,5 +227,13 @@
   "share.full_ready": "Sharing the package for all devices (phones and 32-bit TVs).",
   "share.full_failed": "Download failed: %1$s",
   "app.continue_all": "all · %1$d",
-  "app.continue_hint": "Tap to resume. Long-press to remove from the list."
+  "app.continue_hint": "Tap to resume. Long-press to remove from the list.",
+  "settings.frame_rate": "Match display frame rate",
+  "settings.frame_rate_hint": "For TVs: the display switches to 23.976/24/25/50 Hz to match the film — no judder on pans. The screen blanks for 1–3 s when switching",
+  "settings.tunneling": "Tunneled playback (TV)",
+  "settings.tunneling_hint": "Video goes straight to the display: less load, tighter sync. Some boxes misbehave — then it turns itself off",
+  "settings.audio_offload": "Battery saving for audio",
+  "settings.audio_offload_hint": "Music and background audio are decoded by the audio chip while the CPU sleeps. Not used with night sound",
+  "settings.stats_overlay": "Stats for nerds",
+  "settings.stats_overlay_hint": "Decoders, dropped frames, buffer, network, CPU and memory"
 }

@@ -68,6 +68,17 @@ data class Settings(
      * и саундбары обычно отстают — ставят отрицательное значение). Общая для всех файлов: зависит от устройства вывода.
      */
     val audioDelayMs: Int = 0,
+    /** Переключать частоту экрана под частоту кадров видео (ТВ: 23,976/24/25/50 Гц). */
+    val frameRateMatching: Boolean = false,
+    /**
+     * Туннельный режим вывода видео (Android TV): декодер отдаёт кадры прямо дисплею, синхронизацию делает
+     * железо — меньше нагрузки. На части устройств сбоит — при ошибке выключается сам.
+     */
+    val tunneling: Boolean = false,
+    /** Аудио offload: музыку и звук в фоне декодирует аудиочип, процессор спит (экономия батареи). */
+    val audioOffload: Boolean = true,
+    /** Слой «Статистика» поверх видео: декодеры, кадры, буфер, сеть, процессор, память. */
+    val statsOverlay: Boolean = false,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -141,6 +152,10 @@ class PlayerSettings private constructor(context: Context) {
             backgroundAudio = prefs.getBoolean("background_audio", d.backgroundAudio),
             pictureInPicture = prefs.getBoolean("picture_in_picture", d.pictureInPicture),
             audioDelayMs = prefs.getInt("audio_delay", d.audioDelayMs),
+            frameRateMatching = prefs.getBoolean("frame_rate_matching", d.frameRateMatching),
+            tunneling = prefs.getBoolean("tunneling", d.tunneling),
+            audioOffload = prefs.getBoolean("audio_offload", d.audioOffload),
+            statsOverlay = prefs.getBoolean("stats_overlay", d.statsOverlay),
         )
     }
 
@@ -172,6 +187,10 @@ class PlayerSettings private constructor(context: Context) {
             .putBoolean("background_audio", s.backgroundAudio)
             .putBoolean("picture_in_picture", s.pictureInPicture)
             .putInt("audio_delay", s.audioDelayMs)
+            .putBoolean("frame_rate_matching", s.frameRateMatching)
+            .putBoolean("tunneling", s.tunneling)
+            .putBoolean("audio_offload", s.audioOffload)
+            .putBoolean("stats_overlay", s.statsOverlay)
             .apply()
     }
 

@@ -628,7 +628,9 @@ class PlayerController(
         // включили — декодируем, чтобы обработка заработала; выключили — снова отдаём ресиверу многоканал.
         // Если выход уже не смог принять сжатый поток (ТВ с AUDIO_TRACK_INIT_FAILED), остаёмся на декодировании.
         val decode = enabled || built.passthrough.failed
-        if (decoders.audioPassthrough && built.passthrough.disabled != decode) {
+        // Вернуть passthrough можно всегда (даже если сейчас звук декодируется, например серию запустили
+        // с ночным звуком); перейти на декодирование нужно, только если звук действительно шёл в обход декодера.
+        if (built.passthrough.disabled != decode && (!decode || decoders.audioPassthrough)) {
             built.passthrough.disabled = decode
             reinit = true
         }

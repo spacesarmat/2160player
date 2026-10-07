@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Отладочная сборка: другое имя, чтобы не путать с обычной версией. -->
+    <string name="app_name" translatable="false">2160 Тест</string>
+</resources>

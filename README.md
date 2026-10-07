@@ -78,6 +78,8 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 ```
 
 APK: `app/build/outputs/apk/debug/`. applicationId: `tv.p2160.player` (release), `tv.p2160.player.debug` (debug).
+Отладочная сборка ставится отдельным приложением «2160 Тест» с красной полосой «ТЕСТ» на иконке и
+баннере ТВ (ресурсы `app/src/debug/res`, генератор — `design/debug-badge/make_debug_icons.py`).
 
 ### Релиз
 

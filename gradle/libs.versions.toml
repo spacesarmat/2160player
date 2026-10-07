@@ -8,6 +8,7 @@ activity = "1.13.0"
 lifecycle = "2.11.0"
 coreKtx = "1.19.1"
 coroutines = "1.11.0"
+libtorrent4j = "2.1.0-39"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -35,6 +36,12 @@ junit = { module = "junit:junit", version = "4.13.2" }
 kxml2 = { module = "net.sf.kxml:kxml2", version = "2.3.0" }
 smbj = { module = "com.hierynomus:smbj", version = "0.15.0" }
 smbj-rpc = { module = "com.rapid7.client:dcerpc", version = "0.12.13" }
+libtorrent4j = { module = "org.libtorrent4j:libtorrent4j", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm = { module = "org.libtorrent4j:libtorrent4j-android-arm", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm64 = { module = "org.libtorrent4j:libtorrent4j-android-arm64", version.ref = "libtorrent4j" }
+libtorrent4j-android-x86 = { module = "org.libtorrent4j:libtorrent4j-android-x86", version.ref = "libtorrent4j" }
+libtorrent4j-android-x64 = { module = "org.libtorrent4j:libtorrent4j-android-x86_64", version.ref = "libtorrent4j" }
+libtorrent4j-windows = { module = "org.libtorrent4j:libtorrent4j-windows", version.ref = "libtorrent4j" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

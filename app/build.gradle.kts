@@ -57,6 +57,7 @@ kotlin {
 
 dependencies {
     implementation(project(":player-core"))
+    implementation(project(":source-torrent"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

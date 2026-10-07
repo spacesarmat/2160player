@@ -15,6 +15,8 @@ import tv.p2160.core.api.PlayerAction
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Схема torrent:// для плеера (сам libtorrent запускается лениво).
+        tv.p2160.torrent.TorrentEngine.install(this)
 
         // Передача между устройствами работает, пока приложение на экране (в т.ч. во время просмотра).
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

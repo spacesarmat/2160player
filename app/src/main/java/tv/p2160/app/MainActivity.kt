@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
             var dlnaUdn by rememberSaveable { mutableStateOf<String?>(null) }
             val dlnaServers = remember { tv.p2160.core.source.dlna.DlnaServers.get(this) }
 
-            BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.NETWORK) { screen = Screen.HOME }
+            BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.NETWORK || screen == Screen.TORRENTS) { screen = Screen.HOME }
 
             CompositionLocalProvider(LocalStrings provides strings) {
                 P2160Theme(PlayerThemes.byId(s.themeId)) {
@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onOpenNetwork = { screen = Screen.NETWORK },
                             onOpenIptv = { screen = Screen.IPTV },
+                            onOpenTorrents = { screen = Screen.TORRENTS },
                             onPlayEntry = ::playEntry,
                             onPlayRemote = { Handoff.play(this, it) },
                         )
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
                             onOpen = { serverId = it.id; screen = Screen.BROWSE },
                             onOpenDlna = { dlnaUdn = it.udn; screen = Screen.DLNA },
                         )
+                        Screen.TORRENTS -> tv.p2160.app.torrent.TorrentScreen(onBack = { screen = Screen.HOME }, onPlay = { Player2160.play(this, it) })
                         Screen.IPTV -> IptvScreen(onBack = { screen = Screen.HOME }, onPlay = { Player2160.play(this, it) })
                         Screen.DLNA -> {
                             val server = dlnaUdn?.let(dlnaServers::find)
@@ -160,5 +162,5 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS }
 }

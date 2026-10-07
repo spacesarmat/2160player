@@ -54,5 +54,11 @@
   "torrent.unit_mb": "МБ",
   "torrent.unit_gb": "ГБ",
   "torrent.stop": "Остановить раздачу",
-  "torrent.start": "Продолжить раздачу"
+  "torrent.start": "Продолжить раздачу",
+  "torrent.phase_downloading": "Качается",
+  "torrent.phase_seeding": "Раздаётся",
+  "torrent.phase_paused": "Остановлена",
+  "torrent.phase_stored": "Неактивна",
+  "torrent.phase_error": "Ошибка",
+  "torrent.peers": "пиров: %1$d"
 }

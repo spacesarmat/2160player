@@ -54,5 +54,11 @@
   "torrent.unit_mb": "MB",
   "torrent.unit_gb": "GB",
   "torrent.stop": "Stop torrent",
-  "torrent.start": "Resume torrent"
+  "torrent.start": "Resume torrent",
+  "torrent.phase_downloading": "Downloading",
+  "torrent.phase_seeding": "Seeding",
+  "torrent.phase_paused": "Stopped",
+  "torrent.phase_stored": "Inactive",
+  "torrent.phase_error": "Error",
+  "torrent.peers": "peers: %1$d"
 }

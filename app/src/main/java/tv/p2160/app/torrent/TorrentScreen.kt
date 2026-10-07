@@ -30,6 +30,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Description
@@ -57,6 +62,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -287,24 +294,112 @@ private fun Progress(text: String) {
     }
 }
 
+/** Что сейчас с раздачей — для цвета, значка и подписи карточки. */
+private enum class TorrentPhase { DOWNLOADING, SEEDING, PAUSED, STORED, METADATA, CHECKING, ERROR }
+
+private val TorrentItem.phase: TorrentPhase
+    get() {
+        val st = stats ?: return TorrentPhase.STORED
+        return when {
+            st.state == TorrentStats.State.ERROR -> TorrentPhase.ERROR
+            st.paused -> TorrentPhase.PAUSED
+            st.state == TorrentStats.State.METADATA -> TorrentPhase.METADATA
+            st.state == TorrentStats.State.CHECKING -> TorrentPhase.CHECKING
+            st.state == TorrentStats.State.FINISHED -> TorrentPhase.SEEDING
+            else -> TorrentPhase.DOWNLOADING
+        }
+    }
+
+@Composable
+private fun phaseColor(phase: TorrentPhase): Color = when (phase) {
+    TorrentPhase.DOWNLOADING -> MaterialTheme.colorScheme.primary
+    TorrentPhase.SEEDING -> Color(0xFF4CAF50)
+    TorrentPhase.METADATA, TorrentPhase.CHECKING -> Color(0xFF42A5F5)
+    TorrentPhase.ERROR -> MaterialTheme.colorScheme.error
+    TorrentPhase.PAUSED, TorrentPhase.STORED -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun phaseIcon(phase: TorrentPhase): ImageVector = when (phase) {
+    TorrentPhase.DOWNLOADING -> Icons.Default.Download
+    TorrentPhase.SEEDING -> Icons.Default.Upload
+    TorrentPhase.PAUSED -> Icons.Default.Pause
+    TorrentPhase.STORED -> Icons.Default.Bedtime
+    TorrentPhase.METADATA, TorrentPhase.CHECKING -> Icons.Default.HourglassTop
+    TorrentPhase.ERROR -> Icons.Default.ErrorOutline
+}
+
+@Composable
+private fun phaseLabel(phase: TorrentPhase): String = when (phase) {
+    TorrentPhase.DOWNLOADING -> tr("torrent.phase_downloading")
+    TorrentPhase.SEEDING -> tr("torrent.phase_seeding")
+    TorrentPhase.PAUSED -> tr("torrent.phase_paused")
+    TorrentPhase.STORED -> tr("torrent.phase_stored")
+    TorrentPhase.METADATA -> tr("torrent.state_metadata")
+    TorrentPhase.CHECKING -> tr("torrent.state_checking")
+    TorrentPhase.ERROR -> tr("torrent.phase_error")
+}
+
+/**
+ * Карточка раздачи: цветная полоса и метка состояния, скорость/пиры, скачано из общего размера и
+ * полоса прогресса. Цвет: качается — основной, раздаётся — зелёный, остановлена/неактивна — серый,
+ * ошибка — красный, получение данных/проверка — синий.
+ */
 @Composable
 private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val strings = LocalStrings.current
+    val phase = t.phase
+    val accent = phaseColor(phase)
+    val st = t.stats
+    val done = st?.wantedDone ?: t.stored.bytesDone
+    val total = st?.wanted?.takeIf { it > 0 } ?: t.stored.totalSize
+    val progress = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
     FocusCard(onClick = onClick, onLongClick = onRemove, modifier = modifier) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(t.name, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(statusLine(strings, t), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                val s = t.stats
-                if (s != null && s.primaryFile >= 0) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Box(Modifier.width(5.dp).fillMaxHeight().background(accent))
+            Column(Modifier.weight(1f).padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(t.name, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(6.dp))
+                // Метка состояния.
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(accent.copy(alpha = 0.16f)).padding(horizontal = 10.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(phaseIcon(phase), null, tint = accent, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(phaseLabel(phase), color = accent, style = MaterialTheme.typography.labelMedium)
+                }
+                // Подробности: ошибка, скорость и пиры (если раздача в сессии), размер и процент.
+                val details = buildList {
+                    if (phase == TorrentPhase.ERROR) st?.error?.let { add(it) }
+                    if (st != null && !st.paused && phase != TorrentPhase.ERROR) {
+                        add("↓ ${formatSize(strings, st.downloadRate.toLong())}/s")
+                        add("↑ ${formatSize(strings, st.uploadRate.toLong())}/s")
+                        add(strings.format("torrent.peers", st.peers))
+                    }
+                    if (total > 0) add("${formatSize(strings, done)} / ${formatSize(strings, total)} · ${(progress * 100).toInt()}%")
+                }
+                if (details.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(progress = { s.primaryProgress }, modifier = Modifier.fillMaxWidth())
+                    Text(details.joinToString("  ·  "), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                }
+                if (total > 0 || phase == TorrentPhase.DOWNLOADING) {
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        color = accent,
+                        trackColor = colors.onSurface.copy(alpha = 0.12f),
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    )
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            StartStopAction(t.running, onToggle)
-            IconAction(Icons.Default.Delete, tr("torrent.remove"), onRemove, tint = colors.onSurfaceVariant)
+            Column(Modifier.fillMaxHeight().padding(end = 6.dp), verticalArrangement = Arrangement.Center) {
+                StartStopAction(t.running, onToggle)
+                IconAction(Icons.Default.Delete, tr("torrent.remove"), onRemove, tint = colors.onSurfaceVariant)
+            }
         }
     }
 }

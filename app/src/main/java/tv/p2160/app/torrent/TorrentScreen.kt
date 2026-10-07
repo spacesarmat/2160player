@@ -10,7 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -211,9 +212,9 @@ private fun TorrentList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "actions") {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Tile(Icons.Default.Link, tr("torrent.add_magnet"), onAddMagnet, Modifier.focusRequester(firstFocus))
-                    Tile(Icons.Default.FileOpen, tr("torrent.open_file"), onOpenFile)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Tile(Icons.Default.Link, tr("torrent.add_magnet"), onAddMagnet, Modifier.weight(1f).focusRequester(firstFocus))
+                    Tile(Icons.Default.FileOpen, tr("torrent.open_file"), onOpenFile, Modifier.weight(1f))
                 }
             }
             if (busy) item(key = "busy") { Progress(tr("torrent.adding")) }
@@ -224,8 +225,14 @@ private fun TorrentList(
             if (torrents.isEmpty()) {
                 item(key = "empty") { Text(tr("torrent.empty"), color = colors.onSurfaceVariant) }
             }
-            items(torrents, key = { it.id }) { t ->
-                TorrentRow(t, onClick = { onOpen(t.id) }, onRemove = { removing = t })
+            // Две колонки: раздачи парами, последняя без пары — на половину ширины.
+            items(torrents.chunked(2), key = { it.first().id }) { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
+                    pair.forEach { t ->
+                        TorrentRow(t, onClick = { onOpen(t.id) }, onRemove = { removing = t }, modifier = Modifier.weight(1f).fillMaxHeight())
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
             item(key = "legal") {
                 Text(tr("torrent.legal"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 16.dp))
@@ -237,10 +244,11 @@ private fun TorrentList(
 
 @Composable
 private fun Tile(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FocusCard(onClick = onClick, modifier = modifier.width(180.dp).height(104.dp)) {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+    FocusCard(onClick = onClick, modifier = modifier.height(76.dp)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(label, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -255,10 +263,10 @@ private fun Progress(text: String) {
 }
 
 @Composable
-private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit) {
+private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val strings = LocalStrings.current
-    FocusCard(onClick = onClick, onLongClick = onRemove, modifier = Modifier.fillMaxWidth()) {
+    FocusCard(onClick = onClick, onLongClick = onRemove, modifier = modifier) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(t.name, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)

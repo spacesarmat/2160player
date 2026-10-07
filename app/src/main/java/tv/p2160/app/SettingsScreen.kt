@@ -313,11 +313,17 @@ private fun SettingRow(
     val colors = MaterialTheme.colorScheme
     FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Длинное значение справа сжимает заголовок и подсказку — тогда показываем его под заголовком.
+            val inline = value != null && value.length <= 14
             Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
+                if (value != null && !inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            if (value != null) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
+            if (inline) {
+                Spacer(Modifier.size(16.dp))
+                Text(value!!, color = colors.primary, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            }
         }
     }
 }

@@ -74,9 +74,9 @@
   "settings.off": "Выкл",
   "settings.ok": "ОК",
   "settings.skip_mode": "Вступления и титры",
-  "settings.skip_off": "Ничего не делать",
-  "settings.skip_button": "Показывать кнопку «Пропустить»",
-  "settings.skip_auto": "Пропускать автоматически",
+  "settings.skip_off": "Не пропускать",
+  "settings.skip_button": "Кнопка «Пропустить»",
+  "settings.skip_auto": "Автоматически",
   "settings.skip_hint": "Определяются по названиям глав, вашим отметкам или данным от приложения-источника",
   "app.network": "Сеть",
   "net.title": "Сетевые папки",
@@ -144,5 +144,6 @@
   "update.installing": "Установка…",
   "update.up_to_date": "У вас последняя версия (%1$s)",
   "update.failed": "Не удалось обновить: %1$s",
-  "update.close": "Закрыть"
+  "update.close": "Закрыть",
+  "app.back_to_exit": "Нажмите «Назад» ещё раз, чтобы выйти"
 }

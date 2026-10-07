@@ -74,9 +74,9 @@
   "settings.off": "Off",
   "settings.ok": "OK",
   "settings.skip_mode": "Intros and credits",
-  "settings.skip_off": "Do nothing",
-  "settings.skip_button": "Show “Skip” button",
-  "settings.skip_auto": "Skip automatically",
+  "settings.skip_off": "Off",
+  "settings.skip_button": "“Skip” button",
+  "settings.skip_auto": "Automatically",
   "settings.skip_hint": "Found by chapter names, your marks or data from the calling app",
   "app.network": "Network",
   "net.title": "Network folders",
@@ -144,5 +144,6 @@
   "update.installing": "Installing…",
   "update.up_to_date": "You have the latest version (%1$s)",
   "update.failed": "Update failed: %1$s",
-  "update.close": "Close"
+  "update.close": "Close",
+  "app.back_to_exit": "Press Back again to exit"
 }

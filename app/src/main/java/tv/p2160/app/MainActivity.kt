@@ -74,7 +74,23 @@ class MainActivity : ComponentActivity() {
             var dlnaUdn by rememberSaveable { mutableStateOf<String?>(null) }
             val dlnaServers = remember { tv.p2160.core.source.dlna.DlnaServers.get(this) }
 
-            BackHandler(enabled = screen == Screen.SETTINGS || screen == Screen.NETWORK || screen == Screen.TORRENTS) { screen = Screen.HOME }
+            // «Назад» на вложенном экране — к родителю; на главном — выход только по второму нажатию,
+            // чтобы случайное нажатие на пульте или жест не сворачивали приложение.
+            var lastHomeBack by remember { mutableStateOf(0L) }
+            BackHandler {
+                when (screen) {
+                    Screen.HOME -> {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastHomeBack < 2_000) finish()
+                        else {
+                            lastHomeBack = now
+                            Toast.makeText(this, strings["app.back_to_exit"], Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    Screen.BROWSE, Screen.DLNA -> screen = Screen.NETWORK
+                    else -> screen = Screen.HOME
+                }
+            }
 
             CompositionLocalProvider(LocalStrings provides strings) {
                 P2160Theme(PlayerThemes.byId(s.themeId)) {

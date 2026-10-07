@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
                             onOpenUrl = { url -> play(Uri.parse(url.trim()), null) },
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onOpenNetwork = { screen = Screen.NETWORK },
+                            onOpenIptv = { screen = Screen.IPTV },
                             onPlayEntry = ::playEntry,
                             onPlayRemote = { Handoff.play(this, it) },
                         )
@@ -94,6 +95,7 @@ class MainActivity : ComponentActivity() {
                             onOpen = { serverId = it.id; screen = Screen.BROWSE },
                             onOpenDlna = { dlnaUdn = it.udn; screen = Screen.DLNA },
                         )
+                        Screen.IPTV -> IptvScreen(onBack = { screen = Screen.HOME }, onPlay = { Player2160.play(this, it) })
                         Screen.DLNA -> {
                             val server = dlnaUdn?.let(dlnaServers::find)
                             if (server == null) screen = Screen.NETWORK
@@ -158,5 +160,5 @@ class MainActivity : ComponentActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV }
 }

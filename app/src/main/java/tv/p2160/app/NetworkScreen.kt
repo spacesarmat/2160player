@@ -332,8 +332,9 @@ private fun rememberDiscoveredHosts(): List<DiscoveredHost> {
                 runCatching {
                     nsd.resolveService(info, object : NsdManager.ResolveListener {
                         override fun onServiceResolved(resolved: NsdServiceInfo) {
-                            val host = if (Build.VERSION.SDK_INT >= 34) resolved.hostAddresses.firstOrNull()?.hostAddress
-                            else resolved.host?.hostAddress
+                            val host = if (Build.VERSION.SDK_INT >= 34) {
+                                (resolved.hostAddresses.firstOrNull { it is java.net.Inet4Address } ?: resolved.hostAddresses.firstOrNull())?.hostAddress
+                            } else resolved.host?.hostAddress
                             host ?: return
                             main.post {
                                 val item = DiscoveredHost(resolved.serviceName, host)

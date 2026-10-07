@@ -18,6 +18,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
 - **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению.
 - **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
+- **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
 - **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне — щипком двумя пальцами.
 - **Умный выбор дорожек:** плеер запоминает ручной выбор озвучки и субтитров — отдельно для сериала и для набора языков (аниме — японский с субтитрами, фильмы — дубляж).
 - **Ночной звук:** сжатие динамики и громкие диалоги, по расписанию (по умолчанию 23:00–10:00), настраивается прямо в плеере.
@@ -146,7 +147,7 @@ Issue и pull request'ы приветствуются. Пожалуйста, и�
 ## English
 
 **2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
-decoders and a Jetpack Compose UI. It plays local files, HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
+decoders and a Jetpack Compose UI. It plays local files (with a built-in file browser for Android TV boxes, USB drives and SD cards), HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
 intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,

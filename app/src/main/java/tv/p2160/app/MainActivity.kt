@@ -1,7 +1,10 @@
 package tv.p2160.app
 
+import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -16,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.io.File
 import tv.p2160.core.api.MediaEntry
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.Player2160
@@ -114,7 +118,7 @@ class MainActivity : ComponentActivity() {
                     when (screen) {
                         Screen.HOME -> HomeScreen(
                             store = store,
-                            onOpenFile = ::pickMedia,
+                            onOpenFile = { if (!pickMedia()) screen = Screen.LOCAL },
                             onOpenUrl = { url -> play(Uri.parse(url.trim()), null) },
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onOpenNetwork = { screen = Screen.NETWORK },
@@ -128,6 +132,13 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen = Screen.HOME },
                             onOpen = { serverId = it.id; screen = Screen.BROWSE },
                             onOpenDlna = { dlnaUdn = it.udn; screen = Screen.DLNA },
+                        )
+                        Screen.LOCAL -> LocalBrowserScreen(
+                            store = store,
+                            onBack = { screen = Screen.HOME },
+                            onPlay = { files, index -> playLocal(files, index) },
+                            onPlayDisc = { disc, title -> play(Uri.fromFile(disc), title) },
+                            onPlayRequest = { Player2160.play(this, it) },
                         )
                         Screen.TORRENTS -> tv.p2160.app.torrent.TorrentScreen(onBack = { screen = Screen.HOME }, onPlay = { Player2160.play(this, it) })
                         Screen.IPTV -> IptvScreen(onBack = { screen = Screen.HOME }, onPlay = { Player2160.play(this, it) })
@@ -171,13 +182,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun pickMedia() {
-        try {
+    /**
+     * Системный выбор файлов. false — его нет или это телевизор: тогда открывается встроенный обзор
+     * ([LocalBrowserScreen]), на приставках системного выбора часто нет или он не работает с пультом.
+     */
+    private fun pickMedia(): Boolean {
+        if (isTv()) return false
+        return try {
             openMedia.launch(arrayOf("video/*", "audio/*", "application/x-mpegURL", "application/octet-stream"))
+            true
         } catch (_: ActivityNotFoundException) {
-            // На части Android TV-приставок нет системного выбора файлов.
-            toast(i18n.current["app.no_file_picker"])
+            false
         }
+    }
+
+    private fun isTv(): Boolean {
+        val uiMode = getSystemService(UiModeManager::class.java)?.currentModeType
+        return uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
 
     private fun playEntry(entry: ResumeEntry) = play(Uri.parse(entry.uri), entry.title)
@@ -193,7 +215,13 @@ class MainActivity : ComponentActivity() {
         Player2160.play(this, PlaybackRequest(items, startIndex = index))
     }
 
+    private fun playLocal(files: List<File>, index: Int) {
+        if (index !in files.indices) return
+        val items = files.map { MediaEntry(Uri.fromFile(it), it.nameWithoutExtension) }
+        Player2160.play(this, PlaybackRequest(items, startIndex = index))
+    }
+
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS }
+    enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL }
 }

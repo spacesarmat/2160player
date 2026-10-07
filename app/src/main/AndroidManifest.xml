@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Уведомление «… хочет подключиться» с кнопками «Разрешить / Отклонить» -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Встроенный обзор файлов (Android TV, флешки): чтение видео и музыки с накопителей.
+         MANAGE_EXTERNAL_STORAGE намеренно не запрашивается (политика Google Play). -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -16,6 +21,7 @@
     <application
         android:name=".App"
         android:allowBackup="true"
+        android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"

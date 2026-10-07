@@ -1807,6 +1807,57 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 Отладочная сборка (`tv.p2160.player.debug`) — другой пакет, Android не поставит релиз поверх неё:
 там «Обновить» открывает страницу релиза в браузере (`Updater.RELEASE_PACKAGE`).
 
+### 22.3. Обзор файлов на устройстве (`tv.p2160.app.LocalBrowserScreen`)
+
+Встроенный файловый браузер для «Открыть файл» на Android TV-приставках, где системного выбора файлов
+(`ACTION_OPEN_DOCUMENT`) нет или он неудобен с пультом.
+
+**Когда открывается.** `MainActivity.pickMedia()` возвращает `false`, и вместо системного выбора
+показывается экран `Screen.LOCAL`, если:
+
+- устройство — телевизор: `UiModeManager.currentModeType == UI_MODE_TYPE_TELEVISION` или есть
+  `FEATURE_LEANBACK`;
+- системного выбора нет: `openMedia.launch(…)` бросает `ActivityNotFoundException`.
+
+На телефонах и планшетах остаётся системный выбор файлов. «Назад» в корне обзора возвращает на главный экран.
+
+**Корни** (`localRoots(context)`, блокирующий вызов — с фонового потока):
+
+- внутренняя память — `Environment.getExternalStorageDirectory()`;
+- съёмные накопители (флешки, карты памяти) — `StorageManager.storageVolumes` в состоянии
+  `MEDIA_MOUNTED`/`MEDIA_MOUNTED_READ_ONLY`, название — `StorageVolume.getDescription(context)`;
+  папка — `StorageVolume.directory` на Android 11+, на Android 7–10 — `/storage/<uuid>`;
+- запасной путь для нестандартных приставок — все папки `/storage/*`, кроме `self` и `emulated`.
+
+Повторы (по `canonicalPath`) убираются; у каждого корня показывается «Свободно X из Y» (`File.freeSpace`/`totalSpace`).
+
+**Список папки** (`listLocalMedia(dir)`): сначала папки, затем файлы, по имени с «естественным» порядком
+чисел («Серия 2» раньше «Серии 10»); скрытые (имя с точки) не показываются. Из файлов остаются видео и
+аудио (`VIDEO_EXTENSIONS`, `AUDIO_EXTENSIONS` из `BrowserScreen.kt` — тот же фильтр, что для SMB),
+образы `.iso`, субтитры (`SubtitleSupport.EXTENSIONS` без `xml`) и плейлисты `.m3u`/`.m3u8`; у файлов — размер.
+
+**Воспроизведение.**
+
+| Что выбрано | Что играется |
+|---|---|
+| видео или аудио | `PlaybackRequest` из всех видео/аудио папки (`MediaEntry(Uri.fromFile(file), имя без расширения)`) со `startIndex` выбранного — как `playSmb` для SMB, работает «Следующая серия»; субтитры рядом подхватываются плеером (`SubtitleSupport.findSidecars`) |
+| `.iso` или папка с `BDMV` | `file://…/Film.iso` или `file://…/BDMV` — `DiscSessions` открывает диск (§14) |
+| субтитры | видео той же папки, с имени которого начинается имя субтитров |
+| `.m3u`/`.m3u8` | HLS-манифест (`M3uParser.looksLikeHls`) — как поток `application/x-mpegURL`; обычный список — его элементы (относительные пути — от папки плейлиста) |
+
+**Разрешения** (в манифесте приложения; `MANAGE_EXTERNAL_STORAGE` не запрашивается — политика Google Play):
+
+| Android | Разрешение | Что видно |
+|---|---|---|
+| 7–9 (API 24–28) | `READ_EXTERNAL_STORAGE` (runtime, `maxSdkVersion="32"`) | все файлы |
+| 10 (API 29) | `READ_EXTERNAL_STORAGE` + `requestLegacyExternalStorage="true"` | все файлы |
+| 11–12 (API 30–32) | `READ_EXTERNAL_STORAGE` | папки и медиафайлы; ISO, субтитры, плейлисты Android может скрывать |
+| 13+ (API 33+) | `READ_MEDIA_VIDEO` + `READ_MEDIA_AUDIO` (достаточно одного) | папки и медиафайлы того же типа; прочие файлы скрыты |
+
+Без разрешения экран показывает пояснение и кнопку «Разрешить доступ»; если пользователь отказал
+насовсем — кнопку «Открыть настройки» (`ACTION_APPLICATION_DETAILS_SETTINGS`). При возврате на экран
+(`ON_RESUME`) разрешение и список накопителей перечитываются — так появляется только что вставленная флешка.
+
 ---
 
 ## 23. Справочник классов
@@ -1841,7 +1892,8 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `MagnetLink` | §21 |
 
 Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`;
-`tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`.
+`tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
+`tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 
 ### 23.2. Публичные, но внутренние
 

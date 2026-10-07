@@ -38,6 +38,7 @@ import tv.p2160.core.api.Chapter
 import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.bluray.DiscSessions
 import tv.p2160.core.intro.DetectionResult
+import tv.p2160.core.api.PlayerConfig
 import tv.p2160.core.intro.IntroDetector
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.NowPlaying
@@ -114,6 +115,8 @@ data class PlayerUiState(
 class PlayerController(
     context: Context,
     private val request: PlaybackRequest,
+    /** Настройка движка; по умолчанию — глобальная [tv.p2160.core.api.Player2160.config]. */
+    private val config: PlayerConfig = PlayerExtensions.config,
 ) {
     private val appContext = context.applicationContext
     private val settings = PlayerSettings.get(appContext)
@@ -123,7 +126,7 @@ class PlayerController(
     private val analyzer = MediaAnalyzer(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val built = PlayerFactory.build(appContext, settings.current, request.headers)
+    private val built = PlayerFactory.build(appContext, settings.current, request.headers, config)
     val player: ExoPlayer get() = built.player
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
@@ -273,7 +276,7 @@ class PlayerController(
     private fun onItemStarted(index: Int, explicitStart: Long?) {
         completed = false
         // Телеканалы: ни продолжения с места, ни сохранённых дорожек — сразу эфир.
-        val entry = if (request.liveTv) null else keyAt(index)?.let(store::get)
+        val entry = if (request.liveTv || !config.restoreFromHistory) null else keyAt(index)?.let(store::get)
         val s = settings.current
 
         val resumeFrom = when {
@@ -291,7 +294,7 @@ class PlayerController(
 
         pendingRestore = entry
         // Своего сохранённого выбора у файла нет — попробуем привычку (сериал / набор языков).
-        pendingSmart = entry == null && settings.current.smartTracks
+        pendingSmart = entry == null && settings.current.smartTracks && config.restoreFromHistory
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
@@ -330,7 +333,7 @@ class PlayerController(
                 // Главы диска — из плейлиста (FFmpeg в ISO не заглянет).
                 val starts = d.title.chapters
                 starts.mapIndexed { i, start -> Chapter(null, start, starts.getOrElse(i + 1) { d.title.durationMs }) }
-            } ?: runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList())
+            } ?: if (config.readChapters) runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList()) else emptyList()
             if (player.currentMediaItemIndex != index) return@launch
             chapters = found
             // Явно переданные отрезки (Intent/медиасервер) важнее найденных по главам.
@@ -346,7 +349,7 @@ class PlayerController(
      * Не запускаем, если отрезки уже известны (главы, Intent, ручные отметки) или это диск Blu-ray.
      */
     private fun startIntroDetection(index: Int, series: String?) {
-        if (series == null || discs[index] != null) return
+        if (!config.introDetection || series == null || discs[index] != null) return
         val known = (baseSegments + marks.toSegments(Long.MAX_VALUE / 4)).map { it.type }.toSet()
         if (SegmentType.INTRO in known && SegmentType.CREDITS in known) return
         val entry = request.items.getOrNull(index) ?: return
@@ -769,7 +772,7 @@ class PlayerController(
     }
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
-        if (request.liveTv || player.isCurrentMediaItemLive) return
+        if (!config.saveHistory || request.liveTv || player.isCurrentMediaItemLive) return
         val key = keyAt(index) ?: return
         val entry = request.items.getOrNull(index) ?: return
         val tracks = player.currentTracks

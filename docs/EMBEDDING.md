@@ -261,6 +261,21 @@ Player2160.settings(context).update {
 }
 ```
 
+Движок (буфер, тайм-ауты, фоновая работа) настраивается отдельно — до создания плеера:
+
+```kotlin
+Player2160.config = PlayerConfig(
+    bufferTargetBytes = 32 * 1024 * 1024,   // слабые ТВ: меньше памяти на буфер (по умолчанию 64 МБ)
+    readTimeoutMs = 90_000,                 // медленные источники
+    introDetection = false,                 // отрезки даёт ваш сервер
+    readChapters = false,
+    restoreFromHistory = false,             // позицию и дорожки выбирает ваше приложение
+    saveHistory = false,
+)
+```
+
+Все поля — [API.md §15.6](API.md#156-настройка-движка-playerconfig).
+
 Масштаб пользователь меняет и сам: панель «Видео» в плеере или щипок двумя пальцами
 (развести — заполнить экран, свести — целиком). Выбор сохраняется в `Settings.resizeMode`.
 
@@ -296,4 +311,8 @@ adb install -r samples/embed-demo/build/outputs/apk/debug/embed-demo-debug.apk
 | Звук продолжает играть после ухода с вашего экрана | Во встроенном `PlayerScreen` пауза в `onStop` — ваша задача (шаг 5). |
 | В шторке появилось уведомление плеера | Это медиасессия `PlaybackService`: управление с экрана блокировки, гарнитуры и Bluetooth. Исчезает после `controller.release()`. |
 | Нужно остановить воспроизведение из своего кода (с любого потока) | `Player2160.pause()`. |
+| 4K падает с нехваткой памяти на слабом ТВ | Уменьшите `PlayerConfig.bufferTargetBytes` (например, до 16–32 МБ). |
+| Медленный источник отваливается по тайм-ауту | Увеличьте `PlayerConfig.connectTimeoutMs` / `readTimeoutMs`. |
+| Плеер сам выбирает дорожки или продолжает «не с того места» | `PlayerConfig(restoreFromHistory = false)` — дорожки и позицию задаёт ваше приложение. |
+| Лишние сетевые чтения при старте серии | `PlayerConfig(introDetection = false, readChapters = false)`. |
 | Фильм с Dolby Vision играет без DV | Устройство не умеет этот профиль — плеер показывает совместимый слой HDR10 и пишет об этом в «Сведениях о файле» ([API.md §15.5](API.md#155-dolby-vision-без-декодера)). |

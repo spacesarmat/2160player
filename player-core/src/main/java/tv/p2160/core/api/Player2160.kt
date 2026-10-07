@@ -55,6 +55,14 @@ object Player2160 {
      */
     fun pause() = tv.p2160.core.engine.PlaybackSessions.pause()
 
+    /**
+     * Настройка движка для встраивающих приложений: буфер, тайм-ауты, фоновая работа ([PlayerConfig]).
+     * Действует на плееры, созданные после изменения.
+     */
+    var config: PlayerConfig
+        get() = PlayerExtensions.config
+        set(value) { PlayerExtensions.config = value }
+
     /** Свой телегид для эфирных запросов ([PlaybackRequest.liveTv]); null — встроенный IPTV. */
     fun setLiveGuide(guide: LiveGuide?) {
         PlayerExtensions.liveGuide = guide

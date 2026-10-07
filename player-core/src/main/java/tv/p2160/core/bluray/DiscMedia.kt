@@ -22,6 +22,7 @@ class DiscDataSource : BaseDataSource(/* isNetwork = */ true) {
     private var uri: Uri? = null
     private var position = 0L
     private var remaining = 0L
+    private var opened = false
 
     override fun open(dataSpec: DataSpec): Long {
         val session = DiscSessions[dataSpec.uri]
@@ -29,15 +30,16 @@ class DiscDataSource : BaseDataSource(/* isNetwork = */ true) {
         val index = dataSpec.uri.lastPathSegment?.toIntOrNull()
             ?: throw DataSourceException(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
         transferInitializing(dataSpec)
-        val opened = try {
+        val clip = try {
             session.openClip(index)
         } catch (e: Exception) {
             throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
         }
-        source = opened
+        source = clip
         uri = dataSpec.uri
         position = dataSpec.position
-        remaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else opened.size - position
+        remaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else clip.size - position
+        opened = true
         transferStarted(dataSpec)
         return remaining
     }
@@ -64,7 +66,11 @@ class DiscDataSource : BaseDataSource(/* isNetwork = */ true) {
         runCatching { source?.close() }
         source = null
         uri = null
-        transferEnded()
+        // transferEnded() только после успешного open(), иначе NPE скроет настоящую ошибку.
+        if (opened) {
+            opened = false
+            transferEnded()
+        }
     }
 }
 

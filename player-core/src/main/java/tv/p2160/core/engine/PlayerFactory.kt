@@ -9,6 +9,8 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
+import tv.p2160.core.api.PlayerConfig
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -49,7 +51,7 @@ internal object PlayerFactory {
 
     const val USER_AGENT = "2160Player/1.0 (Linux; Android) ExoPlayerLib"
 
-    fun build(context: Context, settings: Settings, headers: Map<String, String>): BuiltPlayer {
+    fun build(context: Context, settings: Settings, headers: Map<String, String>, config: PlayerConfig = PlayerConfig()): BuiltPlayer {
         val mode = when (settings.decoder) {
             DecoderPreference.AUTO -> DecoderMode.AUTO
             DecoderPreference.HARDWARE -> DecoderMode.HARDWARE
@@ -84,8 +86,8 @@ internal object PlayerFactory {
             .setUserAgent(userAgent)
             .setDefaultRequestProperties(headers.filterKeys { !it.equals("User-Agent", true) })
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+            .setConnectTimeoutMs(config.connectTimeoutMs)
+            .setReadTimeoutMs(config.readTimeoutMs)
         // smb:// — свой источник, остальное (file, content, http…) — стандартный.
         val dataSourceFactory = RoutingDataSource.Factory(context, DefaultDataSource.Factory(context, httpFactory))
 
@@ -100,7 +102,15 @@ internal object PlayerFactory {
         // M2TS (Blu-ray: 192-байтные пакеты, TrueHD/LPCM/DTS-HD/PGS) штатный Media3 не читает.
         val m2tsExtractors = M2tsExtractorsFactory(fallback = extractors, hintsForUri = DiscMediaSourceFactory::hintsFor)
 
+        // Предел буфера: без него 4K-ремукс держит ~130 МБ, и слабые ТВ падают от нехватки памяти.
+        val loadControl = DefaultLoadControl.Builder()
+            .setTargetBufferBytes(config.bufferTargetBytes.takeIf { it > 0 } ?: C.LENGTH_UNSET)
+            .setBufferDurationsMs(config.minBufferMs, config.maxBufferMs, config.bufferForPlaybackMs, config.bufferForPlaybackAfterRebufferMs)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
+
         val player = ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DiscMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DolbyVisionFallback.ExtractorsFactoryWrapper(context, m2tsExtractors))))
             .setAudioAttributes(

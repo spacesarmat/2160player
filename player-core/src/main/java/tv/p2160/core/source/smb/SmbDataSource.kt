@@ -28,25 +28,28 @@ class SmbDataSource(private val context: Context) : BaseDataSource(/* isNetwork 
     private val buffer = ByteArray(BUFFER_SIZE)
     private var bufferStart = 0L
     private var bufferLength = 0
+    /** transferStarted() уже вызван — только тогда в close() сообщаем transferEnded(). */
+    private var opened = false
 
     override fun open(dataSpec: DataSpec): Long {
         val path = SmbPath.fromUri(dataSpec.uri)
             ?: throw DataSourceException(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
         uri = dataSpec.uri
         transferInitializing(dataSpec)
-        val opened = try {
+        val handle = try {
             SmbConnections.openRead(context, path)
         } catch (e: Exception) {
             throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         }
-        file = opened
-        val size = opened.fileInformation.standardInformation.endOfFile
+        file = handle
+        val size = handle.fileInformation.standardInformation.endOfFile
         if (dataSpec.position > size) {
             throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
         }
         position = dataSpec.position
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else size - position
         bufferLength = 0
+        opened = true
         transferStarted(dataSpec)
         return bytesRemaining
     }
@@ -86,7 +89,11 @@ class SmbDataSource(private val context: Context) : BaseDataSource(/* isNetwork 
             file = null
             uri = null
             bufferLength = 0
-            transferEnded()
+            // Если open() упал, передачи не было: иначе NPE в BaseDataSource скрыл бы настоящую ошибку SMB.
+            if (opened) {
+                opened = false
+                transferEnded()
+            }
         }
     }
 

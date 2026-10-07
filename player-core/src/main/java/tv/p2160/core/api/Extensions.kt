@@ -50,6 +50,9 @@ object PlayerExtensions {
     private val _actions = MutableStateFlow<List<PlayerAction>>(emptyList())
     val actions: StateFlow<List<PlayerAction>> = _actions.asStateFlow()
 
+    /** Настройка движка для новых плееров ([Player2160.config]). */
+    @Volatile var config: PlayerConfig = PlayerConfig()
+
     /** Свой телегид; null — встроенный (каналы из IPTV-плейлистов [tv.p2160.core.iptv.IptvStore]). */
     @Volatile var liveGuide: LiveGuide? = null
 

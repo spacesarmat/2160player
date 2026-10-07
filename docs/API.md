@@ -422,6 +422,7 @@ data class ExternalSubtitle(
 | `fun registerAction(action: PlayerAction)` / `fun unregisterAction(id: String)` | Свои кнопки в плеере (см. [§8](#8-свои-кнопки-в-плеере-playeraction)). |
 | `fun settings(context: Context): PlayerSettings` | Настройки (см. [§9](#9-настройки-и-темы)). |
 | `fun resumeStore(context: Context): ResumeStore` | История (см. [§10](#10-история-и-позиции-остановки)). |
+| `var config: PlayerConfig` | Настройка движка для новых плееров: буфер, тайм-ауты, фоновая работа (см. [§15.6](#156-настройка-движка-playerconfig)). |
 | `fun pause()` | Пауза активного плеера с любого потока (например, после передачи просмотра на другое устройство). Без открытого плеера ничего не делает. |
 | `fun setLiveGuide(guide: LiveGuide?)` | Свой телегид для `liveTv`-запросов; `null` — встроенный `IptvStore` (см. [§20](#20-iptv-m3u-xmltv-режим-эфира)). |
 
@@ -1234,6 +1235,40 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 большинство телефонов), Media3 отбросила бы видеодорожку. Плеер подменяет формат на совместимый
 базовый кодек (HEVC/AVC/AV1) прямо в экстракторе — играет базовый слой HDR10, а `report()` показывает
 «Dolby Vision (profile N)» с предупреждением. Профиль 5 (без совместимого слоя) не подменяется.
+
+### 15.6. Настройка движка: `PlayerConfig`
+
+То, что пользователь в настройках не меняет, а встраивающему приложению может понадобиться.
+Задаётся глобально до создания плеера — `Player2160.config = PlayerConfig(...)` — или передаётся
+в конструктор `PlayerController(context, request, config)`.
+
+| Поле | По умолчанию | Что делает |
+|---|---|---|
+| `bufferTargetBytes` | `64 МБ` | Предел буфера в байтах. Без него 4K-ремукс держит ~130 МБ — слабые ТВ падают от нехватки памяти. `PlayerConfig.UNLIMITED` — правило Media3. |
+| `minBufferMs` / `maxBufferMs` | `50 000` / `50 000` | Сколько держать в буфере (пока позволяет предел в байтах). |
+| `bufferForPlaybackMs` / `bufferForPlaybackAfterRebufferMs` | `1 000` / `2 000` | Сколько набрать перед стартом и после подгрузки. |
+| `connectTimeoutMs` / `readTimeoutMs` | `30 000` / `60 000` | Тайм-ауты HTTP(S). У торрентов свой тайм-аут ожидания частей (`TorrentPrefs`). |
+| `introDetection` | `true` | Поиск вступления/титров по звуку: читает начало соседних серий по сети. |
+| `readChapters` | `true` | Читать главы файла через FFmpeg при старте (отдельное открытие файла). Главы дисков Blu-ray читаются всегда. |
+| `restoreFromHistory` | `true` | Брать из истории позицию, дорожки, скорость, задержку субтитров и выбор дорожек «по привычке». `false` — плеер сам дорожки не подменяет; явные `startPositionMs` и `select` у субтитров работают всегда. |
+| `saveHistory` | `true` | Записывать прогресс в `ResumeStore`. |
+
+```kotlin
+// Приложение со своим медиасервером, своей историей и слабыми ТВ-приставками
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Player2160.config = PlayerConfig(
+            bufferTargetBytes = 32 * 1024 * 1024,
+            readTimeoutMs = 90_000,
+            introDetection = false,      // отрезки даёт сервер (PlaybackRequest.segments)
+            readChapters = false,
+            restoreFromHistory = false,  // позицию и дорожки выбирает приложение
+            saveHistory = false,
+        )
+    }
+}
+```
 
 ---
 

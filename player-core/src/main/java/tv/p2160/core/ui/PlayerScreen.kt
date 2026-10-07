@@ -115,6 +115,13 @@ fun PlayerScreen(
     var panel by remember { mutableStateOf<Panel?>(null) }
     var interaction by remember { mutableIntStateOf(0) }
     var resizeMode by remember { mutableStateOf(settings.resizeMode) }
+    /** Подпись режима масштаба на пару секунд после переключения. */
+    var resizeHint by remember { mutableStateOf<ResizeMode?>(null) }
+    fun changeResize(mode: ResizeMode) {
+        resizeMode = mode
+        resizeHint = mode
+        settingsStore.update { it.copy(resizeMode = mode) }
+    }
     // Накопленная перемотка с пульта (показывается по центру: «+1:30»).
     var flashTotal by remember { mutableLongStateOf(0L) }
     var flashTick by remember { mutableIntStateOf(0) }
@@ -326,6 +333,15 @@ fun PlayerScreen(
                     },
                     onScrubEnd = { scrubTarget?.let(controller::seekTo); scrubTarget = null },
                     onSpeedBoost = controller::setSpeedBoost,
+                    // Щипок: развести пальцы — заполнить экран (с обрезкой), свести — вписать целиком.
+                    onPinch = pinch@{ zoom ->
+                        val mode = when {
+                            zoom > 1.15f -> ResizeMode.ZOOM
+                            zoom < 0.87f -> ResizeMode.FIT
+                            else -> return@pinch
+                        }
+                        changeResize(mode)
+                    },
                 )
             }
 
@@ -435,6 +451,21 @@ fun PlayerScreen(
                 )
             }
 
+            resizeHint?.let { mode ->
+                if (!inPictureInPicture) {
+                    LaunchedEffect(mode) { delay(1_500); resizeHint = null }
+                    Text(
+                        resizeLabel(mode),
+                        color = theme.onSurface,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(top = 72.dp)
+                            .clip(RoundedCornerShape(14.dp)).background(theme.surface.copy(alpha = 0.92f))
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                    )
+                }
+            }
+
             state.smartHint?.let { hint ->
                 if (!inPictureInPicture) {
                     LaunchedEffect(hint) { delay(5_000); controller.dismissSmartHint() }
@@ -522,7 +553,7 @@ fun PlayerScreen(
                             onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
                             onSpeed = controller::setSpeed,
                             onAutoVideo = controller::autoVideo,
-                            onResize = { mode -> resizeMode = mode; settingsStore.update { it.copy(resizeMode = mode) } },
+                            onResize = ::changeResize,
                             onChapter = { controller.seekToChapter(it); panel = null },
                             onMarkIntroStart = controller::markIntroStart,
                             onMarkIntroEnd = controller::markIntroEnd,
@@ -732,6 +763,8 @@ private fun VideoSurface(controller: PlayerController, style: SubtitleStyle, res
             if (view.player !== controller.player) view.player = controller.player
             view.resizeMode = when (resizeMode) {
                 ResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                ResizeMode.FIT_WIDTH -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                ResizeMode.FIT_HEIGHT -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
                 ResizeMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 ResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             }

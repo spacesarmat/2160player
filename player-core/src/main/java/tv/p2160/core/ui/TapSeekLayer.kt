@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -51,7 +52,8 @@ private const val SERIES_MS = 800L
  * - одиночный тап — [onSingleTap] (показать/скрыть управление);
  * - двойной тап по центру — [onCenterDoubleTap] (пауза);
  * - двойной тап по левой/правой трети — перемотка на [stepMs], каждый следующий
- *   быстрый тап с той же стороны добавляет ещё [stepMs]: 3 тапа = 2 шага, 5 тапов = 4 шага.
+ *   быстрый тап с той же стороны добавляет ещё [stepMs]: 3 тапа = 2 шага, 5 тапов = 4 шага;
+ * - щипок двумя пальцами — [onPinch] с итоговым масштабом жеста (>1 — развели, <1 — свели).
  */
 @Composable
 fun TapSeekLayer(
@@ -66,6 +68,7 @@ fun TapSeekLayer(
     /** Удержание пальца: true — начать временное 2×, false — вернуть скорость. */
     onSpeedBoost: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onPinch: (zoom: Float) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var side by remember { mutableIntStateOf(0) }          // -1 — назад, 1 — вперёд, 0 — серии нет
@@ -138,6 +141,7 @@ fun TapSeekLayer(
     val scrub by rememberUpdatedState(onScrub)
     val scrubEnd by rememberUpdatedState(onScrubEnd)
     val boost by rememberUpdatedState(onSpeedBoost)
+    val pinch by rememberUpdatedState(onPinch)
 
     Box(
         modifier
@@ -149,10 +153,12 @@ fun TapSeekLayer(
                     val longPress = viewConfiguration.longPressTimeoutMillis
                     var dragging = false
                     var boosted = false
+                    var pinching = false
+                    var zoom = 1f
                     var last = down.position
                     while (true) {
                         // Ждём событие; если палец неподвижен дольше longPress — это удержание (2×).
-                        val event = if (!dragging && !boosted) {
+                        val event = if (!dragging && !boosted && !pinching) {
                             withTimeoutOrNull(longPress) { awaitPointerEvent() }
                         } else {
                             awaitPointerEvent()
@@ -160,6 +166,19 @@ fun TapSeekLayer(
                         if (event == null) {
                             boosted = true
                             boost(true)
+                            continue
+                        }
+                        // Второй палец — это щипок: отменяем перемотку/ускорение и копим масштаб до отпускания.
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed >= 2 || pinching) {
+                            if (!pinching) {
+                                pinching = true
+                                if (dragging) { dragging = false; scrubEnd() }
+                                if (boosted) { boosted = false; boost(false) }
+                            }
+                            if (pressed >= 2) zoom *= event.calculateZoom()
+                            event.changes.forEach { it.consume() }
+                            if (pressed == 0) break
                             continue
                         }
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -177,6 +196,7 @@ fun TapSeekLayer(
                         }
                     }
                     when {
+                        pinching -> pinch(zoom)
                         boosted -> boost(false)
                         dragging -> scrubEnd()
                         (last - down.position).getDistance() < slop -> handleTap(last.x, size.width)

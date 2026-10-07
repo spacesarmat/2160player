@@ -49,6 +49,16 @@ import tv.p2160.core.settings.ResizeMode
 import tv.p2160.core.settings.Settings
 import java.util.Locale
 
+/** Название режима масштаба для панели и подсказки. */
+@Composable
+fun resizeLabel(mode: ResizeMode): String = when (mode) {
+    ResizeMode.FIT -> tr("panel.fit")
+    ResizeMode.FIT_WIDTH -> tr("panel.fit_width")
+    ResizeMode.FIT_HEIGHT -> tr("panel.fit_height")
+    ResizeMode.FILL -> tr("panel.fill")
+    ResizeMode.ZOOM -> tr("panel.zoom")
+}
+
 enum class Panel(val titleKey: String) {
     AUDIO("player.audio"),
     SUBTITLES("player.subtitles"),
@@ -317,11 +327,7 @@ fun SidePanel(
                     item(key = "resize-title") { Hint(tr("panel.scale")) }
                     items(ResizeMode.entries, key = { "r${it.name}" }) { mode ->
                         PanelRow(
-                            text = when (mode) {
-                                ResizeMode.FIT -> tr("panel.fit")
-                                ResizeMode.FILL -> tr("panel.fill")
-                                ResizeMode.ZOOM -> tr("panel.zoom")
-                            },
+                            text = resizeLabel(mode),
                             selected = resizeMode == mode,
                             onClick = { actions.onResize(mode) },
                             modifier = if (resizeMode == mode) Modifier.focusRequester(focus) else Modifier,

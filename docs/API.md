@@ -850,7 +850,7 @@ Player2160.settings(context).update {
 Перечисления:
 
 - `DecoderPreference { AUTO, HARDWARE, FFMPEG }` — аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg.
-- `ResizeMode { FIT, FILL, ZOOM }` — вписать / растянуть / заполнить с обрезкой.
+- `ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }` — целиком / по ширине / по высоте / заполнить экран с обрезкой / растянуть. В плеере: панель «Видео» и щипок двумя пальцами (развести — `ZOOM`, свести — `FIT`).
 - `SkipMode { OFF, BUTTON, AUTO }` — не показывать / кнопка «Пропустить» / автоматически (титры с переходом к следующей серии — всегда через обратный отсчёт).
 - `SubtitleEdge { NONE, OUTLINE, SHADOW }`.
 

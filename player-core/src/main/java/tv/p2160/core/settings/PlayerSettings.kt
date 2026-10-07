@@ -16,7 +16,8 @@ enum class DecoderPreference {
     FFMPEG,
 }
 
-enum class ResizeMode { FIT, FILL, ZOOM }
+/** Масштаб картинки: целиком, по ширине, по высоте, заполнить с обрезкой, растянуть. */
+enum class ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }
 
 /** Что делать с вступлениями и титрами. */
 enum class SkipMode { OFF, BUTTON, AUTO }

@@ -468,6 +468,10 @@ object CameraStream {
         if (_state.value is CameraStreamState.Streaming) {
             _state.value = CameraStreamState.Idle
             Handoff.reannounce()
+            // Трансляцию остановили, пока приложение свёрнуто (кнопка в уведомлении): сервер обнаружения больше не нужен.
+            val visible = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState
+                .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+            if (!visible) Handoff.stop()
         }
         if (previewSurface == null) release()
     }

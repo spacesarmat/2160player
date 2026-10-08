@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,6 +73,8 @@ import tv.p2160.app.handoff.RemoteSession
 import tv.p2160.app.handoff.RemoteCamera
 import androidx.compose.material.icons.filled.Devices
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.p2160.core.resume.ResumeEntry
@@ -100,12 +104,16 @@ fun HomeScreen(
     // Камера на несопряжённом устройстве: сначала «Разрешить» там (или код), потом смотрим.
     var pairing by remember { mutableStateOf<tv.p2160.app.handoff.Peer?>(null) }
     val pairScope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(peers) {
+    LaunchedEffect(Unit) {
+        // Один цикл на весь экран: список устройств берём свежий на каждом шаге (перезапуск по каждому
+        // изменению списка мог не дать циклу дойти до конца). Камеры — первыми: у несопряжённых без сети.
         while (true) {
-            remote = withContext(Dispatchers.IO) {
-                peers.mapNotNull(Handoff::fetchSession).filter { it.durationMs > 0 && it.positionMs > 5_000 }
-            }
             cameras = withContext(Dispatchers.IO) { Handoff.fetchCameras() }
+            remote = withContext(Dispatchers.IO) {
+                kotlinx.coroutines.coroutineScope {
+                    Handoff.peers.value.map { p -> async { Handoff.fetchSession(p) } }.awaitAll()
+                }.filterNotNull().filter { it.durationMs > 0 && it.positionMs > 5_000 }
+            }
             kotlinx.coroutines.delay(5_000)
         }
     }
@@ -123,17 +131,19 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
 
+    val sidePadding = if (LocalConfiguration.current.screenWidthDp >= 600) 32.dp else 16.dp
+    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    // Логотип закреплён над списком: при переходе пультом вниз список прокручивается, а логотип не срезается.
+    Image(
+        painter = painterResource(if (colors.background.luminance() > 0.5f) R.drawable.logo_header_light_small else R.drawable.logo_header_small),
+        contentDescription = "2160 Player",
+        modifier = Modifier.padding(start = sidePadding, top = 20.dp, bottom = 8.dp).height(56.dp),
+    )
     LazyColumn(
-        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
-        contentPadding = PaddingValues(horizontal = if (LocalConfiguration.current.screenWidthDp >= 600) 32.dp else 16.dp, vertical = 20.dp),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = sidePadding, end = sidePadding, top = 8.dp, bottom = 20.dp),
     ) {
         item(key = "header") {
-            Image(
-                painter = painterResource(if (colors.background.luminance() > 0.5f) R.drawable.logo_header_light_small else R.drawable.logo_header_small),
-                contentDescription = "2160 Player",
-                modifier = Modifier.height(56.dp),
-            )
-            Spacer(Modifier.height(16.dp))
             // Компактная сетка: 3 колонки на телефоне в портрете, все 6 в ряд на широком экране/ТВ.
             val actions = listOf(
                 Triple(Icons.Default.FolderOpen, tr("app.open_file"), onOpenFile),
@@ -164,10 +174,16 @@ fun HomeScreen(
         if (cameras.isNotEmpty()) {
             item(key = "cameras") {
                 SectionTitle(tr("camera.network"))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // чтобы первая карточка стояла ровно под заголовком раздела.
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.offset(x = (-8).dp),
+                ) {
                     items(cameras, key = { "cam" + it.peer.id }) { cam ->
-                        FocusCard(onClick = { if (cam.uri != null) onPlayCamera(cam) else pairing = cam.peer }, modifier = Modifier.width(240.dp).height(96.dp)) {
-                            Row(Modifier.fillMaxSize().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FocusCard(onClick = { if (cam.uri != null) onPlayCamera(cam) else pairing = cam.peer }, modifier = Modifier.width(280.dp).heightIn(min = 96.dp)) {
+                            Row(Modifier.fillMaxWidth().align(Alignment.CenterStart).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     Modifier.size(44.dp).background(androidx.compose.ui.graphics.Color(0xFFE53935).copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
                                     contentAlignment = Alignment.Center,
@@ -177,7 +193,7 @@ fun HomeScreen(
                                     Text(cam.peer.name, color = colors.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(
                                         if (cam.uri == null) tr("camera.need_pairing") else tr("camera.live_now", cam.viewers),
-                                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2,
                                     )
                                 }
                             }
@@ -190,7 +206,13 @@ fun HomeScreen(
         if (remote.isNotEmpty()) {
             item(key = "remote") {
                 SectionTitle(tr("handoff.other_devices"))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // чтобы первая карточка стояла ровно под заголовком раздела.
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.offset(x = (-8).dp),
+                ) {
                     items(remote, key = { "r" + it.peer.id }) { session ->
                         FocusCard(onClick = { onPlayRemote(session) }, modifier = Modifier.width(240.dp).height(116.dp)) {
                             Column(Modifier.fillMaxSize().padding(14.dp)) {
@@ -223,7 +245,12 @@ fun HomeScreen(
         if (continueList.isNotEmpty()) {
             item(key = "continue") {
                 // Заголовок кликабелен (палец и пульт): открывает полный список недосмотренного.
-                FocusCard(onClick = onOpenContinue, background = androidx.compose.ui.graphics.Color.Transparent, modifier = Modifier.padding(top = 12.dp)) {
+                FocusCard(
+                    onClick = onOpenContinue,
+                    background = androidx.compose.ui.graphics.Color.Transparent,
+                    // Текст — ровно под остальными заголовками: компенсируем внутренний отступ кнопки.
+                    modifier = Modifier.padding(top = 12.dp).offset(x = (-4).dp),
+                ) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(tr("app.continue"), style = MaterialTheme.typography.titleMedium, color = colors.primary)
                         Spacer(Modifier.width(8.dp))
@@ -231,7 +258,13 @@ fun HomeScreen(
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
                 }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // чтобы первая карточка стояла ровно под заголовком раздела.
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.offset(x = (-8).dp),
+                ) {
                     items(continueList, key = { "c" + it.key }) { entry ->
                         val cover = remember(entry.key, coverChanges) { store.cover(entry.key) }
                         ContinueCard(entry, cover, onClick = { onPlayEntry(entry) }, onLongClick = { store.delete(entry.key) })
@@ -248,6 +281,8 @@ fun HomeScreen(
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+
     }
 
     pairing?.let { peer ->

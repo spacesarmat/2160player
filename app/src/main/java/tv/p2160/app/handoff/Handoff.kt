@@ -98,6 +98,8 @@ object Handoff {
     private val pool = Executors.newCachedThreadPool()
     /** Когда последний раз слышали устройство (mDNS или /hello), по id. */
     private val lastSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Флаг «транслирует камеру» из последнего «привета»: свежее TXT mDNS, которое может прийти из кэша. */
+    private val helloCamera = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private const val HELLO_INTERVAL_MS = 60_000L
     private const val HELLO_TTL_MS = 3 * 60_000L
     @Volatile private var helloLoop: java.util.concurrent.Future<*>? = null
@@ -146,6 +148,7 @@ object Handoff {
         helloLoop = null
         _peers.value = emptyList()
         lastSeen.clear()
+        helloCamera.clear()
     }
 
     /** Обновить TXT-запись mDNS без перезапуска сервера (порт тот же): например, началась/кончилась трансляция камеры. */
@@ -171,7 +174,11 @@ object Handoff {
             val code = conn.responseCode
             conn.disconnect()
             Log.d(TAG, "hello -> ${peer.name} ${peer.host}:${peer.port}: $code")
-        }.onFailure { Log.d(TAG, "hello -> ${peer.name} ${peer.host}:${peer.port} failed: ${it.message}") }
+        }.onFailure {
+            Log.d(TAG, "hello -> ${peer.name} ${peer.host}:${peer.port} failed: ${it.message}")
+            // Недоступно (ушло из сети, чужая подсеть эмулятора): убираем, вернётся с mDNS или «приветом».
+            _peers.value = _peers.value.filterNot { p -> p.id == peer.id && p.host == peer.host && p.port == peer.port }
+        }
     }
 
     /** Добавить или обновить устройство в списке. */
@@ -392,6 +399,7 @@ object Handoff {
                 if (id.isBlank() || id == deviceId || port == null || remoteHost == null) return respond(out, 400, "")
                 val known = _peers.value.any { it.id == id }
                 Log.d(TAG, "hello <- ${query.getQueryParameter("name")} $remoteHost:$port cam=${query.getQueryParameter("cam")}")
+                helloCamera[id] = query.getQueryParameter("cam") == "1"
                 upsertPeer(
                     Peer(
                         id = id,
@@ -597,7 +605,7 @@ object Handoff {
                             if (id == deviceId) return
                             val host = (if (Build.VERSION.SDK_INT >= 34) r.hostAddresses.firstOrNull() else r.host)?.hostAddress ?: return
                             val locked = r.attributes["auth"]?.let { String(it) } == "1"
-                            val camera = r.attributes["cam"]?.let { String(it) } == "1"
+                            val camera = helloCamera[id] ?: (r.attributes["cam"]?.let { String(it) } == "1")
                             val peer = Peer(id, r.serviceName, host, r.port, locked, camera)
                             upsertPeer(peer)
                             // Нашли (или оно перезапустилось на новом порту) — сразу «привет»: вдруг наш multicast до него не доходит.

@@ -282,5 +282,7 @@
   "camera.err_srt_url": "Enter an SRT address like srt://192.168.1.10:9000.",
   "camera.err_rtmp_url": "Enter an rtmp://… server and the stream key.",
   "camera.err_auth": "The server rejected the stream key.",
-  "camera.err_connection": "Could not connect: %1$s"
+  "camera.err_connection": "Could not connect: %1$s",
+  "camera.protected": "Protected: user %1$s, password %2$s (the device handoff code; the daily one changes at midnight). Paired 2160 Players connect by themselves.",
+  "camera.unprotected": "No password: anyone on this network can watch. Turn protection on in Settings → Device handoff."
 }

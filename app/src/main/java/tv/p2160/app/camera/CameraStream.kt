@@ -22,7 +22,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tv.p2160.app.handoff.Handoff
+import tv.p2160.app.handoff.HandoffAuth
 
 /** Камера устройства для выбора в трансляции. */
 data class CameraInfo(
@@ -92,7 +94,14 @@ sealed interface CameraStreamState {
         val bitrateKbps: Int,
         val protocol: StreamProtocol = StreamProtocol.RTSP,
         val connected: Boolean = true,
-    ) : CameraStreamState
+        /** RTSP с защитой: пароль (логин [CameraStream.RTSP_USER]); null — поток открыт. */
+        val password: String? = null,
+    ) : CameraStreamState {
+        /** Адрес с логином и паролем — для OBS/VLC и сопряжённых плееров. */
+        val urlWithAuth: String
+            get() = if (password == null || !url.startsWith("rtsp://")) url
+            else "rtsp://${CameraStream.RTSP_USER}:$password@" + url.removePrefix("rtsp://")
+    }
     /** [message] — ключ строки (`camera.err_*`) или текст ошибки соединения. */
     data class Error(val message: String) : CameraStreamState
 }
@@ -107,6 +116,10 @@ sealed interface CameraStreamState {
  */
 object CameraStream {
     const val DEFAULT_PORT = 8554
+    /** Логин RTSP при защите; пароль — код «Передачи между устройствами» ([HandoffAuth.currentCode]). */
+    const val RTSP_USER = "2160"
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private var authJob: kotlinx.coroutines.Job? = null
     private const val TAG = "CameraStream"
 
     private val _state = MutableStateFlow<CameraStreamState>(CameraStreamState.Idle)
@@ -383,6 +396,8 @@ object CameraStream {
         }
         if (s is RtspServerStream) {
             s.getStreamClient().setClientListener(clients)
+            // Защита как у «Передачи между устройствами»: включена — поток по логину 2160 и текущему коду.
+            s.getStreamClient().setAuthorization(RTSP_USER.takeIf { HandoffAuth.required }, rtspPassword())
             // Адрес в ответах сервера (Content-Base) — IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
             s.getStreamClient().forceIpType(com.pedro.rtspserver.server.IpType.IPv4)
         } else {
@@ -440,7 +455,7 @@ object CameraStream {
         return runCatching {
             // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
             _state.value = when (cfg.protocol) {
-                StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0)
+                StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0, password = rtspPassword())
                 // Ключ RTMP на экран и в уведомление не выводим.
                 StreamProtocol.SRT -> CameraStreamState.Streaming(target, 0, 0, StreamProtocol.SRT, connected = false)
                 StreamProtocol.RTMP -> CameraStreamState.Streaming(cfg.rtmpUrl.trim(), 0, 0, StreamProtocol.RTMP, connected = false)
@@ -449,6 +464,7 @@ object CameraStream {
             cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
             // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
+            if (s is RtspServerStream) watchCode(s)
             true
         }.getOrElse { e ->
             Log.w(TAG, "start failed", e)
@@ -463,7 +479,28 @@ object CameraStream {
         stopStreaming()
     }
 
+    /** Пароль RTSP: текущий код защиты; null — защита выключена. */
+    private fun rtspPassword(): String? = if (HandoffAuth.required) HandoffAuth.currentCode() else null
+
+    /** Суточный код меняется в полночь (или его сменили в настройках): обновляем пароль для новых зрителей. */
+    private fun watchCode(s: RtspServerStream) {
+        authJob?.cancel()
+        authJob = scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                val current = (_state.value as? CameraStreamState.Streaming)?.takeIf { it.protocol == StreamProtocol.RTSP } ?: return@launch
+                val pass = rtspPassword()
+                if (pass != current.password) {
+                    s.getStreamClient().setAuthorization(RTSP_USER.takeIf { pass != null }, pass)
+                    _state.value = current.copy(password = pass)
+                }
+            }
+        }
+    }
+
     internal fun stopStreaming() {
+        authJob?.cancel()
+        authJob = null
         stream?.takeIf { it.isStreaming }?.let { runCatching { it.stopStream() } }
         if (_state.value is CameraStreamState.Streaming) {
             _state.value = CameraStreamState.Idle

@@ -374,7 +374,8 @@ private fun PushStatus(s: CameraStreamState.Streaming) {
 @Composable
 private fun StreamAddress(s: CameraStreamState.Streaming) {
     val colors = MaterialTheme.colorScheme
-    val qr = remember(s.url) { ShareApp.qr(s.url, 512).asImageBitmap() }
+    val full = s.urlWithAuth
+    val qr = remember(full) { ShareApp.qr(full, 512).asImageBitmap() }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(colors.surfaceVariant).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -382,7 +383,12 @@ private fun StreamAddress(s: CameraStreamState.Streaming) {
         Image(qr, contentDescription = s.url, modifier = Modifier.size(140.dp).clip(RoundedCornerShape(8.dp)).background(Color.White).padding(6.dp))
         Spacer(Modifier.size(16.dp))
         Column(Modifier.weight(1f)) {
-            Text(s.url, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+            Text(full, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+            Text(
+                if (s.password != null) tr("camera.protected", CameraStream.RTSP_USER, s.password) else tr("camera.unprotected"),
+                color = if (s.password != null) colors.onSurfaceVariant else colors.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
             Spacer(Modifier.height(4.dp))
             Text(tr("camera.viewers", s.clients) + if (s.bitrateKbps > 0) " · ${s.bitrateKbps} kbit/s" else "",
                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

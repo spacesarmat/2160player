@@ -418,7 +418,8 @@ object Handoff {
                 val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
                     ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
                 if (cam == null) respond(out, 204, "")
-                else respond(out, 200, JSONObject().put("url", cam.url).put("viewers", cam.clients).toString(), "application/json")
+                // Адрес с паролем: сюда доходят только сопряжённые устройства (или защита выключена).
+                else respond(out, 200, JSONObject().put("url", cam.urlWithAuth).put("viewers", cam.clients).toString(), "application/json")
             }
             method == "GET" && path == "/now" -> {
                 val now = Player2160.nowPlaying.value?.let { shareable(ctx, it) }

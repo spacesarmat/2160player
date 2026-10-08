@@ -68,8 +68,10 @@ import androidx.compose.ui.unit.dp
 import tv.p2160.core.i18n.tr
 import tv.p2160.app.handoff.Handoff
 import tv.p2160.app.handoff.RemoteSession
+import tv.p2160.app.handoff.RemoteCamera
 import androidx.compose.material.icons.filled.Devices
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.p2160.core.resume.ResumeEntry
 import tv.p2160.core.resume.ResumeStore
@@ -88,15 +90,22 @@ fun HomeScreen(
     onPlayRemote: (RemoteSession) -> Unit,
     onOpenContinue: () -> Unit,
     onOpenCamera: () -> Unit = {},
+    onPlayCamera: (RemoteCamera) -> Unit = {},
 ) {
     // Что играет на других устройствах в сети — опрашиваем раз в несколько секунд.
     val peers by Handoff.peers.collectAsState()
     var remote by remember { mutableStateOf<List<RemoteSession>>(emptyList()) }
+    // Камеры, которые сейчас транслируют другие устройства с 2160 Player.
+    var cameras by remember { mutableStateOf<List<RemoteCamera>>(emptyList()) }
+    // Камера на несопряжённом устройстве: сначала «Разрешить» там (или код), потом смотрим.
+    var pairing by remember { mutableStateOf<tv.p2160.app.handoff.Peer?>(null) }
+    val pairScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(peers) {
         while (true) {
             remote = withContext(Dispatchers.IO) {
                 peers.mapNotNull(Handoff::fetchSession).filter { it.durationMs > 0 && it.positionMs > 5_000 }
             }
+            cameras = withContext(Dispatchers.IO) { Handoff.fetchCameras() }
             kotlinx.coroutines.delay(5_000)
         }
     }
@@ -106,7 +115,9 @@ fun HomeScreen(
     val continueList = history.filter { !it.finished && it.positionMs > 0 }
     var urlDialog by remember { mutableStateOf(false) }
     val homeContext = LocalContext.current
-    val hasCamera = remember { homeContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) }
+    val hasCamera = remember {
+        runCatching { homeContext.getSystemService(android.hardware.camera2.CameraManager::class.java)?.cameraIdList?.isNotEmpty() == true }.getOrDefault(false)
+    }
     val firstFocus = remember { FocusRequester() }
     val colors = MaterialTheme.colorScheme
 
@@ -145,6 +156,32 @@ fun HomeScreen(
                             ActionTile(icon, label, onClick, Modifier.weight(1f).then(focus))
                         }
                         if (chunk.size > 1) repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+
+        if (cameras.isNotEmpty()) {
+            item(key = "cameras") {
+                SectionTitle(tr("camera.network"))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    items(cameras, key = { "cam" + it.peer.id }) { cam ->
+                        FocusCard(onClick = { if (cam.uri != null) onPlayCamera(cam) else pairing = cam.peer }, modifier = Modifier.width(240.dp).height(96.dp)) {
+                            Row(Modifier.fillMaxSize().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(44.dp).background(androidx.compose.ui.graphics.Color(0xFFE53935).copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) { Icon(Icons.Default.Videocam, null, tint = androidx.compose.ui.graphics.Color(0xFFE53935)) }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(cam.peer.name, color = colors.onSurface, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        if (cam.uri == null) tr("camera.need_pairing") else tr("camera.live_now", cam.viewers),
+                                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -211,6 +248,16 @@ fun HomeScreen(
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+
+    pairing?.let { peer ->
+        tv.p2160.app.handoff.PairCodeDialog(peer, onDismiss = { pairing = null }, onPaired = {
+            pairing = null
+            pairScope.launch {
+                val cam = withContext(Dispatchers.IO) { Handoff.fetchCamera(peer) }
+                if (cam != null) onPlayCamera(cam)
+            }
+        })
     }
 
     if (urlDialog) {

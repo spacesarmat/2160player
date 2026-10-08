@@ -24,6 +24,7 @@ class RoutingDataSource(
     private val listeners = mutableListOf<TransferListener>()
     private var smb: DataSource? = null
     private var disc: DataSource? = null
+    private var udp: DataSource? = null
     private val custom = HashMap<String, DataSource>()
     private var current: DataSource? = null
 
@@ -40,6 +41,8 @@ class RoutingDataSource(
         val source = when (scheme) {
             "smb" -> smb ?: SmbDataSource(context).also { s -> listeners.forEach(s::addTransferListener); smb = s }
             DiscSession.SCHEME -> disc ?: DiscDataSource().also { s -> listeners.forEach(s::addTransferListener); disc = s }
+            // udp://адрес:порт — MPEG-TS по UDP (ffmpeg/OBS, IPTV-мультикаст).
+            "udp" -> udp ?: androidx.media3.datasource.UdpDataSource().also { s -> listeners.forEach(s::addTransferListener); udp = s }
             else -> schemes[scheme]?.let { factory ->
                 custom.getOrPut(scheme!!) { factory.createDataSource().also { s -> listeners.forEach(s::addTransferListener) } }
             } ?: default

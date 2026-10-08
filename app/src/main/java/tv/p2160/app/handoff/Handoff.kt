@@ -27,7 +27,23 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /** Другой экземпляр 2160 Player в локальной сети. [locked] — на нём включена защита кодом. */
-data class Peer(val id: String, val name: String, val host: String, val port: Int, val locked: Boolean = false)
+data class Peer(
+    val id: String,
+    val name: String,
+    val host: String,
+    val port: Int,
+    val locked: Boolean = false,
+    /** Сейчас транслирует камеру (TXT `cam=1`): видно и без сопряжения, адрес — после него. */
+    val camera: Boolean = false,
+)
+
+/** Камера, которую сейчас транслирует другое устройство с 2160 Player ([tv.p2160.app.camera.CameraStream]). */
+data class RemoteCamera(
+    val peer: Peer,
+    /** Адрес потока; null — нужен код/разрешение ([Handoff.needsCode]), адрес узнаем после сопряжения. */
+    val uri: Uri?,
+    val viewers: Int,
+)
 
 /** Итог отправки просмотра на другое устройство. */
 enum class PushResult { OK, NEED_CODE, FAILED }
@@ -52,6 +68,10 @@ data class RemoteSession(
  * Каждый запущенный плеер поднимает маленький HTTP-сервер и объявляет себя по mDNS (`_p2160._tcp`):
  * - `GET /now` — что сейчас играет (URI, доступный другим устройствам, и позиция);
  * - `POST /play` — предложение продолжить просмотр здесь (показываем диалог подтверждения);
+ * - `GET /camera` — адрес трансляции камеры этого устройства (`rtsp://…`), 204 — камера не транслируется;
+ * - `GET /hello?id&name&port&auth&cam` — «я тоже здесь»: найдя устройство по mDNS, плеер сообщает о себе
+ *   напрямую. Так обнаружение работает и там, где роутер пропускает multicast только в одну сторону
+ *   (Wi-Fi ↔ провод): записи без «привета» и mDNS дольше [HELLO_TTL_MS] удаляются;
  * - `GET /stream/<token>` — раздача локального файла (content://, file://) с поддержкой Range,
  *   чтобы ТВ мог досмотреть видео, лежащее в памяти телефона;
  * - `GET /pair/challenge`, `GET /pair/status`, `POST /pair` — сопряжение: хозяин отвечает в уведомлении
@@ -76,6 +96,11 @@ object Handoff {
     private var app: Context? = null
     private var server: ServerSocket? = null
     private val pool = Executors.newCachedThreadPool()
+    /** Когда последний раз слышали устройство (mDNS или /hello), по id. */
+    private val lastSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val HELLO_INTERVAL_MS = 60_000L
+    private const val HELLO_TTL_MS = 3 * 60_000L
+    @Volatile private var helloLoop: java.util.concurrent.Future<*>? = null
     private var nsd: NsdManager? = null
     private var registration: NsdManager.RegistrationListener? = null
     private var discovery: NsdManager.DiscoveryListener? = null
@@ -98,6 +123,15 @@ object Handoff {
         nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
         register(socket.localPort, deviceName(ctx))
         discover()
+        // Раз в минуту — «привет» всем известным и чистка тех, кого давно не слышно.
+        helloLoop = pool.submit {
+            while (server === socket && !socket.isClosed) {
+                runCatching { Thread.sleep(HELLO_INTERVAL_MS) }.onFailure { return@submit }
+                val now = System.currentTimeMillis()
+                _peers.value = _peers.value.filter { now - (lastSeen[it.id] ?: now) < HELLO_TTL_MS }
+                _peers.value.forEach(::hello)
+            }
+        }
     }
 
     @Synchronized
@@ -108,7 +142,47 @@ object Handoff {
         discovery = null
         runCatching { server?.close() }
         server = null
+        helloLoop?.cancel(true)
+        helloLoop = null
         _peers.value = emptyList()
+        lastSeen.clear()
+    }
+
+    /** Обновить TXT-запись mDNS без перезапуска сервера (порт тот же): например, началась/кончилась трансляция камеры. */
+    @Synchronized
+    fun reannounce() {
+        val ctx = app ?: return
+        val port = server?.localPort ?: return
+        runCatching { registration?.let { nsd?.unregisterService(it) } }
+        registration = null
+        register(port, deviceName(ctx))
+        // Тем, до кого не доходит наш multicast, — напрямую.
+        _peers.value.forEach { peer -> pool.execute { hello(peer) } }
+    }
+
+    /** Сообщить [peer] о себе (`GET /hello`). Блокирующий вызов. */
+    private fun hello(peer: Peer) {
+        val ctx = app ?: return
+        val port = server?.localPort ?: return
+        runCatching {
+            val q = "/hello?id=${Uri.encode(deviceId)}&name=${Uri.encode(deviceName(ctx))}&port=$port" +
+                "&auth=${if (HandoffAuth.required) 1 else 0}&cam=${if (tv.p2160.app.camera.CameraStream.isStreaming) 1 else 0}"
+            val conn = connect(peer, q)
+            val code = conn.responseCode
+            conn.disconnect()
+            Log.d(TAG, "hello -> ${peer.name} ${peer.host}:${peer.port}: $code")
+        }.onFailure { Log.d(TAG, "hello -> ${peer.name} ${peer.host}:${peer.port} failed: ${it.message}") }
+    }
+
+    /** Добавить или обновить устройство в списке. */
+    private fun upsertPeer(peer: Peer) {
+        lastSeen[peer.id] = System.currentTimeMillis()
+        _peers.value = _peers.value.filterNot { it.id == peer.id } + peer
+    }
+
+    /** Список камер в сети: у сопряжённых — с адресом, у остальных — только «есть камера» (адрес после сопряжения). */
+    fun fetchCameras(): List<RemoteCamera> = _peers.value.filter { it.camera }.mapNotNull { peer ->
+        if (needsCode(peer)) RemoteCamera(peer, null, 0) else fetchCamera(peer)
     }
 
     /** Перезапуск объявления (например, после смены режима защиты — меняется TXT `auth`). */
@@ -139,6 +213,21 @@ object Handoff {
             if (conn.responseCode == 401) { HandoffAuth.dropToken(peer.id); return null }
             if (conn.responseCode != 200) return null
             sessionFromJson(peer, JSONObject(conn.inputStream.bufferedReader().readText()))
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    /** Трансляция камеры на [peer]. Блокирующий вызов. null — не транслирует или нет доступа (нужен код). */
+    fun fetchCamera(peer: Peer): RemoteCamera? = runCatching {
+        if (needsCode(peer)) return null
+        val conn = connect(peer, "/camera")
+        try {
+            if (conn.responseCode == 401) { HandoffAuth.dropToken(peer.id); return null }
+            if (conn.responseCode != 200) return null
+            val json = JSONObject(conn.inputStream.bufferedReader().readText())
+            val url = json.optString("url").takeIf { it.startsWith("rtsp://") } ?: return null
+            RemoteCamera(peer, Uri.parse(url), json.optInt("viewers"))
         } finally {
             conn.disconnect()
         }
@@ -239,6 +328,7 @@ object Handoff {
     }
 
     private fun handle(client: Socket) {
+        val remoteHost = client.inetAddress?.hostAddress
         client.soTimeout = 15_000
         val input = BufferedInputStream(client.getInputStream())
         val requestLine = readLine(input) ?: return
@@ -255,7 +345,7 @@ object Handoff {
         val out = client.getOutputStream()
         val ctx = app ?: return respond(out, 503, "")
         // Защита кодом: что играет и «продолжить здесь» — только сопряжённым устройствам.
-        if ((path == "/now" || path == "/play") && !HandoffAuth.isAuthorized(headers[TOKEN_HEADER.lowercase()])) {
+        if ((path == "/now" || path == "/play" || path == "/camera") && !HandoffAuth.isAuthorized(headers[TOKEN_HEADER.lowercase()])) {
             return respond(out, 401, "")
         }
         when {
@@ -295,6 +385,31 @@ object Handoff {
                     HandoffAuth.PairResult.LOCKED -> respond(out, 429, "")
                     HandoffAuth.PairResult.FAILED -> respond(out, 400, "")
                 }
+            }
+            method == "GET" && path == "/hello" -> {
+                val id = query.getQueryParameter("id").orEmpty()
+                val port = query.getQueryParameter("port")?.toIntOrNull()
+                if (id.isBlank() || id == deviceId || port == null || remoteHost == null) return respond(out, 400, "")
+                val known = _peers.value.any { it.id == id }
+                Log.d(TAG, "hello <- ${query.getQueryParameter("name")} $remoteHost:$port cam=${query.getQueryParameter("cam")}")
+                upsertPeer(
+                    Peer(
+                        id = id,
+                        name = query.getQueryParameter("name").orEmpty().ifBlank { "?" }.take(64),
+                        host = remoteHost,
+                        port = port,
+                        locked = query.getQueryParameter("auth") == "1",
+                        camera = query.getQueryParameter("cam") == "1",
+                    )
+                )
+                respond(out, 204, "")
+                // Он нас знает, а мы его только что узнали — ответный «привет», чтобы он узнал наш порт/флаги.
+                if (!known) _peers.value.firstOrNull { it.id == id }?.let { p -> pool.execute { hello(p) } }
+            }
+            method == "GET" && path == "/camera" -> {
+                val cam = tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming
+                if (cam == null) respond(out, 204, "")
+                else respond(out, 200, JSONObject().put("url", cam.url).put("viewers", cam.clients).toString(), "application/json")
             }
             method == "GET" && path == "/now" -> {
                 val now = Player2160.nowPlaying.value?.let { shareable(ctx, it) }
@@ -457,6 +572,7 @@ object Handoff {
             this.port = port
             setAttribute("id", deviceId)
             setAttribute("auth", if (HandoffAuth.required) "1" else "0")
+            setAttribute("cam", if (tv.p2160.app.camera.CameraStream.isStreaming) "1" else "0")
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) = Unit
@@ -480,8 +596,11 @@ object Handoff {
                             if (id == deviceId) return
                             val host = (if (Build.VERSION.SDK_INT >= 34) r.hostAddresses.firstOrNull() else r.host)?.hostAddress ?: return
                             val locked = r.attributes["auth"]?.let { String(it) } == "1"
-                            val peer = Peer(id, r.serviceName, host, r.port, locked)
-                            _peers.value = _peers.value.filterNot { it.id == id } + peer
+                            val camera = r.attributes["cam"]?.let { String(it) } == "1"
+                            val peer = Peer(id, r.serviceName, host, r.port, locked, camera)
+                            upsertPeer(peer)
+                            // Нашли (или оно перезапустилось на новом порту) — сразу «привет»: вдруг наш multicast до него не доходит.
+                            pool.execute { hello(peer) }
                         }
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit
                     })

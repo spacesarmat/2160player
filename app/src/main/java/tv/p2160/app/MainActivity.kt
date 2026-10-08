@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                             onPlayRemote = { Handoff.play(this, it) },
                             onOpenContinue = { screen = Screen.CONTINUE },
                             onOpenCamera = { screen = Screen.CAMERA },
+                            onPlayCamera = { cam -> cam.uri?.let { play(it, i18n.current.format("camera.title_remote", cam.peer.name)) } },
                         )
                         Screen.CAMERA -> tv.p2160.app.camera.CameraStreamScreen(onBack = { screen = Screen.HOME })
                         Screen.CONTINUE -> ContinueScreen(store = store, onBack = { screen = Screen.HOME }, onPlayEntry = ::playEntry)

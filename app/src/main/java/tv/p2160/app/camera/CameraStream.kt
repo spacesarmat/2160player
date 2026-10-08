@@ -12,7 +12,6 @@ import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.NoAudioSource
 import com.pedro.encoder.input.sources.video.Camera2Source
-import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.rtspserver.RtspServerStream
 import com.pedro.rtspserver.server.ClientListener
 import com.pedro.rtspserver.server.ServerClient
@@ -139,7 +138,7 @@ object CameraStream {
     private var preparedFor: CameraStreamConfig? = null
     private var previewSurface: SurfaceView? = null
 
-    val isStreaming: Boolean get() = stream?.isStreaming == true
+    val isStreaming: Boolean get() = stream?.isStreaming == true && _state.value is CameraStreamState.Streaming
 
     private val checker = object : ConnectChecker {
         override fun onConnectionStarted(url: String) = Unit
@@ -272,7 +271,9 @@ object CameraStream {
         val audio = cfg.audio && ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
         val s = RtspServerStream(app, cfg.port, checker, Camera2Source(app), if (audio) MicrophoneSource() else NoAudioSource())
         s.getGlInterface().autoHandleOrientation = true
-        val rotation = CameraHelper.getCameraOrientation(app)
+        // Кадр всегда горизонтальный 16:9 (ТВ, OBS): телефон вертикально — картинка с полями по бокам,
+        // и поворот во время трансляции ничего не ломает.
+        val rotation = 0
         val q = cfg.quality
         val ok = runCatching {
             s.prepareVideo(q.width, q.height, q.bitrateKbps * 1000, q.fps, iFrameInterval = 1, rotation = rotation) &&
@@ -330,6 +331,8 @@ object CameraStream {
             s.startStream()
             _config.value.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
             _state.value = CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0)
+            // Объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
+            Handoff.reannounce()
             true
         }.getOrElse { e ->
             Log.w(TAG, "start failed", e)
@@ -346,7 +349,10 @@ object CameraStream {
 
     internal fun stopStreaming() {
         stream?.takeIf { it.isStreaming }?.let { runCatching { it.stopStream() } }
-        if (_state.value is CameraStreamState.Streaming) _state.value = CameraStreamState.Idle
+        if (_state.value is CameraStreamState.Streaming) {
+            _state.value = CameraStreamState.Idle
+            Handoff.reannounce()
+        }
         if (previewSurface == null) release()
     }
 

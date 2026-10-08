@@ -83,5 +83,5 @@
   "faq.stats.q": "How do I find out why playback stutters?",
   "faq.stats.a": "In the player open Info (ⓘ) → \"Stats for nerds\". It shows the video decoder (hardware or software), dropped frames, buffer fill, network speed and CPU load. Software 4K decoding and DTS-HD decoded without a receiver are the heaviest cases.",
   "faq.camera_stream.q": "How do I show the phone camera in OBS or on a TV?",
-  "faq.camera_stream.a": "Home → Camera: choose the camera and quality, press Start streaming. You get an address like rtsp://192.168.1.5:8554/ and a QR code. OBS: Media Source → untick Local File → paste the address. On a TV with 2160 Player: Link → the address. The phone and the viewer must be on the same network. Streaming continues with the app minimized — stop it from the notification."
+  "faq.camera_stream.a": "Home → Camera: choose the camera and quality, press Start streaming. You get an address like rtsp://192.168.1.5:8554/ and a QR code. OBS: Media Source → untick Local File → paste the address. On a TV with 2160 Player: Link → the address. The phone and the viewer must be on the same network. Streaming continues with the app minimized — stop it from the notification. Other devices with 2160 Player see the camera on their home screen under \"Cameras on the network\"."
 }

@@ -1859,6 +1859,8 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 |---|---|
 | `GET /now` | `200` + JSON текущего `Player2160.nowPlaying` или `204`, если ничего не играет / нечем поделиться. |
 | `POST /play` (JSON, ≤ 64 КБ) | `200 {}`; на принимающем устройстве — диалог «… предлагает продолжить здесь» (`HandoffReceiveActivity`), при согласии — `Player2160.play` с той же позиции и заголовками. |
+| `GET /camera` | Адрес трансляции камеры (`{"url": "rtsp://…", "viewers": N}`), 204 — не транслирует. Защита кодом — как у `/now`. |
+| `GET /hello?id&name&port&auth&cam` | «Я тоже здесь»: найдя устройство по mDNS (и раз в минуту), плеер сообщает о себе напрямую, а получатель добавляет его в `peers`. Так обнаружение работает, даже если роутер пропускает multicast только в одну сторону; устройства, от которых нет ни mDNS, ни «привета» 3 минуты, удаляются. |
 | `GET /stream/<token>/<имя>` | Раздача локального файла (`content://`, `file://`) с поддержкой `Range` (`206 Partial Content`). Токен выдаётся при публикации `/now`/отправке. |
 | `GET /pair/challenge?id=&name=` | `200 {"nonce": …}` — запрос подключения (живёт 3 мин). У хозяина появляется уведомление «… хочет подключиться» с кнопками «Разрешить» / «Отклонить» и кодом (на ТВ и без разрешения на уведомления — диалог). `403` — этот клиент отклонён меньше 10 мин назад (уведомления нет). |
 | `GET /pair/status?nonce=` | `200 {"state": "pending"}`, `{"state": "approved", "token": …}` (после «Разрешить»; токен отдаётся один раз) или `{"state": "denied"}`; `404` — запрос истёк или закрыт. Клиент опрашивает раз в 1,5 с. |
@@ -2022,10 +2024,21 @@ ARM-устройствах берёт именно его (§22.2): устано
 | Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. |
 | Фонарик | `CameraStream.setTorch(on)` — у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
 | Фокус и зум | Касание предпросмотра — фокус и экспозиция в точке (`CameraStream.tapToFocus`), «Автофокус» — снова непрерывный (`autoFocus`). Зум — щипком на предпросмотре (`onPreviewTouch`) и ползунком (`setZoom`, диапазон `zoomRange()` у самой камеры, `zoom: StateFlow`). Работают и во время трансляции; при смене камеры зум сбрасывается. |
-| Ориентация | По положению телефона при старте: держите горизонтально — картинка 16:9. |
+| Ориентация | Кадр всегда горизонтальный 16:9 (для ТВ и OBS): держите телефон горизонтально — картинка займёт весь кадр; вертикально — с полями по бокам. Поворот во время трансляции ничего не ломает. |
 | Фон | Трансляция идёт в сервисе переднего плана `CameraStreamService` (`foregroundServiceType="camera\|microphone"`): экран можно закрыть, приложение свернуть. Уведомление показывает адрес и число зрителей, кнопка «Остановить»; нажатие открывает экран трансляции (`MainActivity.EXTRA_OPEN_CAMERA`). |
 | Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку). Плеер для `rtsp`/`rtmp`/`srt`/`udp` (`PlayerFactory.LOW_LATENCY_SCHEMES`) включает низкую задержку: старт после 0,1 с буфера, не больше 2 с в буфере (обычно ~0,5 с), без чтения глав и поиска вступления через FFmpeg; RTSP — RTP поверх TCP (`RtspOverTcp`: по Wi-Fi UDP теряется). |
 | Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах — IPv4 (по нему клиенты делают SETUP), адрес для зрителей — IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт — в `CameraStream.state` (`CameraStreamState.Streaming`). |
+
+**Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, `rtmp://`, HLS/DASH и `udp://адрес:порт`
+(MPEG-TS по UDP — ffmpeg, OBS, IPTV-мультикаст; встроенный источник `UdpDataSource` в `RoutingDataSource`) через
+«Ссылку» или Intent. Для живых источников включается низкая задержка (см. «Задержка»).
+
+**Камеры в сети.** Транслирующее устройство объявляет в mDNS-записи `cam=1` (`Handoff.reannounce()` при старте и
+остановке) и отдаёт адрес по `GET /camera` (с той же защитой кодом, что `/now`). На главном экране других плееров —
+раздел «Камеры в сети» (`Handoff.fetchCameras()`, опрос раз в 5 с): у сопряжённых устройств карточка сразу открывает
+поток, у остальных — «Нажмите, чтобы подключиться»: обычное сопряжение (уведомление «Разрешить» на телефоне или код,
+§22.1), затем поток. Обнаружение работает и в сетях, где multicast проходит только в одну сторону (Wi-Fi ↔ провод):
+см. `GET /hello` в §22.1.
 
 Разрешения: `CAMERA`, `RECORD_AUDIO`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`
 (камера и микрофон запрашиваются при первом открытии экрана). Захват и кодирование — RootEncoder 2.8.1,
@@ -2065,7 +2078,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `NetworkMode`, `SeedPolicy`, `TorrentHold`, `DeviceState`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer`, `RemoteSession`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`, `tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer` (`locked`, `camera`), `RemoteSession`, `RemoteCamera`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`, `tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`;
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

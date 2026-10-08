@@ -12,16 +12,11 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 
 static const NDIlib_v6* ndi = nullptr;
+static bool initialized = false;
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_tv_p2160_app_camera_Ndi_nativeLoad(JNIEnv* env, jclass, jstring configDir) {
+Java_tv_p2160_app_camera_Ndi_nativeLoad(JNIEnv*, jclass) {
     if (ndi) return JNI_TRUE;
-    // Настройки NDI (имя машины) читаются из NDI_CONFIG_DIR/ndi-config.v1.json при инициализации.
-    if (configDir) {
-        const char* dir = env->GetStringUTFChars(configDir, nullptr);
-        setenv("NDI_CONFIG_DIR", dir, 1);
-        env->ReleaseStringUTFChars(configDir, dir);
-    }
     // В APK лежит libndi.so; системный загрузчик найдёт её в каталоге библиотек приложения.
     void* lib = dlopen("libndi.so", RTLD_LOCAL | RTLD_NOW);
     if (!lib) {
@@ -34,12 +29,31 @@ Java_tv_p2160_app_camera_Ndi_nativeLoad(JNIEnv* env, jclass, jstring configDir) 
         return JNI_FALSE;
     }
     const NDIlib_v6* api = load();
-    if (!api || !api->initialize()) {
-        LOGW("NDI initialize failed (unsupported CPU?)");
+    if (!api || !api->is_supported_CPU()) {
+        LOGW("NDI: unsupported CPU");
         return JNI_FALSE;
     }
     ndi = api;
     return JNI_TRUE;
+}
+
+// (Пере)инициализация перед трансляцией: настройки (имя машины, разрешённые сетевые адаптеры) читаются из
+// NDI_CONFIG_DIR/ndi-config.v1.json только при initialize, а адреса Wi-Fi между трансляциями могут смениться.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_tv_p2160_app_camera_Ndi_nativeInit(JNIEnv* env, jclass, jstring configDir) {
+    if (!ndi) return JNI_FALSE;
+    if (initialized) {
+        ndi->destroy();
+        initialized = false;
+    }
+    if (configDir) {
+        const char* dir = env->GetStringUTFChars(configDir, nullptr);
+        setenv("NDI_CONFIG_DIR", dir, 1);
+        env->ReleaseStringUTFChars(configDir, dir);
+    }
+    initialized = ndi->initialize();
+    if (!initialized) LOGW("NDI initialize failed");
+    return initialized ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jlong JNICALL

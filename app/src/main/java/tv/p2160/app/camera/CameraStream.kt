@@ -17,6 +17,7 @@ import com.pedro.library.rtmp.RtmpStream
 import com.pedro.library.srt.SrtStream
 import com.pedro.rtspserver.RtspServerStream
 import com.pedro.rtspserver.server.ClientListener
+import com.pedro.rtspserver.server.RtspServer
 import com.pedro.rtspserver.server.ServerClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.p2160.app.handoff.Handoff
 import tv.p2160.app.handoff.HandoffAuth
+import tv.p2160.app.handoff.Lan
 
 /** Камера устройства для выбора в трансляции. */
 data class CameraInfo(
@@ -607,7 +609,12 @@ object CameraStream {
             )
             return false
         }
-        val s = ensurePrepared(context) ?: return false
+        // Только локальная сеть (Wi-Fi, Ethernet, точка доступа): мобильный интернет не используем.
+        if (stream?.isStreaming != true && !useLan(context, cfg.protocol, target)) {
+            _state.value = CameraStreamState.Error("camera.err_no_lan")
+            return false
+        }
+        val s = ensurePrepared(context) ?: return false.also { releaseLan() }
         if (s.isStreaming) return true
         return runCatching {
             // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
@@ -631,6 +638,7 @@ object CameraStream {
             true
         }.getOrElse { e ->
             Log.w(TAG, "start failed", e)
+            releaseLan()
             _state.value = CameraStreamState.Error(e.message ?: e.javaClass.simpleName)
             false
         }
@@ -733,6 +741,7 @@ object CameraStream {
     }
 
     internal fun stopStreaming() {
+        releaseLan()
         authJob?.cancel()
         authJob = null
         bitrateJob?.cancel()
@@ -785,8 +794,39 @@ object CameraStream {
 
     /** Адрес для зрителей: IPv4 в локальной сети (как у передачи между устройствами), иначе — что сообщит сервер. */
     private fun url(context: Context): String {
-        val host = Handoff.baseUrl()?.let { Uri.parse(it).host }
-        if (host != null) return "rtsp://$host:${_config.value.port}/"
-        return (stream as? RtspServerStream)?.getStreamClient()?.getEndPointConnection() ?: "rtsp://?:${_config.value.port}/"
+        val host = Handoff.baseUrl()?.let { Uri.parse(it).host } ?: Lan.ipv4(context) ?: "?"
+        return "rtsp://$host:${_config.value.port}/"
+    }
+
+    /** Процесс привязан к сети Wi-Fi/Ethernet на время SRT/RTMP. */
+    private var lanBound = false
+
+    /**
+     * Готовит отправку только по локальной сети. RTSP/NDI: нужен адрес Wi-Fi/Ethernet/точки доступа, зрители
+     * через мобильный интерфейс отклоняются. SRT/RTMP: сокеты привязываются к Wi-Fi/Ethernet (без него — только
+     * если адрес назначения в подсети точки доступа телефона). false — локальной сети нет, трансляцию не начинаем.
+     */
+    private fun useLan(context: Context, protocol: StreamProtocol, target: String): Boolean {
+        val app = context.applicationContext
+        RtspServer.allowLocal = { Lan.isLocal(app, it) }
+        return when (protocol) {
+            StreamProtocol.RTSP, StreamProtocol.NDI -> Lan.ipv4(app) != null
+            StreamProtocol.SRT, StreamProtocol.RTMP -> {
+                val net = Lan.network(app)
+                when {
+                    net != null -> {
+                        lanBound = app.getSystemService(android.net.ConnectivityManager::class.java)?.bindProcessToNetwork(net) == true
+                        lanBound
+                    }
+                    else -> Uri.parse(target).host?.let { Lan.inLocalSubnet(app, it) } == true
+                }
+            }
+        }
+    }
+
+    private fun releaseLan() {
+        if (!lanBound) return
+        lanBound = false
+        runCatching { appContext?.getSystemService(android.net.ConnectivityManager::class.java)?.bindProcessToNetwork(null) }
     }
 }

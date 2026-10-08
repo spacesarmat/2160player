@@ -17,8 +17,6 @@ import tv.p2160.core.source.RandomAccessSources
 import java.io.BufferedInputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
-import java.net.Inet4Address
-import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
@@ -340,6 +338,11 @@ object Handoff {
     }
 
     private fun handle(client: Socket) {
+        // Только локальная сеть: подключение, пришедшее через мобильный интерфейс, не обслуживаем.
+        if (!Lan.isLocal(app ?: return, client.localAddress)) {
+            Log.w(TAG, "not LAN: ${client.localAddress}")
+            return
+        }
         val remoteHost = client.inetAddress?.hostAddress
         client.soTimeout = 15_000
         val input = BufferedInputStream(client.getInputStream())
@@ -592,13 +595,8 @@ object Handoff {
         return "http://$ip:$port"
     }
 
-    private fun localIpv4(): String? = runCatching {
-        NetworkInterface.getNetworkInterfaces().toList()
-            .filter { it.isUp && !it.isLoopback }
-            .flatMap { it.inetAddresses.toList() }
-            .filterIsInstance<Inet4Address>()
-            .firstOrNull { it.isSiteLocalAddress }?.hostAddress
-    }.getOrNull()
+    /** IPv4 в локальной сети (Wi-Fi, Ethernet, точка доступа); адреса мобильной сети не отдаём. */
+    private fun localIpv4(): String? = app?.let { Lan.ipv4(it) }
 
     // region mDNS
 

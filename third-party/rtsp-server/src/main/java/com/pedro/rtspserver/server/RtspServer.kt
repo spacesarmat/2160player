@@ -154,6 +154,12 @@ class RtspServer(
         try {
           Log.i(TAG, "Waiting client...")
           val clientSocket = server.accept()
+          // 2160 Player: только локальная сеть — подключения через мобильный интерфейс закрываем.
+          if (allowLocal?.invoke(clientSocket.local) == false) {
+            Log.w(TAG, "Client rejected (not LAN): ${clientSocket.host}")
+            runCatching { clientSocket.socket.close() }
+            continue
+          }
           Log.i(TAG, "Client connected: ${clientSocket.host}")
           val client = ServerClient(delay, socketType, clientSocket.host, clientSocket.socket, serverIp, port,
             socketTimeout, serverCommandManager, this@RtspServer)
@@ -402,6 +408,11 @@ class RtspServer(
     .toList()
 
   companion object {
+    /**
+     * 2160 Player: фильтр входящих по локальному адресу подключения (интерфейсу). false — закрыть: так сервер
+     * не обслуживает зрителей, пришедших через мобильную сеть. null — без фильтра (как в оригинале).
+     */
+    @JvmStatic @Volatile var allowLocal: ((java.net.InetAddress?) -> Boolean)? = null
     private const val VPN_INTERFACE = "tun"
     private const val DEFAULT_IP = "0.0.0.0"
   }

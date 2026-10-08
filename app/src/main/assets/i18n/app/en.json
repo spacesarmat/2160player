@@ -314,5 +314,6 @@
   "camera.ndi_receivers": "NDI receivers: %1$d",
   "camera.err_ndi": "NDI is not available on this device.",
   "settings.ndi": "NDI®",
-  "settings.ndi_hint": "Camera and screen streaming over NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — tap to view the NDI component licenses."
+  "settings.ndi_hint": "Camera and screen streaming over NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — tap to view the NDI component licenses.",
+  "camera.err_no_lan": "No Wi-Fi or local network. Streaming works only over Wi-Fi, Ethernet or the phone's own hotspot — mobile data is never used."
 }

@@ -43,7 +43,8 @@ class StreamServerSocket(
                 ClientSocket(
                     host = hostAddress,
                     port = address.port,
-                    socket = TcpStreamClientSocketKtor(socket, hostAddress, address.port)
+                    socket = TcpStreamClientSocketKtor(socket, hostAddress, address.port),
+                    local = (socket.localAddress.toJavaAddress() as? InetSocketAddress)?.address,
                 )
             }
             SocketType.JAVA -> {
@@ -52,7 +53,8 @@ class StreamServerSocket(
                 ClientSocket(
                     host = hostAddress,
                     port = socket.port,
-                    socket = TcpStreamClientSocketJava(socket)
+                    socket = TcpStreamClientSocketJava(socket),
+                    local = socket.localAddress,
                 )
             }
         }

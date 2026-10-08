@@ -38,8 +38,20 @@ object Ndi {
     @Synchronized
     fun available(context: Context): Boolean = loaded ?: (BuildConfig.NDI && runCatching {
         System.loadLibrary("p2160ndi")
-        nativeLoad(writeConfig(context.applicationContext))
+        nativeLoad()
     }.onFailure { Log.w(TAG, "NDI unavailable", it) }.getOrDefault(false)).also { loaded = it }
+
+    /**
+     * Перед трансляцией: настройки NDI — имя машины и разрешённые адаптеры (только адреса локальной сети: Wi-Fi,
+     * Ethernet, точка доступа; мобильная сеть NDI не используется). false — локальной сети нет или NDI не запустился.
+     */
+    @Synchronized
+    fun prepare(context: Context): Boolean {
+        if (!available(context)) return false
+        val ips = tv.p2160.app.handoff.Lan.ipv4s(context)
+        if (ips.isEmpty()) return false
+        return nativeInit(writeConfig(context.applicationContext, ips))
+    }
 
     /**
      * Имя «машины» в NDI. Android отдаёт hostname «localhost», и источник выглядел бы как «LOCALHOST (…)» — такие
@@ -52,10 +64,14 @@ object Ndi {
         return clean.ifEmpty { "Android-" + android.os.Build.MODEL.filter { it.isLetterOrDigit() } }.uppercase()
     }
 
-    /** ndi-config.v1.json с именем машины; каталог передаётся в NDI_CONFIG_DIR до инициализации библиотеки. */
-    private fun writeConfig(context: Context): String? = runCatching {
+    /** ndi-config.v1.json (имя машины, адаптеры); каталог передаётся в NDI_CONFIG_DIR до инициализации библиотеки. */
+    private fun writeConfig(context: Context, ips: List<String>): String? = runCatching {
         val dir = java.io.File(context.filesDir, "ndi").apply { mkdirs() }
-        val json = org.json.JSONObject().put("ndi", org.json.JSONObject().put("machinename", machineName(context)))
+        val json = org.json.JSONObject().put(
+            "ndi", org.json.JSONObject()
+                .put("machinename", machineName(context))
+                .put("adapters", org.json.JSONObject().put("allowed", org.json.JSONArray(ips)))
+        )
         java.io.File(dir, "ndi-config.v1.json").writeText(json.toString())
         dir.absolutePath
     }.onFailure { Log.w(TAG, "NDI config", it) }.getOrNull()
@@ -83,7 +99,8 @@ object Ndi {
         }
     }
 
-    @JvmStatic private external fun nativeLoad(configDir: String?): Boolean
+    @JvmStatic private external fun nativeLoad(): Boolean
+    @JvmStatic private external fun nativeInit(configDir: String?): Boolean
     @JvmStatic private external fun nativeCreateSender(name: String): Long
     @JvmStatic private external fun nativeSendVideo(handle: Long, buffer: ByteBuffer, width: Int, height: Int, stride: Int, fpsN: Int, fpsD: Int)
     @JvmStatic private external fun nativeSendAudio(handle: Long, pcm: ByteArray, length: Int, sampleRate: Int, channels: Int)
@@ -130,6 +147,7 @@ internal class NdiStream(
             setReferenceCounted(false)
             acquire()
         }
+        check(Ndi.prepare(appContext)) { "camera.err_no_lan" }
         sender = Ndi.Sender(name)
     }
 

@@ -314,5 +314,6 @@
   "camera.ndi_receivers": "Приёмников NDI: %1$d",
   "camera.err_ndi": "NDI недоступен на этом устройстве.",
   "settings.ndi": "NDI®",
-  "settings.ndi_hint": "Трансляция камеры и экрана по NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — нажмите, чтобы посмотреть лицензии компонентов NDI."
+  "settings.ndi_hint": "Трансляция камеры и экрана по NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — нажмите, чтобы посмотреть лицензии компонентов NDI.",
+  "camera.err_no_lan": "Нет Wi-Fi или локальной сети. Трансляция идёт только по Wi-Fi, Ethernet или точке доступа телефона — мобильный интернет не используется."
 }

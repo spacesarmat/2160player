@@ -23,7 +23,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
 - **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне — щипком двумя пальцами.
 - **Камеры в сети и приём потоков:** телефоны с 2160 Player, которые транслируют камеру, видны на главном экране других устройств (подключение — по разрешению или коду); открываются и `rtsp://`, HLS и `udp://` (MPEG-TS) с низкой задержкой.
-- **Трансляция камеры и экрана:** телефон отдаёт видео с выбранной камеры (задняя, широкоугольная, телевик, фронтальная) или свой экран — со звуком микрофона и/или телефона со звуком: RTSP-сервер на телефоне (OBS, VLC, другой 2160 Player), SRT прямо в OBS, NDI® (OBS с DistroAV, vMix) или RTMP на YouTube/Twitch; режимы (до 4K и 60 fps) — по возможностям камеры и кодировщика телефона, фонарик, фокус касанием и зум, задержка ~0,5 с, работает со свёрнутым приложением.
+- **Трансляция камеры и экрана:** телефон отдаёт видео с выбранной камеры (задняя, широкоугольная, телевик, фронтальная) или свой экран — со звуком микрофона и/или телефона со звуком: RTSP-сервер на телефоне (OBS, VLC, другой 2160 Player), SRT прямо в OBS, NDI® (OBS с DistroAV, vMix) или RTMP на YouTube/Twitch; режимы (до 4K и 60 fps) — по возможностям камеры и кодировщика телефона, фонарик, фокус касанием и зум, задержка ~0,5 с (NDI — ~0,1 с), работает со свёрнутым приложением; только по Wi-Fi/LAN/точке доступа — мобильный интернет не используется.
 - **Экономный движок:** аппаратные декодеры в приоритете, буфер по памяти устройства, звук без видео — через аудиочип (offload), частота экрана под видео на ТВ (23,976/24/25/50 Гц), туннельный режим для Android TV и «Статистика поверх видео» (декодеры, пропущенные кадры, буфер, сеть, процессор, память).
 - **«Продолжить просмотр» целиком:** нажмите на заголовок раздела на главном экране — откроется список всего недосмотренного.
 - **Обложки в «Продолжить просмотр» и истории:** встроенные в файл, от DLNA-сервера или рядом с файлом (`poster.jpg`, `folder.jpg`, `<имя>-thumb.jpg`, постер сериала из папки выше сезона).
@@ -179,7 +179,7 @@ and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), suppo
 intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
 themes, JSON language packs and self-updates from GitHub Releases. It can also stream the phone camera or screen
-(RTSP server, SRT to OBS, RTMP to YouTube/Twitch) with password protection, shows cameras of other 2160 Players on the
+(RTSP server, SRT to OBS, NDI®, RTMP to YouTube/Twitch; LAN/Wi-Fi only, never mobile data) with password protection, shows cameras of other 2160 Players on the
 LAN, plays live RTSP/UDP with low latency, and has torrent seeding rules, a memory-sized buffer, audio offload,
 display frame-rate matching and a stats overlay.
 

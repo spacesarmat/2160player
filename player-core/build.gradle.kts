@@ -6,7 +6,7 @@ plugins {
 
 // Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
 group = "tv.p2160"
-version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.3")
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.4")
 
 android {
     namespace = "tv.p2160.core"
@@ -47,6 +47,8 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.exoplayer.smoothstreaming)
     implementation(libs.media3.exoplayer.rtsp)
+    // rtmp:// — DefaultDataSource подхватывает RtmpDataSource из этого модуля (librtmp).
+    implementation(libs.media3.datasource.rtmp)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.nextlib.media3ext)

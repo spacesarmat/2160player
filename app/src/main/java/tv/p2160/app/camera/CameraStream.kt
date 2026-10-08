@@ -127,7 +127,8 @@ enum class StreamProtocol {
 data class CameraStreamConfig(
     /** id камеры из [CameraStream.cameras]; null — основная задняя. */
     val cameraId: String? = null,
-    val quality: StreamMode = StreamMode.DEFAULT,
+    /** По умолчанию 1080p·30; если камера его не умеет — экран выберет ближайший (720p·30 — запасной [StreamMode.DEFAULT]). */
+    val quality: StreamMode = StreamMode(1920, 1080, 30),
     /** Звук с микрофона. */
     val audio: Boolean = true,
     val port: Int = CameraStream.DEFAULT_PORT,

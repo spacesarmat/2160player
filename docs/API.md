@@ -60,6 +60,8 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | Продолжение просмотра | SQLite-история: позиция, аудио- и текстовая дорожка, скорость, задержка субтитров. Возврат позиции вызывающему приложению (MX Player/VLC-совместимо). |
 | UI | Телефон и Android TV (D-pad, пульт, цифровой ввод времени), жесты, PiP, превью кадров при перемотке, 6 тем оформления. |
 | Локализация | JSON-пакеты в assets, импорт/экспорт пользовательских переводов. Встроены `en`, `ru`. |
+| Производительность | Буфер по памяти устройства, offload звука, частота экрана под видео, туннельный режим, статистика поверх видео ([§15.7](#157-производительность-буфер-частота-экрана-статистика)). |
+| Живые потоки | `rtsp://`, `rtmp://`, `udp://` (MPEG-TS) с низкой задержкой; в приложении — трансляция камеры/экрана и «Камеры в сети» (§22.7). |
 
 ---
 
@@ -278,7 +280,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.3")
+    implementation("tv.p2160:player-core:0.2.4")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) — Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -874,10 +876,10 @@ Player2160.settings(context).update {
 | `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` — пауза при сворачивании |
 | `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео — окно PiP (если устройство поддерживает); `false` — без PiP, дальше по `backgroundPlayback` |
 | `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 — звук позже картинки, < 0 — раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер — `setAudioDelay()` |
-| `frameRateMatching` | `Boolean` = `false` | Частота экрана под видео (§15.7): ТВ переключается в 23,976/24/25/50 Гц. |
-| `tunneling` | `Boolean` = `false` | Туннельный режим вывода видео (Android TV). При ошибке декодера выключается сам и сохраняется `false`. |
-| `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип. Не действует, пока включён ночной звук. |
-| `statsOverlay` | `Boolean` = `false` | Слой «Статистика» поверх видео (§15.7); переключается и в панели «Сведения» плеера. |
+| `frameRateMatching` | `Boolean` = `false` | Частота экрана под видео (§15.7): ТВ переключается в 23,976/24/25/50 Гц. Сразу. |
+| `tunneling` | `Boolean` = `false` | Туннельный режим вывода видео (Android TV). При ошибке декодера выключается сам и сохраняется `false`. Для следующего `PlayerController`. |
+| `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип. Не действует, пока включён ночной звук. Для следующего `PlayerController`. |
+| `statsOverlay` | `Boolean` = `false` | Слой «Статистика» поверх видео (§15.7); переключается и в панели «Сведения» плеера. Сразу. |
 
 `fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
@@ -1335,12 +1337,17 @@ class App : Application() {
 | Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле — режим выключается и сохраняется. |
 | Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана — без счёта; потом декодирует сам. |
 
+`object DeviceProfile` (`tv.p2160.core.api`): `lowMemory(context)` — low-RAM или < 2 ГБ памяти; `totalMemoryMb(context)`;
+`heapLimitMb(context)` — предел кучи Java с учётом `android:largeHeap`; `isTv(context)`; `bufferTargetBytes(context)` —
+min(куча/4, ОЗУ/24) в пределах 24–128 МБ, на слабых устройствах ≤ 32 МБ. Им пользуются плеер (`PlayerConfig.AUTO`) и
+модуль торрентов (лимиты для слабых устройств).
+
 **Частота экрана под видео** (`Settings.frameRateMatching`, `FrameRateMatcher`). Пока плеер на экране, окно
 просит режим дисплея с тем же разрешением и частотой, кратной частоте кадров (точное совпадение важнее
 кратности: для 23,976 — 23,976 или 47,952 Гц, иначе 24 Гц). На время переключения (HDMI пересинхронизируется
 1–3 с) воспроизведение на паузе. Если частоты нет в заголовке (часто MKV), она вычисляется по меткам первых
 48 кадров (`VideoFrameMetadataListener`) и приводится к стандартной. При выходе из плеера — режим по умолчанию.
-`FrameRateMatcher.bestMode(modes, current, fps)` и `apply(activity, player, fps)` можно использовать и в своём
+`FrameRateMatcher.bestMode(modes, current, fps)` и `suspend apply(activity, player, fps, onSwitching = controller::onDisplaySwitching)` можно использовать и в своём
 экране. Media3 дополнительно сообщает частоту поверхности (`Surface.setFrameRate`, только бесшовно) — некоторые
 ТВ (например, Dune) по ней переключаются сами.
 
@@ -1830,7 +1837,7 @@ lifecycleScope.launch {
 | `network: NetworkMode` | `ANY` — по любой сети. `SEED_WIFI` (по умолчанию) — просматриваемый торрент работает везде, фоновые по сети с оплатой трафика ждут Wi-Fi, отдача урезается до `TorrentPrefs.METERED_UPLOAD_LIMIT` (16 КБ/с: совсем выключить её нельзя, а при 1 КБ/с не устанавливаются даже соединения с пирами). `WIFI_ONLY` — по сети с оплатой трафика всё на паузе до `allowMobileData()`; дальше как `SEED_WIFI`. |
 | `seedPolicy: SeedPolicy` | Когда скачанный и не просматриваемый торрент перестаёт раздаваться: `ALWAYS`, `RATIO` (отдано не меньше размера выбранных файлов, `TorrentStats.uploadedTotal`), `DAY` (24 ч в состоянии «загружено», `TorrentStats.finishedSeconds`), `NEVER`. Торрент без выбранных файлов «скачанным» не считается. |
 | `seedOnlyCharging` | Фоновые торренты ждут зарядку; просмотр работает всегда. |
-| (слабое устройство) | `DeviceProfile.lowMemory` (low-RAM или < 2 ГБ): по умолчанию 80 соединений вместо 200, меньше одновременных загрузок и короче списки пиров (`SessionConfig.lowMemory`). |
+| (слабое устройство) | `DeviceProfile.lowMemory` (low-RAM или < 2 ГБ): по умолчанию 80 соединений вместо 200 (`TorrentSettings.lowMemory`; выбор `TorrentPrefs.CONNECTIONS`: 50, 80, 100, 200, 400), меньше одновременных загрузок и короче списки пиров (`SessionConfig.lowMemory`). |
 | `mobileDownloadLimitKb` | Ограничение загрузки по сети с оплатой трафика (`MOBILE_DOWNLOAD_LIMITS`: 0, 512, 1024, 2048, 5120 КБ/с). |
 
 `TorrentPrefs.sessionConfig(metered)` строит настройки сессии с учётом сети. Приложение 2160 Player перед
@@ -1849,9 +1856,11 @@ lifecycleScope.launch {
 
 ### 22.1. «Продолжить на другом устройстве» (`tv.p2160.app.handoff`)
 
-Пока приложение на экране (`ProcessLifecycleOwner` onStart/onStop), `Handoff` поднимает HTTP-сервер на
+Пока приложение на экране (`ProcessLifecycleOwner` onStart/onStop) или идёт трансляция камеры/экрана (§22.7),
+`Handoff` поднимает HTTP-сервер на
 случайном порту и объявляет его по mDNS/DNS-SD как `_p2160._tcp` (имя сервиса — имя устройства,
-TXT-атрибуты: `id` — постоянный id устройства, `auth` — `1`, если включена защита кодом). Другие
+TXT-атрибуты: `id` — постоянный id устройства, `auth` — `1`, если включена защита кодом, `cam` — `1`, если идёт
+RTSP-трансляция камеры, §22.7). Другие
 экземпляры находят его через `NsdManager`. Без облака — только одна локальная сеть (Wi-Fi или точка
 доступа телефона): через мобильную сеть mDNS и прямые соединения не проходят (NAT оператора).
 
@@ -1860,7 +1869,7 @@ TXT-атрибуты: `id` — постоянный id устройства, `au
 | `GET /now` | `200` + JSON текущего `Player2160.nowPlaying` или `204`, если ничего не играет / нечем поделиться. |
 | `POST /play` (JSON, ≤ 64 КБ) | `200 {}`; на принимающем устройстве — диалог «… предлагает продолжить здесь» (`HandoffReceiveActivity`), при согласии — `Player2160.play` с той же позиции и заголовками. |
 | `GET /camera` | Адрес трансляции камеры (`{"url": "rtsp://…", "viewers": N}`), 204 — не транслирует. Защита кодом — как у `/now`. |
-| `GET /hello?id&name&port&auth&cam` | «Я тоже здесь»: найдя устройство по mDNS (и раз в минуту), плеер сообщает о себе напрямую, а получатель добавляет его в `peers`. Так обнаружение работает, даже если роутер пропускает multicast только в одну сторону; устройства, от которых нет ни mDNS, ни «привета» 3 минуты, удаляются. |
+| `GET /hello?id&name&port&auth&cam` | «Я тоже здесь»: найдя устройство по mDNS (и раз в минуту), плеер сообщает о себе напрямую, а получатель добавляет его в `peers`. Так обнаружение работает, даже если роутер пропускает multicast только в одну сторону; устройства, от которых нет ни mDNS, ни «привета» 3 минуты, удаляются; не ответившее на «привет» — сразу. |
 | `GET /stream/<token>/<имя>` | Раздача локального файла (`content://`, `file://`) с поддержкой `Range` (`206 Partial Content`). Токен выдаётся при публикации `/now`/отправке. |
 | `GET /pair/challenge?id=&name=` | `200 {"nonce": …}` — запрос подключения (живёт 3 мин). У хозяина появляется уведомление «… хочет подключиться» с кнопками «Разрешить» / «Отклонить» и кодом (на ТВ и без разрешения на уведомления — диалог). `403` — этот клиент отклонён меньше 10 мин назад (уведомления нет). |
 | `GET /pair/status?nonce=` | `200 {"state": "pending"}`, `{"state": "approved", "token": …}` (после «Разрешить»; токен отдаётся один раз) или `{"state": "denied"}`; `404` — запрос истёк или закрыт. Клиент опрашивает раз в 1,5 с. |
@@ -2000,8 +2009,6 @@ ARM-устройствах берёт именно его (§22.2): устано
 языковом пакете `assets/i18n/faq/<код>.json` (ключи `faq.<id>.q` / `faq.<id>.a`, заголовки `faq.section.*`),
 поэтому FAQ переводится вместе с остальным интерфейсом (экспорт/импорт шаблона перевода).
 
----
-
 ### 22.6. Список «Продолжить просмотр» (`tv.p2160.app.ContinueScreen`)
 
 На главном экране заголовок «Продолжить просмотр» кликабелен (палец и пульт, рядом — «все · N»): открывается
@@ -2022,19 +2029,20 @@ ARM-устройствах берёт именно его (§22.2): устано
 | Что | `CameraStreamConfig.source` (`StreamSource`): `CAMERA` или `SCREEN` — экран телефона (`ScreenSource` RootEncoder): при старте системный запрос записи экрана (`MediaProjectionManager.createScreenCaptureIntent`), ответ передаётся сервису (`CameraStream.startScreen`), сервис стартует с типом `mediaProjection` и только потом берёт `MediaProjection` (требование Android 14). Последний кадр повторяется не реже 15 раз в секунду (`setForceRender`) — иначе статичный экран «застывает». Звук экрана (`screenAudio`): микрофон, звук телефона (`InternalAudioSource`, Android 10+; приложения могут запрещать запись своего звука) или оба (`MixAudioSource`). Режимы — 720p/1080p × 30/60, что потянет кодировщик (`CameraStream.screenModes()`). Остановка системной кнопкой записи экрана тоже останавливает трансляцию. |
 | Куда | `CameraStreamConfig.protocol` (`StreamProtocol`): `RTSP` — сервер на телефоне (зрители подключаются сами, адрес и QR); `SRT` — телефон сам шлёт поток (`srtUrl`, например `srt://192.168.1.10:9000`; в OBS «Источник медиа»: `srt://0.0.0.0:9000?mode=listener`, формат `mpegts`); `RTMP` — на сервис (`rtmpUrl` + `rtmpKey`, заготовки YouTube `rtmp://a.rtmp.youtube.com/live2` и Twitch `rtmp://live.twitch.tv/app`; `CameraStream.rtmpEndpoint` склеивает адрес, ключ уже в адресе своего сервера тоже понимается). SRT/RTMP: до 10 повторов подключения через 5 с (`reTry`), статус «Подключение…/Подключено» (`CameraStreamState.Streaming.connected`), ключ на экран и в уведомление не выводится; неверный адрес — `camera.err_srt_url` / `camera.err_rtmp_url`, отказ по ключу — `camera.err_auth`. Настройки (камера, режим, звук, куда, адрес, ключ) сохраняются на устройстве (`CameraStream.load`). Камеры в сети (`/camera`, `cam=1`) — только для RTSP (`CameraStream.isServing`). |
 | Камера | `CameraStream.cameras(context)`: все камеры Camera2 с подписью («Задняя», «Широкоугольная», «Телевик» — по фокусному расстоянию относительно основной, «Фронтальная», «Внешняя»), режимами и наличием вспышки. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
-| Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), — и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт — ~0,08 бит на пиксель (1080p·30 — 5 Мбит/с, 4K·30 — 20). По умолчанию 1080p·30 (или лучший до 30 fps); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
-| Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. Микрофон — `micId` из `CameraStream.microphones(context)` (встроенный, гарнитура, USB, Bluetooth; `null` — выбирает система), меняется и во время трансляции (`MicrophoneSource.setPreferredDevice`). Усиление `micGain` 0,5–4× и индикатор уровня — один эффект `GainMeterEffect` (`CameraStream.gainMeter.level`: пик 0..1 раз в ~0,1 с; красный — звук обрезается); усиление меняется на лету. |
+| Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), — и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт — ~0,08 бит на пиксель (1080p·30 — 5 Мбит/с, 4K·30 — 20). По умолчанию 1080p·30 (`CameraStreamConfig.quality`); если у камеры его нет — лучший до 30 fps (запасной — 720p·30, `StreamMode.DEFAULT`); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
+| Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. Микрофон — `micId` из `CameraStream.microphones(context)` (встроенный, гарнитура, USB, Bluetooth; `null` — выбирает система), меняется и во время трансляции (`MicrophoneSource.setPreferredDevice`). Усиление `micGain` 0,5–4× и индикатор уровня — один эффект `GainMeterEffect` (`CameraStream.gainMeter.level`: пик 0..1 раз в ~0,1 с; красный — звук обрезается); усиление меняется на лету. Для звука экрана «Звук телефона» / «Телефон + микрофон» усиление и индикатор не действуют. |
 | Фонарик | `CameraStream.setTorch(on)` — у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
 | Фокус и зум | Касание предпросмотра — фокус и экспозиция в точке (`CameraStream.tapToFocus`), «Автофокус» — снова непрерывный (`autoFocus`). Зум — щипком на предпросмотре (`onPreviewTouch`) и ползунком (`setZoom`, диапазон `zoomRange()` у самой камеры, `zoom: StateFlow`). Работают и во время трансляции; при смене камеры зум сбрасывается. |
 | Ориентация | Кадр всегда горизонтальный 16:9 (для ТВ и OBS): держите телефон горизонтально — картинка займёт весь кадр; вертикально — с полями по бокам. Поворот во время трансляции ничего не ломает. |
 | Фон | Трансляция идёт в сервисе переднего плана `CameraStreamService` (`foregroundServiceType="camera\|microphone\|mediaProjection"`): экран можно закрыть, приложение свернуть. Уведомление показывает адрес и число зрителей, кнопка «Остановить»; нажатие открывает экран трансляции (`MainActivity.EXTRA_OPEN_CAMERA`). |
-| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку). Плеер для `rtsp`/`rtmp`/`srt`/`udp` (`PlayerFactory.LOW_LATENCY_SCHEMES`) включает низкую задержку: старт после 0,1 с буфера, не больше 2 с в буфере (обычно ~0,5 с), без чтения глав и поиска вступления через FFmpeg; RTSP — RTP поверх TCP (`RtspOverTcp`: по Wi-Fi UDP теряется). |
+| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку). Плеер для живых источников (`rtsp(s)`, `rtmp(s)`, `udp`, `rtp`; внутренний список схем) включает низкую задержку: старт после 0,1 с буфера, не больше 2 с в буфере (обычно ~0,5 с), без чтения глав и поиска вступления через FFmpeg; RTSP — RTP поверх TCP (по Wi-Fi UDP теряется). |
 | Защита | Как у «Передачи между устройствами» (§22.1): если защита включена, RTSP-поток требует Basic-авторизацию — логин `CameraStream.RTSP_USER` = `2160`, пароль — текущий код (`HandoffAuth.currentCode()`: суточный или свой); раз в минуту код сверяется (суточный меняется в полночь — подключённые зрители остаются, новым нужен новый). На экране — адрес с паролем и QR (`CameraStreamState.Streaming.urlWithAuth`) для OBS/VLC; сопряжённые 2160 Player получают его по `/camera` и подключаются сами; в уведомлении адрес без пароля. Защита выключена — поток открыт для всей сети (экран предупреждает). |
 | Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах — IPv4 (по нему клиенты делают SETUP), адрес для зрителей — IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт — в `CameraStream.state` (`CameraStreamState.Streaming`). |
 
-**Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, `rtmp://`, HLS/DASH и `udp://адрес:порт`
+**Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, `rtmp://` (модуль `media3-datasource-rtmp`), HLS/DASH и `udp://адрес:порт`
 (MPEG-TS по UDP — ffmpeg, OBS, IPTV-мультикаст; встроенный источник `UdpDataSource` в `RoutingDataSource`) через
-«Ссылку» или Intent. Для живых источников включается низкая задержка (см. «Задержка»).
+«Ссылку» или Intent (`udp://` — только с явным компонентом: фильтров `VIEW` для этой схемы нет). Приём SRT плеер
+не умеет — SRT здесь только для отправки в OBS. Для живых источников включается низкая задержка (см. «Задержка»).
 
 **Камеры в сети.** Транслирующее устройство объявляет в mDNS-записи `cam=1` (`Handoff.reannounce()` при старте и
 остановке) и отдаёт адрес по `GET /camera` (с той же защитой кодом, что `/now`). На главном экране других плееров —
@@ -2043,7 +2051,8 @@ ARM-устройствах берёт именно его (§22.2): устано
 §22.1), затем поток. Обнаружение работает и в сетях, где multicast проходит только в одну сторону (Wi-Fi ↔ провод):
 см. `GET /hello` в §22.1.
 
-Разрешения: `CAMERA`, `RECORD_AUDIO`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`
+Разрешения: `CAMERA`, `RECORD_AUDIO`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`,
+`FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS` (уведомление трансляции)
 (камера и микрофон запрашиваются при первом открытии экрана). Захват и кодирование — RootEncoder 2.8.1,
 сервер — RTSP-Server 1.4.3 (pedroSG94, Apache-2.0) исходниками в модуле `third-party/rtsp-server` с правкой: ответ на `PLAY` без `RTP-Info: seq=1;rtptime=0` — иначе Media3, подключившись не сразу после старта, не начинал воспроизведение (см. `NOTICE.md`). RootEncoder — с JitPack, модуль WHIP исключён. Без защиты (выключена в настройках) любой в той же сети, кто знает адрес, может смотреть;
 Basic-авторизация RTSP идёт открытым текстом — защищает от случайных зрителей в домашней сети, а не в чужих сетях.
@@ -2081,7 +2090,9 @@ Basic-авторизация RTSP идёт открытым текстом — �
 | `tv.p2160.core.i18n` | `I18n`, `Strings`, `LanguagePack`, `LocalStrings`, `tr` | §13 |
 | `tv.p2160.torrent` (модуль `source-torrent`) | `TorrentEngine`, `TorrentItem`, `TorrentFile`, `TorrentStats`, `StoredTorrent`, `TorrentSettings`, `TorrentPrefs`, `NetworkMode`, `SeedPolicy`, `TorrentHold`, `DeviceState`, `MagnetLink` | §21 |
 
-Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer` (`locked`, `camera`), `RemoteSession`, `RemoteCamera`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog`, `tv.p2160.app.FaqScreen`, `ContinueScreen`, `tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`;
+Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer` (`locked`, `camera`), `RemoteSession`, `RemoteCamera`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog` (§22.4), `tv.p2160.app.FaqScreen` (§22.5), `ContinueScreen` (§22.6),
+`tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`, `CameraStreamConfig`, `CameraStreamState`,
+`StreamMode`, `StreamProtocol`, `StreamSource`, `ScreenAudio`, `CameraInfo`, `MicInfo`, `GainMeterEffect` (§22.7);
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

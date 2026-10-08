@@ -266,5 +266,21 @@
   "camera.network": "Камеры в сети",
   "camera.live_now": "В эфире · зрителей: %1$d",
   "camera.title_remote": "Камера: %1$s",
-  "camera.need_pairing": "Нажмите, чтобы подключиться"
+  "camera.need_pairing": "Нажмите, чтобы подключиться",
+  "camera.destination": "Куда транслировать",
+  "camera.dest_rtsp": "Сервер RTSP",
+  "camera.dest_srt": "SRT → OBS",
+  "camera.dest_rtmp": "RTMP (YouTube, Twitch…)",
+  "camera.srt_url": "Адрес SRT",
+  "camera.srt_hint": "В OBS: «Источник медиа» → снять «Локальный файл» → Ввод: srt://0.0.0.0:9000?mode=listener, формат ввода: mpegts. Здесь — IP компьютера с OBS и тот же порт: srt://192.168.1.10:9000. Сначала включите источник в OBS, потом трансляцию.",
+  "camera.rtmp_server": "Сервер",
+  "camera.rtmp_key": "Ключ трансляции",
+  "camera.rtmp_hint": "Ключ берётся в кабинете сервиса (YouTube Studio → «Начать трансляцию», Twitch → «Панель автора» → «Настройки» → «Трансляция»). Хранится только на этом устройстве и нигде не показывается.",
+  "camera.push_connected": "Подключено",
+  "camera.push_connecting": "Подключение…",
+  "camera.notification_push": "%1$s · %2$s",
+  "camera.err_srt_url": "Укажите адрес SRT вида srt://192.168.1.10:9000.",
+  "camera.err_rtmp_url": "Укажите сервер rtmp://… и ключ трансляции.",
+  "camera.err_auth": "Сервер отклонил ключ трансляции.",
+  "camera.err_connection": "Не удалось подключиться: %1$s"
 }

@@ -166,7 +166,7 @@ object Handoff {
         val port = server?.localPort ?: return
         runCatching {
             val q = "/hello?id=${Uri.encode(deviceId)}&name=${Uri.encode(deviceName(ctx))}&port=$port" +
-                "&auth=${if (HandoffAuth.required) 1 else 0}&cam=${if (tv.p2160.app.camera.CameraStream.isStreaming) 1 else 0}"
+                "&auth=${if (HandoffAuth.required) 1 else 0}&cam=${if (tv.p2160.app.camera.CameraStream.isServing) 1 else 0}"
             val conn = connect(peer, q)
             val code = conn.responseCode
             conn.disconnect()
@@ -407,7 +407,8 @@ object Handoff {
                 if (!known) _peers.value.firstOrNull { it.id == id }?.let { p -> pool.execute { hello(p) } }
             }
             method == "GET" && path == "/camera" -> {
-                val cam = tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming
+                val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
+                    ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
                 if (cam == null) respond(out, 204, "")
                 else respond(out, 200, JSONObject().put("url", cam.url).put("viewers", cam.clients).toString(), "application/json")
             }
@@ -572,7 +573,7 @@ object Handoff {
             this.port = port
             setAttribute("id", deviceId)
             setAttribute("auth", if (HandoffAuth.required) "1" else "0")
-            setAttribute("cam", if (tv.p2160.app.camera.CameraStream.isStreaming) "1" else "0")
+            setAttribute("cam", if (tv.p2160.app.camera.CameraStream.isServing) "1" else "0")
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(info: NsdServiceInfo) = Unit

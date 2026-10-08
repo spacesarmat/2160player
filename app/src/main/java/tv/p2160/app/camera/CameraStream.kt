@@ -12,6 +12,9 @@ import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.NoAudioSource
 import com.pedro.encoder.input.sources.video.Camera2Source
+import com.pedro.library.base.StreamBase
+import com.pedro.library.rtmp.RtmpStream
+import com.pedro.library.srt.SrtStream
 import com.pedro.rtspserver.RtspServerStream
 import com.pedro.rtspserver.server.ClientListener
 import com.pedro.rtspserver.server.ServerClient
@@ -51,6 +54,16 @@ data class StreamMode(val width: Int, val height: Int, val fps: Int) {
     }
 }
 
+/** Куда идёт трансляция. */
+enum class StreamProtocol {
+    /** RTSP-сервер на телефоне: зрители (OBS, VLC, 2160 Player) подключаются сами. */
+    RTSP,
+    /** Телефон сам отправляет поток по SRT (OBS в режиме listener, медиасервер). */
+    SRT,
+    /** Телефон отправляет поток по RTMP на сервис (YouTube, Twitch, свой сервер). */
+    RTMP,
+}
+
 data class CameraStreamConfig(
     /** id камеры из [CameraStream.cameras]; null — основная задняя. */
     val cameraId: String? = null,
@@ -58,13 +71,29 @@ data class CameraStreamConfig(
     /** Звук с микрофона. */
     val audio: Boolean = true,
     val port: Int = CameraStream.DEFAULT_PORT,
+    val protocol: StreamProtocol = StreamProtocol.RTSP,
+    /** Куда слать SRT: `srt://IP-компьютера:9000` (параметры `?…` — по желанию). */
+    val srtUrl: String = "",
+    /** Сервер RTMP (`rtmp://a.rtmp.youtube.com/live2`) и ключ трансляции (хранится только на устройстве). */
+    val rtmpUrl: String = "",
+    val rtmpKey: String = "",
 )
 
 sealed interface CameraStreamState {
     /** Нет трансляции (может идти предпросмотр). */
     data object Idle : CameraStreamState
-    /** Сервер слушает [url]; [clients] — сколько зрителей подключено. */
-    data class Streaming(val url: String, val clients: Int, val bitrateKbps: Int) : CameraStreamState
+    /**
+     * Трансляция идёт. RTSP: сервер слушает [url], [clients] — зрителей. SRT/RTMP: [url] — куда отправляем
+     * (без ключа), [connected] — соединение установлено (до этого — подключение/повтор).
+     */
+    data class Streaming(
+        val url: String,
+        val clients: Int,
+        val bitrateKbps: Int,
+        val protocol: StreamProtocol = StreamProtocol.RTSP,
+        val connected: Boolean = true,
+    ) : CameraStreamState
+    /** [message] — ключ строки (`camera.err_*`) или текст ошибки соединения. */
     data class Error(val message: String) : CameraStreamState
 }
 
@@ -86,7 +115,9 @@ object CameraStream {
     private val _config = MutableStateFlow(CameraStreamConfig())
     val config: StateFlow<CameraStreamConfig> = _config.asStateFlow()
 
-    private var stream: RtspServerStream? = null
+    private var stream: StreamBase? = null
+    private var appContext: Context? = null
+    private var loaded = false
 
     private val _torch = MutableStateFlow(false)
     /** Фонарик (вспышка задней камеры) включён. */
@@ -140,14 +171,64 @@ object CameraStream {
 
     val isStreaming: Boolean get() = stream?.isStreaming == true && _state.value is CameraStreamState.Streaming
 
+    /** Идёт трансляция через RTSP-сервер на этом устройстве — её можно смотреть с других (`/camera`, mDNS `cam=1`). */
+    val isServing: Boolean get() = isStreaming && (_state.value as? CameraStreamState.Streaming)?.protocol == StreamProtocol.RTSP
+
+    private fun prefs(context: Context) = context.getSharedPreferences("p2160_camera", Context.MODE_PRIVATE)
+
+    /** Загрузить сохранённые настройки (один раз за процесс). */
+    fun load(context: Context) {
+        if (loaded) return
+        loaded = true
+        appContext = context.applicationContext
+        val p = prefs(context)
+        val d = CameraStreamConfig()
+        _config.value = CameraStreamConfig(
+            cameraId = p.getString("camera", null),
+            quality = StreamMode(p.getInt("w", d.quality.width), p.getInt("h", d.quality.height), p.getInt("fps", d.quality.fps)),
+            audio = p.getBoolean("audio", d.audio),
+            protocol = runCatching { StreamProtocol.valueOf(p.getString("protocol", null)!!) }.getOrDefault(d.protocol),
+            srtUrl = p.getString("srt_url", "").orEmpty(),
+            rtmpUrl = p.getString("rtmp_url", "").orEmpty(),
+            rtmpKey = p.getString("rtmp_key", "").orEmpty(),
+        )
+    }
+
+    private fun save(context: Context, c: CameraStreamConfig) {
+        prefs(context).edit()
+            .putString("camera", c.cameraId)
+            .putInt("w", c.quality.width).putInt("h", c.quality.height).putInt("fps", c.quality.fps)
+            .putBoolean("audio", c.audio)
+            .putString("protocol", c.protocol.name)
+            .putString("srt_url", c.srtUrl)
+            .putString("rtmp_url", c.rtmpUrl)
+            .putString("rtmp_key", c.rtmpKey)
+            .apply()
+    }
+
     private val checker = object : ConnectChecker {
         override fun onConnectionStarted(url: String) = Unit
-        override fun onConnectionSuccess() = Unit
+        override fun onConnectionSuccess() {
+            _state.update { if (it is CameraStreamState.Streaming) it.copy(connected = true) else it }
+        }
         override fun onConnectionFailed(reason: String) {
             Log.w(TAG, "connection failed: $reason")
+            val s = stream ?: return
+            if (s is RtspServerStream) return
+            // SRT/RTMP: сеть моргнула или приёмник ещё не запущен — повторяем; кончились попытки — ошибка.
+            _state.update { if (it is CameraStreamState.Streaming) it.copy(connected = false) else it }
+            if (!s.getStreamClient().reTry(5_000, reason)) {
+                appContext?.let { stop(it) }
+                _state.value = CameraStreamState.Error(reason)
+            }
         }
-        override fun onDisconnect() = Unit
-        override fun onAuthError() = Unit
+        override fun onDisconnect() {
+            _state.update { if (it is CameraStreamState.Streaming && it.protocol != StreamProtocol.RTSP) it.copy(connected = false) else it }
+        }
+        override fun onAuthError() {
+            appContext?.let { stop(it) }
+            _state.value = CameraStreamState.Error("camera.err_auth")
+        }
         override fun onAuthSuccess() = Unit
         override fun onNewBitrate(bitrate: Long) {
             _state.update { if (it is CameraStreamState.Streaming) it.copy(bitrateKbps = (bitrate / 1000).toInt()) else it }
@@ -161,7 +242,7 @@ object CameraStream {
     }
 
     private fun updateClients() {
-        val n = stream?.getStreamClient()?.getNumClients() ?: 0
+        val n = (stream as? RtspServerStream)?.getStreamClient()?.getNumClients() ?: 0
         _state.update { if (it is CameraStreamState.Streaming) it.copy(clients = n) else it }
     }
 
@@ -246,10 +327,13 @@ object CameraStream {
         val old = _config.value
         val next = transform(old)
         if (next == old) return
-        if (isStreaming && (next.quality != old.quality || next.audio != old.audio || next.port != old.port)) return
+        if (isStreaming && (next.quality != old.quality || next.audio != old.audio || next.port != old.port || next.protocol != old.protocol)) return
         _config.value = next
+        save(context, next)
+        // Адрес/ключ влияют только на старт трансляции — камеру не пересоздаём.
+        if (next.copy(srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey) == old) return
         val s = stream
-        if (s != null && next.cameraId != old.cameraId && next.copy(cameraId = old.cameraId) == old) {
+        if (s != null && next.cameraId != old.cameraId && next.copy(cameraId = old.cameraId, srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey) == old) {
             _torch.value = false
             _zoom.value = 1f
             next.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.openCameraId(id) }
@@ -263,13 +347,23 @@ object CameraStream {
         }
     }
 
-    private fun ensurePrepared(context: Context): RtspServerStream? {
+    /** Камера и кодировщики готовы для этих настроек (адрес и ключ не в счёт — они нужны только при старте). */
+    private fun sameEncoder(a: CameraStreamConfig?, b: CameraStreamConfig) =
+        a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "") == b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "")
+
+    private fun ensurePrepared(context: Context): StreamBase? {
         val cfg = _config.value
-        stream?.takeIf { preparedFor == cfg }?.let { return it }
+        stream?.takeIf { sameEncoder(preparedFor, cfg) }?.let { return it }
         release()
         val app = context.applicationContext
+        appContext = app
         val audio = cfg.audio && ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val s = RtspServerStream(app, cfg.port, checker, Camera2Source(app), if (audio) MicrophoneSource() else NoAudioSource())
+        val audioSource = if (audio) MicrophoneSource() else NoAudioSource()
+        val s: StreamBase = when (cfg.protocol) {
+            StreamProtocol.RTSP -> RtspServerStream(app, cfg.port, checker, Camera2Source(app), audioSource)
+            StreamProtocol.SRT -> SrtStream(app, checker, Camera2Source(app), audioSource)
+            StreamProtocol.RTMP -> RtmpStream(app, checker, Camera2Source(app), audioSource)
+        }
         s.getGlInterface().autoHandleOrientation = true
         // Кадр всегда горизонтальный 16:9 (ТВ, OBS): телефон вертикально — картинка с полями по бокам,
         // и поворот во время трансляции ничего не ломает.
@@ -287,9 +381,14 @@ object CameraStream {
             _state.value = CameraStreamState.Error("prepare")
             return null
         }
-        s.getStreamClient().setClientListener(clients)
-        // Адрес в ответах сервера (Content-Base) — IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
-        s.getStreamClient().forceIpType(com.pedro.rtspserver.server.IpType.IPv4)
+        if (s is RtspServerStream) {
+            s.getStreamClient().setClientListener(clients)
+            // Адрес в ответах сервера (Content-Base) — IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
+            s.getStreamClient().forceIpType(com.pedro.rtspserver.server.IpType.IPv4)
+        } else {
+            // Приёмник (OBS, сервис) может быть ещё не запущен или сеть моргнуть — повторяем подключение.
+            s.getStreamClient().setReTries(10)
+        }
         // Библиотека по умолчанию пишет в лог каждый пакет — это лишняя нагрузка на процессор.
         s.getStreamClient().setLogs(false)
         stream = s
@@ -325,13 +424,30 @@ object CameraStream {
 
     /** Вызывается сервисом после startForeground. */
     internal fun startStreaming(context: Context): Boolean {
+        val cfg = _config.value
+        // Куда отправлять: адрес проверяем до запуска камеры.
+        val target = when (cfg.protocol) {
+            StreamProtocol.RTSP -> ""
+            StreamProtocol.SRT -> cfg.srtUrl.trim().takeIf { it.startsWith("srt://", true) && it.length > 6 }
+            StreamProtocol.RTMP -> rtmpEndpoint(cfg.rtmpUrl, cfg.rtmpKey)
+        }
+        if (target == null) {
+            _state.value = CameraStreamState.Error(if (cfg.protocol == StreamProtocol.SRT) "camera.err_srt_url" else "camera.err_rtmp_url")
+            return false
+        }
         val s = ensurePrepared(context) ?: return false
         if (s.isStreaming) return true
         return runCatching {
-            s.startStream()
-            _config.value.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
-            _state.value = CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0)
-            // Объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
+            // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
+            _state.value = when (cfg.protocol) {
+                StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0)
+                // Ключ RTMP на экран и в уведомление не выводим.
+                StreamProtocol.SRT -> CameraStreamState.Streaming(target, 0, 0, StreamProtocol.SRT, connected = false)
+                StreamProtocol.RTMP -> CameraStreamState.Streaming(cfg.rtmpUrl.trim(), 0, 0, StreamProtocol.RTMP, connected = false)
+            }
+            if (s is RtspServerStream) s.startStream() else s.startStream(target)
+            cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
+            // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
             true
         }.getOrElse { e ->
@@ -368,10 +484,25 @@ object CameraStream {
         preparedFor = null
     }
 
+    /**
+     * Полный адрес RTMP: сервер + ключ (`rtmp://a.rtmp.youtube.com/live2/<ключ>`). null — сервер не rtmp(s)://
+     * или нет ключа (у своего сервера ключ может быть уже в адресе — тогда ключ необязателен).
+     */
+    fun rtmpEndpoint(server: String, key: String): String? {
+        val s = server.trim().trimEnd('/')
+        if (!(s.startsWith("rtmp://", true) || s.startsWith("rtmps://", true))) return null
+        val k = key.trim()
+        return when {
+            k.isNotEmpty() -> "$s/$k"
+            s.count { it == '/' } >= 4 -> s // rtmp://host/app/stream — ключ уже в адресе
+            else -> null
+        }
+    }
+
     /** Адрес для зрителей: IPv4 в локальной сети (как у передачи между устройствами), иначе — что сообщит сервер. */
     private fun url(context: Context): String {
         val host = Handoff.baseUrl()?.let { Uri.parse(it).host }
         if (host != null) return "rtsp://$host:${_config.value.port}/"
-        return stream?.getStreamClient()?.getEndPointConnection() ?: "rtsp://?:${_config.value.port}/"
+        return (stream as? RtspServerStream)?.getStreamClient()?.getEndPointConnection() ?: "rtsp://?:${_config.value.port}/"
     }
 }

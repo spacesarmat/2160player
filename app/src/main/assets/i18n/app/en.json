@@ -266,5 +266,21 @@
   "camera.network": "Cameras on the network",
   "camera.live_now": "Live · viewers: %1$d",
   "camera.title_remote": "Camera: %1$s",
-  "camera.need_pairing": "Tap to connect"
+  "camera.need_pairing": "Tap to connect",
+  "camera.destination": "Stream to",
+  "camera.dest_rtsp": "RTSP server",
+  "camera.dest_srt": "SRT → OBS",
+  "camera.dest_rtmp": "RTMP (YouTube, Twitch…)",
+  "camera.srt_url": "SRT address",
+  "camera.srt_hint": "In OBS: Media Source → untick Local File → Input: srt://0.0.0.0:9000?mode=listener, input format: mpegts. Here — the IP of the OBS computer and the same port: srt://192.168.1.10:9000. Start the source in OBS first, then streaming.",
+  "camera.rtmp_server": "Server",
+  "camera.rtmp_key": "Stream key",
+  "camera.rtmp_hint": "Get the key from the service (YouTube Studio → Go live, Twitch → Creator Dashboard → Settings → Stream). It is stored only on this device and never shown.",
+  "camera.push_connected": "Connected",
+  "camera.push_connecting": "Connecting…",
+  "camera.notification_push": "%1$s · %2$s",
+  "camera.err_srt_url": "Enter an SRT address like srt://192.168.1.10:9000.",
+  "camera.err_rtmp_url": "Enter an rtmp://… server and the stream key.",
+  "camera.err_auth": "The server rejected the stream key.",
+  "camera.err_connection": "Could not connect: %1$s"
 }

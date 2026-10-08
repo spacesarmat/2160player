@@ -81,7 +81,11 @@ class CameraStreamService : Service() {
             flags,
         )
         val stop = PendingIntent.getService(this, 1, Intent(this, CameraStreamService::class.java).setAction(ACTION_STOP), flags)
-        val text = s?.let { strings.format("camera.notification_text", it.url, it.clients) } ?: strings["camera.starting"]
+        val text = when {
+            s == null -> strings["camera.starting"]
+            s.protocol == StreamProtocol.RTSP -> strings.format("camera.notification_text", s.url, s.clients)
+            else -> strings.format("camera.notification_push", s.url, strings[if (s.connected) "camera.push_connected" else "camera.push_connecting"])
+        }
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_camera)
             .setContentTitle(strings["camera.notification_title"])

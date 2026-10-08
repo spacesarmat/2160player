@@ -67,6 +67,7 @@ import tv.p2160.core.i18n.tr
 fun CameraStreamScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
+    remember { CameraStream.load(context) }
     val state by CameraStream.state.collectAsState()
     val config by CameraStream.config.collectAsState()
     val cameras = remember { CameraStream.cameras(context) }
@@ -115,7 +116,18 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     else Text(tr("camera.no_permission"), color = Color.White, modifier = Modifier.padding(24.dp))
                 }
             }
-            if (state is CameraStreamState.Error) item(key = "err") { Text(tr("camera.error"), color = colors.error) }
+            (state as? CameraStreamState.Error)?.let { err ->
+                item(key = "err") {
+                    Text(
+                        when {
+                            err.message == "prepare" -> tr("camera.error")
+                            err.message.startsWith("camera.") -> tr(err.message)
+                            else -> tr("camera.err_connection", err.message)
+                        },
+                        color = colors.error,
+                    )
+                }
+            }
             if (cameraAllowed) item(key = "zoom") { ZoomAndFocus() }
 
             item(key = "start") {
@@ -136,8 +148,22 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             }
 
             if (streaming != null) {
-                item(key = "url") { StreamAddress(streaming) }
+                item(key = "url") {
+                    if (streaming.protocol == StreamProtocol.RTSP) StreamAddress(streaming) else PushStatus(streaming)
+                }
             }
+
+            item(key = "dest-title") { SectionTitle(tr("camera.destination")) }
+            item(key = "dest") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(StreamProtocol.entries, key = { it.name }) { p ->
+                        Choice(tr("camera.dest_" + p.name.lowercase()), config.protocol == p, enabled = streaming == null) {
+                            CameraStream.update(context) { it.copy(protocol = p) }
+                        }
+                    }
+                }
+            }
+            if (config.protocol != StreamProtocol.RTSP) item(key = "dest-fields") { DestinationFields(config, enabled = streaming == null) }
 
             item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
             item(key = "cams") {
@@ -269,6 +295,80 @@ private fun ZoomAndFocus() {
         }
     }
     Text(tr("camera.focus_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+}
+
+/** Адрес SRT или сервер и ключ RTMP (с заготовками сервисов). */
+@Composable
+private fun DestinationFields(config: CameraStreamConfig, enabled: Boolean) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (config.protocol) {
+            StreamProtocol.SRT -> {
+                androidx.compose.material3.OutlinedTextField(
+                    value = config.srtUrl,
+                    onValueChange = { v -> CameraStream.update(context) { it.copy(srtUrl = v.trim()) } },
+                    enabled = enabled,
+                    singleLine = true,
+                    label = { Text(tr("camera.srt_url")) },
+                    placeholder = { Text("srt://192.168.1.10:9000") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(tr("camera.srt_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            StreamProtocol.RTMP -> {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(RTMP_PRESETS, key = { it.first }) { (name, url) ->
+                        Choice(name, config.rtmpUrl == url, enabled = enabled) { CameraStream.update(context) { it.copy(rtmpUrl = url) } }
+                    }
+                }
+                androidx.compose.material3.OutlinedTextField(
+                    value = config.rtmpUrl,
+                    onValueChange = { v -> CameraStream.update(context) { it.copy(rtmpUrl = v.trim()) } },
+                    enabled = enabled,
+                    singleLine = true,
+                    label = { Text(tr("camera.rtmp_server")) },
+                    placeholder = { Text("rtmp://a.rtmp.youtube.com/live2") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = config.rtmpKey,
+                    onValueChange = { v -> CameraStream.update(context) { it.copy(rtmpKey = v.trim()) } },
+                    enabled = enabled,
+                    singleLine = true,
+                    label = { Text(tr("camera.rtmp_key")) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(tr("camera.rtmp_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            StreamProtocol.RTSP -> Unit
+        }
+    }
+}
+
+/** Заготовки серверов RTMP: адреса приёма сервисов (ключ — из кабинета сервиса). */
+private val RTMP_PRESETS = listOf(
+    "YouTube" to "rtmp://a.rtmp.youtube.com/live2",
+    "Twitch" to "rtmp://live.twitch.tv/app",
+)
+
+/** SRT/RTMP: куда отправляем и есть ли соединение. */
+@Composable
+private fun PushStatus(s: CameraStreamState.Streaming) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(colors.surfaceVariant).padding(16.dp),
+    ) {
+        Text(
+            if (s.connected) tr("camera.push_connected") else tr("camera.push_connecting"),
+            color = if (s.connected) Color(0xFF4CAF50) else Color(0xFFFFA726),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(s.url, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface)
+        if (s.bitrateKbps > 0) Text("${s.bitrateKbps} kbit/s", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable

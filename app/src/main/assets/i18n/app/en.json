@@ -284,5 +284,12 @@
   "camera.err_auth": "The server rejected the stream key.",
   "camera.err_connection": "Could not connect: %1$s",
   "camera.protected": "Protected: user %1$s, password %2$s (the device handoff code; the daily one changes at midnight). Paired 2160 Players connect by themselves.",
-  "camera.unprotected": "No password: anyone on this network can watch. Turn protection on in Settings → Device handoff."
+  "camera.unprotected": "No password: anyone on this network can watch. Turn protection on in Settings → Device handoff.",
+  "camera.source_camera": "Camera",
+  "camera.source_screen": "Screen",
+  "camera.screen_hint": "The phone screen will be streamed — everything on it (a game, slides, a video). Android asks for screen recording permission when you start. Stop it here, from the notification or with the system screen recording button.",
+  "camera.screen_audio_mic": "Microphone",
+  "camera.screen_audio_device": "Phone audio",
+  "camera.screen_audio_both": "Phone + microphone",
+  "camera.err_screen": "No screen recording permission — press Start streaming again and allow it."
 }

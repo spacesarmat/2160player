@@ -39,12 +39,29 @@ class CameraStreamService : Service() {
         }
         val mic = CameraStream.config.value.audio &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        // Экран: разрешение на запись пришло из экрана трансляции (результат системного запроса).
+        val screen = CameraStream.config.value.source == StreamSource.SCREEN
+        val projectionData: Intent? = if (screen) {
+            if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra(EXTRA_PROJECTION, Intent::class.java)
+            else @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_PROJECTION)
+        } else null
+        if (screen && projectionData == null) { stopSelf(); return START_NOT_STICKY }
         val type = if (Build.VERSION.SDK_INT >= 30) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+            (if (screen) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA) or
+                (if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
         } else 0
         runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(null), type) }.onFailure {
             stopSelf()
             return START_NOT_STICKY
+        }
+        // Android 14: MediaProjection берём только после startForeground с типом mediaProjection.
+        if (screen) {
+            val mpm = getSystemService(android.media.projection.MediaProjectionManager::class.java)
+            val projection = runCatching {
+                mpm.getMediaProjection(intent!!.getIntExtra(EXTRA_PROJECTION_CODE, 0), projectionData!!)
+            }.getOrNull()
+            if (projection == null) { stopSelf(); return START_NOT_STICKY }
+            CameraStream.setProjection(projection)
         }
         if (!CameraStream.startStreaming(this)) {
             stopSelf()
@@ -101,6 +118,9 @@ class CameraStreamService : Service() {
         private const val CHANNEL = "camera_stream"
         private const val NOTIFICATION_ID = 2160_7
         private const val ACTION_STOP = "tv.p2160.app.camera.STOP"
+        /** Результат системного запроса на запись экрана: код и данные для MediaProjectionManager.getMediaProjection. */
+        const val EXTRA_PROJECTION = "tv.p2160.app.camera.PROJECTION"
+        const val EXTRA_PROJECTION_CODE = "tv.p2160.app.camera.PROJECTION_CODE"
 
         fun stopIntent(context: Context) = Intent(context, CameraStreamService::class.java).setAction(ACTION_STOP)
     }

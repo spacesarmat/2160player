@@ -92,6 +92,24 @@ fun CameraStreamScreen(onBack: () -> Unit) {
         }
     }
     val wide = LocalConfiguration.current.screenWidthDp >= 600
+    val screen = config.source == StreamSource.SCREEN
+    val screenModes = remember { CameraStream.screenModes() }
+    // Экран: режимы кодировщика, а не камеры; выбранного нет — 1080p·30 (или лучший до 30 fps).
+    LaunchedEffect(screen) {
+        val modes = if (screen) screenModes else currentCam?.modes.orEmpty()
+        if (streaming == null && modes.isNotEmpty() && config.quality !in modes) {
+            val pick = modes.firstOrNull { it.height == 1080 && it.fps == 30 } ?: modes.lastOrNull { it.fps <= 30 } ?: modes.first()
+            CameraStream.update(context) { it.copy(quality = pick) }
+        }
+    }
+    // Системный запрос «Начать запись экрана?»; согласились — трансляция в сервисе.
+    val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == android.app.Activity.RESULT_OK && r.data != null) CameraStream.startScreen(context, r.resultCode, r.data!!)
+    }
+    fun startScreen() {
+        val mpm = context.getSystemService(android.media.projection.MediaProjectionManager::class.java) ?: return
+        runCatching { screenCapture.launch(mpm.createScreenCaptureIntent()) }
+    }
 
     Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -107,7 +125,16 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (wide) 32.dp else 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "preview") {
+            item(key = "source") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(StreamSource.entries, key = { it.name }) { src ->
+                        Choice(tr("camera.source_" + src.name.lowercase()), config.source == src, enabled = streaming == null) {
+                            CameraStream.update(context) { it.copy(source = src) }
+                        }
+                    }
+                }
+            }
+            if (!screen) item(key = "preview") {
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(if (wide) 16f / 9f else 3f / 4f).clip(RoundedCornerShape(16.dp)).background(Color.Black),
                     contentAlignment = Alignment.Center,
@@ -115,6 +142,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     if (cameraAllowed) CameraPreview()
                     else Text(tr("camera.no_permission"), color = Color.White, modifier = Modifier.padding(24.dp))
                 }
+            } else item(key = "screen-info") {
+                Text(tr("camera.screen_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp))
             }
             (state as? CameraStreamState.Error)?.let { err ->
                 item(key = "err") {
@@ -128,12 +157,18 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     )
                 }
             }
-            if (cameraAllowed) item(key = "zoom") { ZoomAndFocus() }
+            if (cameraAllowed && !screen) item(key = "zoom") { ZoomAndFocus() }
 
             item(key = "start") {
                 val label = if (streaming != null) tr("camera.stop") else tr("camera.start")
                 FocusCard(
-                    onClick = { if (streaming != null) CameraStream.stop(context) else if (cameraAllowed) CameraStream.start(context) },
+                    onClick = {
+                        when {
+                            streaming != null -> CameraStream.stop(context)
+                            screen -> startScreen()
+                            cameraAllowed -> CameraStream.start(context)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     background = if (streaming != null) colors.errorContainer else colors.primaryContainer,
                 ) {
@@ -165,8 +200,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             }
             if (config.protocol != StreamProtocol.RTSP) item(key = "dest-fields") { DestinationFields(config, enabled = streaming == null) }
 
-            item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
-            item(key = "cams") {
+            if (!screen) item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
+            if (!screen) item(key = "cams") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(cameras, key = { it.id }) { cam ->
                         val selected = (config.cameraId ?: cameras.firstOrNull()?.id) == cam.id
@@ -185,14 +220,14 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             item(key = "quality") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Режимы из возможностей устройства: камера × кодировщик.
-                    items(currentCam?.modes ?: listOf(StreamMode.DEFAULT), key = { it.label }) { q ->
+                    items(if (screen) screenModes else currentCam?.modes ?: listOf(StreamMode.DEFAULT), key = { it.label }) { q ->
                         Choice(q.label, config.quality == q, enabled = streaming == null) {
                             CameraStream.update(context) { it.copy(quality = q) }
                         }
                     }
                 }
             }
-            if (currentCam?.hasFlash == true) item(key = "torch") {
+            if (!screen && currentCam?.hasFlash == true) item(key = "torch") {
                 FocusCard(onClick = { CameraStream.setTorch(!torch) }, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (torch) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, null, tint = colors.primary)
@@ -213,6 +248,16 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                             Text(tr("camera.audio_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                         Text(tr(if (config.audio) "torrent.on" else "torrent.off"), color = colors.primary)
+                    }
+                }
+            }
+            // Звук экрана: микрофон, звук телефона или оба (звук телефона — Android 10+).
+            if (screen && config.audio && android.os.Build.VERSION.SDK_INT >= 29) item(key = "screen-audio") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ScreenAudio.entries, key = { it.name }) { a ->
+                        Choice(tr("camera.screen_audio_" + a.name.lowercase()), config.screenAudio == a, enabled = streaming == null) {
+                            CameraStream.update(context) { it.copy(screenAudio = a) }
+                        }
                     }
                 }
             }

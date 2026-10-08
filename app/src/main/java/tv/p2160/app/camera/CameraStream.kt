@@ -56,6 +56,19 @@ data class StreamMode(val width: Int, val height: Int, val fps: Int) {
     }
 }
 
+/** Что транслируем. */
+enum class StreamSource { CAMERA, SCREEN }
+
+/** Звук трансляции экрана. */
+enum class ScreenAudio {
+    /** С микрофона. */
+    MIC,
+    /** Звук телефона (Android 10+; приложения могут его запрещать). */
+    DEVICE,
+    /** Звук телефона и микрофон вместе. */
+    BOTH,
+}
+
 /** Куда идёт трансляция. */
 enum class StreamProtocol {
     /** RTSP-сервер на телефоне: зрители (OBS, VLC, 2160 Player) подключаются сами. */
@@ -79,6 +92,9 @@ data class CameraStreamConfig(
     /** Сервер RTMP (`rtmp://a.rtmp.youtube.com/live2`) и ключ трансляции (хранится только на устройстве). */
     val rtmpUrl: String = "",
     val rtmpKey: String = "",
+    val source: StreamSource = StreamSource.CAMERA,
+    /** Звук при трансляции экрана (если включён [audio]). */
+    val screenAudio: ScreenAudio = ScreenAudio.MIC,
 )
 
 sealed interface CameraStreamState {
@@ -204,6 +220,8 @@ object CameraStream {
             srtUrl = p.getString("srt_url", "").orEmpty(),
             rtmpUrl = p.getString("rtmp_url", "").orEmpty(),
             rtmpKey = p.getString("rtmp_key", "").orEmpty(),
+            source = runCatching { StreamSource.valueOf(p.getString("source", null)!!) }.getOrDefault(d.source),
+            screenAudio = runCatching { ScreenAudio.valueOf(p.getString("screen_audio", null)!!) }.getOrDefault(d.screenAudio),
         )
     }
 
@@ -216,6 +234,8 @@ object CameraStream {
             .putString("srt_url", c.srtUrl)
             .putString("rtmp_url", c.rtmpUrl)
             .putString("rtmp_key", c.rtmpKey)
+            .putString("source", c.source.name)
+            .putString("screen_audio", c.screenAudio.name)
             .apply()
     }
 
@@ -340,7 +360,8 @@ object CameraStream {
         val old = _config.value
         val next = transform(old)
         if (next == old) return
-        if (isStreaming && (next.quality != old.quality || next.audio != old.audio || next.port != old.port || next.protocol != old.protocol)) return
+        if (isStreaming && (next.quality != old.quality || next.audio != old.audio || next.port != old.port || next.protocol != old.protocol ||
+                next.source != old.source || next.screenAudio != old.screenAudio)) return
         _config.value = next
         save(context, next)
         // Адрес/ключ влияют только на старт трансляции — камеру не пересоздаём.
@@ -364,20 +385,61 @@ object CameraStream {
     private fun sameEncoder(a: CameraStreamConfig?, b: CameraStreamConfig) =
         a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "") == b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "")
 
+    /** Разрешение на запись экрана (MediaProjection) для трансляции экрана; живёт до остановки трансляции. */
+    private var projection: android.media.projection.MediaProjection? = null
+
+    /** Пользователь остановил запись экрана системной кнопкой — останавливаем трансляцию. */
+    private val projectionCallback = object : android.media.projection.MediaProjection.Callback() {
+        override fun onStop() {
+            scope.launch { appContext?.let { stop(it) } }
+        }
+    }
+
+    /** Сервис получил разрешение на запись экрана — дальше [startStreaming] возьмёт экран вместо камеры. */
+    internal fun setProjection(p: android.media.projection.MediaProjection?) {
+        projection?.takeIf { it !== p }?.let { runCatching { it.stop() } }
+        projection = p
+        p?.registerCallback(projectionCallback, android.os.Handler(android.os.Looper.getMainLooper()))
+    }
+
+    /** Режимы для экрана: стандартные кадры 16:9, которые потянет аппаратный кодировщик. */
+    fun screenModes(): List<StreamMode> {
+        val encoder = encoderCapabilities()
+        return listOf(StreamMode(1280, 720, 30), StreamMode(1280, 720, 60), StreamMode(1920, 1080, 30), StreamMode(1920, 1080, 60))
+            .filter { m -> encoder.isEmpty() || encoder.any { it.supports(m.width, m.height, m.fps) } }
+            .ifEmpty { listOf(StreamMode.DEFAULT) }
+    }
+
     private fun ensurePrepared(context: Context): StreamBase? {
         val cfg = _config.value
         stream?.takeIf { sameEncoder(preparedFor, cfg) }?.let { return it }
         release()
         val app = context.applicationContext
         appContext = app
-        val audio = cfg.audio && ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val audioSource = if (audio) MicrophoneSource() else NoAudioSource()
+        val mic = cfg.audio && ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val screen = if (cfg.source == StreamSource.SCREEN) projection ?: run {
+            _state.value = CameraStreamState.Error("camera.err_screen")
+            return null
+        } else null
+        val videoSource = if (screen != null) com.pedro.encoder.input.sources.video.ScreenSource(app, screen) else Camera2Source(app)
+        val audioSource = when {
+            !cfg.audio -> NoAudioSource()
+            screen != null && android.os.Build.VERSION.SDK_INT >= 29 && cfg.screenAudio == ScreenAudio.DEVICE ->
+                com.pedro.encoder.input.sources.audio.InternalAudioSource(screen)
+            screen != null && android.os.Build.VERSION.SDK_INT >= 29 && cfg.screenAudio == ScreenAudio.BOTH && mic ->
+                com.pedro.encoder.input.sources.audio.MixAudioSource(screen)
+            mic -> MicrophoneSource()
+            else -> NoAudioSource()
+        }
         val s: StreamBase = when (cfg.protocol) {
-            StreamProtocol.RTSP -> RtspServerStream(app, cfg.port, checker, Camera2Source(app), audioSource)
-            StreamProtocol.SRT -> SrtStream(app, checker, Camera2Source(app), audioSource)
-            StreamProtocol.RTMP -> RtmpStream(app, checker, Camera2Source(app), audioSource)
+            StreamProtocol.RTSP -> RtspServerStream(app, cfg.port, checker, videoSource, audioSource)
+            StreamProtocol.SRT -> SrtStream(app, checker, videoSource, audioSource)
+            StreamProtocol.RTMP -> RtmpStream(app, checker, videoSource, audioSource)
         }
         s.getGlInterface().autoHandleOrientation = true
+        // Экран отдаёт кадр, только когда картинка меняется: без повтора поток «застывает», и плееры уходят
+        // в буферизацию. Повторяем последний кадр не реже 15 раз в секунду (как в примере RootEncoder).
+        if (screen != null) s.getGlInterface().setForceRender(true, 15)
         // Кадр всегда горизонтальный 16:9 (ТВ, OBS): телефон вертикально — картинка с полями по бокам,
         // и поворот во время трансляции ничего не ломает.
         val rotation = 0
@@ -412,9 +474,10 @@ object CameraStream {
         return s
     }
 
-    /** Показать камеру на [surface] (вызывать, когда поверхность создана). */
+    /** Показать камеру на [surface] (вызывать, когда поверхность создана). Для экрана предпросмотра нет. */
     fun startPreview(context: Context, surface: SurfaceView) {
         previewSurface = surface
+        if (_config.value.source == StreamSource.SCREEN) return
         val s = ensurePrepared(context) ?: return
         if (!s.isOnPreview) runCatching { s.startPreview(surface) }.onFailure { Log.w(TAG, "preview", it) }
         _config.value.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
@@ -435,6 +498,16 @@ object CameraStream {
     /** Начать трансляцию: сервис переднего плана держит камеру и сеть, пока экран закрыт. */
     fun start(context: Context) {
         ContextCompat.startForegroundService(context, Intent(context, CameraStreamService::class.java))
+    }
+
+    /** Начать трансляцию экрана: [resultCode]/[data] — ответ на системный запрос записи экрана. */
+    fun startScreen(context: Context, resultCode: Int, data: Intent) {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, CameraStreamService::class.java)
+                .putExtra(CameraStreamService.EXTRA_PROJECTION_CODE, resultCode)
+                .putExtra(CameraStreamService.EXTRA_PROJECTION, data),
+        )
     }
 
     /** Вызывается сервисом после startForeground. */
@@ -501,6 +574,12 @@ object CameraStream {
     internal fun stopStreaming() {
         authJob?.cancel()
         authJob = null
+        // Экран: трансляция кончилась — разрешение на запись больше не держим.
+        if (_config.value.source == StreamSource.SCREEN) {
+            stream?.let { s -> runCatching { if (s.isStreaming) s.stopStream() } }
+            release()
+            setProjection(null)
+        }
         stream?.takeIf { it.isStreaming }?.let { runCatching { it.stopStream() } }
         if (_state.value is CameraStreamState.Streaming) {
             _state.value = CameraStreamState.Idle

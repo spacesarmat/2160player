@@ -158,6 +158,8 @@ class RtspServer(
           val client = ServerClient(delay, socketType, clientSocket.host, clientSocket.socket, serverIp, port,
             socketTimeout, serverCommandManager, this@RtspServer)
           client.setLogs(isEnableLogs)
+          // 2160 Player: размер очереди — и для новых зрителей (иначе у них 400 кадров ≈ 5 с задержки).
+          cacheSizeForNew?.let { client.resizeCache(it) }
           client.startClient()
           synchronized(clients) {
             clients.add(client)
@@ -301,8 +303,12 @@ class RtspServer(
     }
   }
 
+  /** 2160 Player: размер очереди для зрителей, которые подключатся позже. */
+  private var cacheSizeForNew: Int? = null
+
   @Throws(RuntimeException::class)
   fun resizeCache(newSize: Int) {
+    cacheSizeForNew = newSize
     synchronized(clients) {
       clients.forEach { it.resizeCache(newSize) }
     }

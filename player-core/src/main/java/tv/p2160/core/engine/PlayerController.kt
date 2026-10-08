@@ -124,6 +124,13 @@ data class PlayerUiState(
 /** Предел задержки звука в обе стороны, мс. */
 const val AUDIO_DELAY_LIMIT_MS = 2_000
 
+/** Живой источник: целевая задержка буфера, пороги и скорости догона. */
+private const val LIVE_TARGET_MS = 300L
+private const val LIVE_CATCHUP_MS = 800L
+private const val LIVE_CATCHUP_SPEED = 1.1f
+private const val LIVE_FAR_MS = 2_000L
+private const val LIVE_FAR_SPEED = 1.25f
+
 /** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
 private const val PASSTHROUGH_RETRIES = 3
 
@@ -166,11 +173,10 @@ class PlayerController(
     private var sleepFadeJob: Job? = null
     private var coverJob: Job? = null
 
-    private val built = PlayerFactory.build(
-        appContext, settings.current, request.headers, config,
-        // Все элементы — живые источники (камера по RTSP и т.п.): режим низкой задержки.
-        lowLatency = request.items.isNotEmpty() && request.items.all { it.uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES },
-    )
+    /** Все элементы — живые источники (камера по RTSP и т.п.): режим низкой задержки. */
+    private val lowLatency = request.items.isNotEmpty() && request.items.all { it.uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES }
+
+    private val built = PlayerFactory.build(appContext, settings.current, request.headers, config, lowLatency = lowLatency)
     val player: ExoPlayer get() = built.player
     /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
@@ -1028,6 +1034,22 @@ class PlayerController(
         built.release()
     }
 
+    /**
+     * Живой источник: держим задержку около [LIVE_TARGET_MS]. Буфер вырос (сеть «плюнула» пачкой, плеер отстал) —
+     * ускоряемся (×1,1, сильно отстали — ×1,25; тон звука сохраняется), догнали — обычная скорость. Перемоткой
+     * не прыгаем: у RTSP она переоткрывает поток, а камерам-серверам переходы по времени обычно не нужны.
+     */
+    private fun keepLiveEdge() {
+        if (!lowLatency || !player.isPlaying || speedBeforeBoost != null) return
+        val buffered = player.totalBufferedDuration
+        val speed = player.playbackParameters.speed
+        when {
+            buffered > LIVE_FAR_MS && speed < LIVE_FAR_SPEED -> player.setPlaybackSpeed(LIVE_FAR_SPEED)
+            buffered in (LIVE_CATCHUP_MS + 1)..LIVE_FAR_MS && speed != LIVE_CATCHUP_SPEED -> player.setPlaybackSpeed(LIVE_CATCHUP_SPEED)
+            buffered <= LIVE_TARGET_MS && speed > 1f -> player.setPlaybackSpeed(1f)
+        }
+    }
+
     private fun startProgressLoop() {
         progressJob = scope.launch {
             var ticks = 0
@@ -1035,6 +1057,7 @@ class PlayerController(
                 delay(500)
                 refresh()
                 maybeAutoSkip()
+                keepLiveEdge()
                 tickSleepTimer()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()

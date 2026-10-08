@@ -184,6 +184,8 @@ object CameraStream {
     const val DEFAULT_PORT = 8554
     /** Логин RTSP при защите; пароль — код «Передачи между устройствами» ([HandoffAuth.currentCode]). */
     const val RTSP_USER = "2160"
+    /** Очередь отправки, кадров (звук ~43/с + видео 30–60/с): около 1–1,5 с. */
+    private const val SEND_QUEUE = 120
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
     private var authJob: kotlinx.coroutines.Job? = null
     private const val TAG = "CameraStream"
@@ -531,6 +533,9 @@ object CameraStream {
         }
         // Библиотека по умолчанию пишет в лог каждый пакет — это лишняя нагрузка на процессор.
         s.getStreamClient().setLogs(false)
+        // Короткая очередь отправки (~1,5 с звука и видео вместо ~5 с): при медленной сети лучше потерять кадры,
+        // чем копить задержку, которая потом не уходит.
+        runCatching { s.getStreamClient().resizeCache(SEND_QUEUE) }
         stream = s
         preparedFor = cfg
         if (_state.value is CameraStreamState.Error) _state.value = CameraStreamState.Idle
@@ -601,6 +606,7 @@ object CameraStream {
             // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
             if (s is RtspServerStream) watchCode(s)
+            adaptBitrate(s, cfg.quality.bitrateKbps * 1000)
             true
         }.getOrElse { e ->
             Log.w(TAG, "start failed", e)
@@ -654,6 +660,29 @@ object CameraStream {
     fun watchUrl(s: CameraStreamState.Streaming): String? =
         Handoff.baseUrl()?.let { base -> "$base/watch" + (s.password?.let { "?k=$it" } ?: "") }
 
+    private var bitrateJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Битрейт под сеть: очередь отправки заполнена больше чем на треть — снижаем видео на 20 % (до 30 % от
+     * выбранного), сеть свободна — плавно возвращаем по 10 % в секунду.
+     */
+    private fun adaptBitrate(s: StreamBase, target: Int) {
+        bitrateJob?.cancel()
+        var current = target
+        bitrateJob = scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1_000)
+                if (_state.value !is CameraStreamState.Streaming) return@launch
+                val congested = runCatching { s.getStreamClient().hasCongestion(33f) }.getOrDefault(false)
+                val next = if (congested) maxOf(target * 3 / 10, current * 8 / 10) else minOf(target, current + target / 10)
+                if (next != current) {
+                    current = next
+                    runCatching { s.setVideoBitrateOnFly(current) }
+                }
+            }
+        }
+    }
+
     /** Пароль RTSP: текущий код защиты; null — защита выключена. */
     private fun rtspPassword(): String? = if (HandoffAuth.required) HandoffAuth.currentCode() else null
 
@@ -676,6 +705,8 @@ object CameraStream {
     internal fun stopStreaming() {
         authJob?.cancel()
         authJob = null
+        bitrateJob?.cancel()
+        bitrateJob = null
         // Экран: трансляция кончилась — разрешение на запись больше не держим.
         if (_config.value.source == StreamSource.SCREEN) {
             stream?.let { s -> runCatching { if (s.isStreaming) s.stopStream() } }

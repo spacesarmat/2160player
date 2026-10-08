@@ -130,7 +130,7 @@ internal object PlayerFactory {
             .setAllocator(allocator)
             .setTargetBufferBytes(bufferBytes.takeIf { it > 0 } ?: C.LENGTH_UNSET)
             .apply {
-                if (lowLatency) setBufferDurationsMs(500, 2_000, 100, 300).setPrioritizeTimeOverSizeThresholds(true)
+                if (lowLatency) setBufferDurationsMs(300, 1_500, 100, 300).setPrioritizeTimeOverSizeThresholds(true)
                 else setBufferDurationsMs(config.minBufferMs, config.maxBufferMs, config.bufferForPlaybackMs, config.bufferForPlaybackAfterRebufferMs)
                     .setPrioritizeTimeOverSizeThresholds(false)
             }

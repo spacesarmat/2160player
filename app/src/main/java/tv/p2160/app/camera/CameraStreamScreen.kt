@@ -191,14 +191,15 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             item(key = "dest-title") { SectionTitle(tr("camera.destination")) }
             item(key = "dest") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(StreamProtocol.entries, key = { it.name }) { p ->
+                    items(StreamProtocol.entries.filter { it != StreamProtocol.NDI || Ndi.available(context) }, key = { it.name }) { p ->
                         Choice(tr("camera.dest_" + p.name.lowercase()), config.protocol == p, enabled = streaming == null) {
                             CameraStream.update(context) { it.copy(protocol = p) }
                         }
                     }
                 }
             }
-            if (config.protocol != StreamProtocol.RTSP) item(key = "dest-fields") { DestinationFields(config, enabled = streaming == null) }
+            if (config.protocol == StreamProtocol.NDI) item(key = "ndi-info") { NdiInfo() }
+            else if (config.protocol != StreamProtocol.RTSP) item(key = "dest-fields") { DestinationFields(config, enabled = streaming == null) }
 
             if (!screen) item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
             if (!screen) item(key = "cams") {
@@ -429,7 +430,7 @@ private fun DestinationFields(config: CameraStreamConfig, enabled: Boolean) {
                 )
                 Text(tr("camera.rtmp_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            StreamProtocol.RTSP -> Unit
+            StreamProtocol.RTSP, StreamProtocol.NDI -> Unit
         }
     }
 }
@@ -440,7 +441,26 @@ private val RTMP_PRESETS = listOf(
     "Twitch" to "rtmp://live.twitch.tv/app",
 )
 
-/** SRT/RTMP: куда отправляем и есть ли соединение. */
+/** NDI: как найти источник и обязательные по лицензии NDI ссылка и знак. */
+@Composable
+private fun NdiInfo() {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(tr("camera.ndi_hint", CameraStream.ndiName(context)), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        FocusCard(onClick = {
+            runCatching {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Ndi.URL))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }, background = colors.surfaceVariant) {
+            Text(Ndi.URL, color = colors.primary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+        }
+        Text(tr("camera.ndi_trademark"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** SRT/RTMP/NDI: куда отправляем и есть ли соединение. */
 @Composable
 private fun PushStatus(s: CameraStreamState.Streaming) {
     val colors = MaterialTheme.colorScheme
@@ -454,7 +474,8 @@ private fun PushStatus(s: CameraStreamState.Streaming) {
         )
         Spacer(Modifier.height(4.dp))
         Text(s.url, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface)
-        if (s.bitrateKbps > 0) Text("${s.bitrateKbps} kbit/s", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        if (s.protocol == StreamProtocol.NDI) Text(tr("camera.ndi_receivers", s.clients), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        else if (s.bitrateKbps > 0) Text("${s.bitrateKbps} kbit/s", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
 }
 

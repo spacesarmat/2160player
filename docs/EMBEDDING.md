@@ -320,3 +320,11 @@ adb install -r samples/embed-demo/build/outputs/apk/debug/embed-demo-debug.apk
 | Плеер сам выбирает дорожки или продолжает «не с того места» | `PlayerConfig(restoreFromHistory = false)` — дорожки и позицию задаёт ваше приложение. |
 | Лишние сетевые чтения при старте серии | `PlayerConfig(introDetection = false, readChapters = false)`. |
 | Фильм с Dolby Vision играет без DV | Устройство не умеет этот профиль — плеер показывает совместимый слой HDR10 и пишет об этом в «Сведениях о файле» ([API.md §15.5](API.md#155-dolby-vision-без-декодера)). |
+
+## Сборка с NDI®
+
+Приложение 2160 Player умеет транслировать камеру и экран по NDI® (NDI® is a registered trademark of Vizrt NDI AB,
+https://ndi.video/). Библиотека NDI SDK закрытая и в репозиторий не входит: установите «NDI SDK for Android» с
+https://ndi.video/ и укажите путь в `local.properties` — `ndi.sdk.dir=C\:/Program Files/NDI/NDI 6 SDK (Android)` —
+или переменной `NDI_SDK_DIR` (путь по умолчанию проверяется сам). Без SDK приложение собирается без NDI. Подробности
+и лицензия — `third-party/ndi/NOTICE.md` и `LICENSE-NDI-EXCEPTION.md`. Для `player-core` NDI не нужен.

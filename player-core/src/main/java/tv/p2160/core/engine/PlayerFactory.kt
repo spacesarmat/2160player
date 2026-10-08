@@ -57,8 +57,8 @@ internal object PlayerFactory {
 
     const val USER_AGENT = "2160Player/1.0 (Linux; Android) ExoPlayerLib"
 
-    /** Живые источники, где важна задержка: камеры и эфир по RTSP/RTMP/SRT/UDP. */
-    val LOW_LATENCY_SCHEMES = setOf("rtsp", "rtsps", "rtmp", "rtmps", "srt", "udp", "rtp")
+    /** Живые источники, где важна задержка: камеры и эфир по RTSP/SRT/UDP. */
+    val LOW_LATENCY_SCHEMES = setOf("rtsp", "rtsps", "srt", "udp", "rtp")
 
     /**
      * @param lowLatency живой источник (камера по RTSP и т.п.): почти без буфера перед стартом и не больше

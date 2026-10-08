@@ -47,8 +47,6 @@ dependencies {
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.exoplayer.smoothstreaming)
     implementation(libs.media3.exoplayer.rtsp)
-    // rtmp:// — DefaultDataSource подхватывает RtmpDataSource из этого модуля (librtmp).
-    implementation(libs.media3.datasource.rtmp)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.nextlib.media3ext)

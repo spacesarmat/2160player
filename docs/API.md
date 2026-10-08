@@ -61,7 +61,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | UI | Телефон и Android TV (D-pad, пульт, цифровой ввод времени), жесты, PiP, превью кадров при перемотке, 6 тем оформления. |
 | Локализация | JSON-пакеты в assets, импорт/экспорт пользовательских переводов. Встроены `en`, `ru`. |
 | Производительность | Буфер по памяти устройства, offload звука, частота экрана под видео, туннельный режим, статистика поверх видео ([§15.7](#157-производительность-буфер-частота-экрана-статистика)). |
-| Живые потоки | `rtsp://`, `rtmp://`, `udp://` (MPEG-TS) с низкой задержкой; в приложении — трансляция камеры/экрана и «Камеры в сети» (§22.7). |
+| Живые потоки | `rtsp://`, `udp://` (MPEG-TS) с низкой задержкой; в приложении — трансляция камеры/экрана и «Камеры в сети» (§22.7). |
 
 ---
 
@@ -94,9 +94,9 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Action | Схемы `data` | MIME |
 |---|---|---|
-| `tv.p2160.action.PLAY` | `content`, `file`, `http`, `https`, `rtsp`, `rtmp` | любой или без MIME |
+| `tv.p2160.action.PLAY` | `content`, `file`, `http`, `https`, `rtsp` | любой или без MIME |
 | `android.intent.action.VIEW` (+ `BROWSABLE`) | `content`, `file`, `http`, `https` | `video/*`, `audio/*`, `application/x-mpegURL`, `application/vnd.apple.mpegurl`, `application/dash+xml`, `application/vnd.ms-sstr+xml`, `application/mp4`, `application/x-matroska`, `application/ogg` |
-| `android.intent.action.VIEW` (+ `BROWSABLE`) | `rtsp`, `rtmp` | без MIME |
+| `android.intent.action.VIEW` (+ `BROWSABLE`) | `rtsp` | без MIME |
 
 > `ACTION_VIEW` с `http(s)`-ссылкой **без MIME-типа** под фильтры не попадает (иначе плеер
 > перехватывал бы все веб-ссылки) — указывайте тип (`video/*`) или явный компонент.
@@ -400,7 +400,7 @@ data class MediaEntry(
 
 | Параметр | Описание |
 |---|---|
-| `uri` | `http(s)`, `rtsp`, `rtmp`, `file`, `content`, `smb`; путь к `.iso` или папке `BDMV`. |
+| `uri` | `http(s)`, `rtsp`, `file`, `content`, `smb`; путь к `.iso` или папке `BDMV`. |
 | `title` | Заголовок. По умолчанию — имя файла без расширения (или название диска Blu-ray). |
 | `subtitles` | Внешние субтитры. |
 | `mimeType` | Нужен для адаптивных потоков без расширения: значение, содержащее `mpegurl` → HLS, `dash` → DASH, `vnd.ms-sstr` → SmoothStreaming. Для остального игнорируется. URL с `.m3u8` распознаётся и без него. |
@@ -1891,7 +1891,7 @@ RTSP-трансляция камеры, §22.7). Другие
   "playing": true, "headers": {}, "from": "Galaxy S21" }
 ```
 
-Сетевые URI (`smb`, `http(s)`, `rtsp`, `rtmp`) передаются как есть; локальные файлы — как
+Сетевые URI (`smb`, `http(s)`, `rtsp`) передаются как есть; локальные файлы — как
 `http://<IPv4 устройства>:<порт>/stream/<token>/<имя>`; прочие схемы (`torrent://` и т.п.) не передаются.
 В плеере это кнопка «Отправить на устройство» — обычный `PlayerAction` (`id = "handoff"`),
 зарегистрированный приложением через `Player2160.registerAction`. После успешной отправки текущее
@@ -2027,6 +2027,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 
 | Что | Как |
 |---|---|
+| NDI® | `StreamProtocol.NDI` — отправка в локальную сеть по NDI® (NDI® is a registered trademark of Vizrt NDI AB, https://ndi.video/): источник «<ИМЯ-УСТРОЙСТВА> (2160 Player)» (`CameraStream.ndiName`; имя машины NDI — имя устройства латиницей, `Ndi.machineName`, записывается в `ndi-config.v1.json` через `NDI_CONFIG_DIR`: иначе Android даёт «LOCALHOST», и приёмники не подключаются) виден в OBS (плагин DistroAV), vMix, NDI Studio Monitor. Кадры с камеры/экрана идут через тот же GL-конвейер (предпросмотр, зум, фокус) и забираются в `ImageReader` (RGBX, второй выход GL), NDI сжимает их сам (SpeedHQ); звук — PCM 16 бит с микрофона (`GainMeterEffect.pcmListener`); «зрители» — подключённые приёмники. Нужна быстрая сеть (5 ГГц). Есть, только если NDI SDK был при сборке (`BuildConfig.NDI`) и библиотека загрузилась (`Ndi.available(context)`): `libndi.so` в APK, загрузка динамическая (`cpp/ndi_bridge.cpp`, `NDIlib_v6_load`); на время трансляции — `WifiManager.MulticastLock`. Лицензия: `third-party/ndi/NOTICE.md`, [LICENSE-NDI-EXCEPTION.md](../LICENSE-NDI-EXCEPTION.md); в «О приложении» — пункт «NDI®» (знак, ссылка, лицензии компонентов `libndi`). |
 | Что | `CameraStreamConfig.source` (`StreamSource`): `CAMERA` или `SCREEN` — экран телефона (`ScreenSource` RootEncoder): при старте системный запрос записи экрана (`MediaProjectionManager.createScreenCaptureIntent`), ответ передаётся сервису (`CameraStream.startScreen`), сервис стартует с типом `mediaProjection` и только потом берёт `MediaProjection` (требование Android 14). Последний кадр повторяется не реже 15 раз в секунду (`setForceRender`) — иначе статичный экран «застывает». Звук экрана (`screenAudio`): микрофон, звук телефона (`InternalAudioSource`, Android 10+; приложения могут запрещать запись своего звука) или оба (`MixAudioSource`). Режимы — 720p/1080p × 30/60, что потянет кодировщик (`CameraStream.screenModes()`). Остановка системной кнопкой записи экрана тоже останавливает трансляцию. |
 | Куда | `CameraStreamConfig.protocol` (`StreamProtocol`): `RTSP` — сервер на телефоне (зрители подключаются сами, адрес и QR); `SRT` — телефон сам шлёт поток (`srtUrl`, например `srt://192.168.1.10:9000`; в OBS «Источник медиа»: `srt://0.0.0.0:9000?mode=listener`, формат `mpegts`); `RTMP` — на сервис (`rtmpUrl` + `rtmpKey`, заготовки YouTube `rtmp://a.rtmp.youtube.com/live2` и Twitch `rtmp://live.twitch.tv/app`; `CameraStream.rtmpEndpoint` склеивает адрес, ключ уже в адресе своего сервера тоже понимается). SRT/RTMP: до 10 повторов подключения через 5 с (`reTry`), статус «Подключение…/Подключено» (`CameraStreamState.Streaming.connected`), ключ на экран и в уведомление не выводится; неверный адрес — `camera.err_srt_url` / `camera.err_rtmp_url`, отказ по ключу — `camera.err_auth`. Настройки (камера, режим, звук, куда, адрес, ключ) сохраняются на устройстве (`CameraStream.load`). Камеры в сети (`/camera`, `cam=1`) — только для RTSP (`CameraStream.isServing`). |
 | Камера | `CameraStream.cameras(context)`: все камеры Camera2 с подписью («Задняя», «Широкоугольная», «Телевик» — по фокусному расстоянию относительно основной, «Фронтальная», «Внешняя»), режимами и наличием вспышки. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
@@ -2036,15 +2037,16 @@ ARM-устройствах берёт именно его (§22.2): устано
 | Фокус и зум | Касание предпросмотра — фокус и экспозиция в точке (`CameraStream.tapToFocus`), «Автофокус» — снова непрерывный (`autoFocus`). Зум — щипком на предпросмотре (`onPreviewTouch`) и ползунком (`setZoom`, диапазон `zoomRange()` у самой камеры, `zoom: StateFlow`). Работают и во время трансляции; при смене камеры зум сбрасывается. |
 | Ориентация | Кадр всегда горизонтальный 16:9 (для ТВ и OBS): держите телефон горизонтально — картинка займёт весь кадр; вертикально — с полями по бокам. Поворот во время трансляции ничего не ломает. |
 | Фон | Трансляция идёт в сервисе переднего плана `CameraStreamService` (`foregroundServiceType="camera\|microphone\|mediaProjection"`): экран можно закрыть, приложение свернуть. Уведомление показывает адрес и число зрителей, кнопка «Остановить»; нажатие открывает экран трансляции (`MainActivity.EXTRA_OPEN_CAMERA`). |
-| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку); очередь отправки — ~1–1,5 с (`SEND_QUEUE` = 120 кадров вместо 400 у библиотеки, и для зрителей, подключившихся позже — правка RTSP-Server): при медленной сети теряются кадры, а не копится задержка; битрейт подстраивается под сеть (очередь заполнена больше чем на треть — видео −20 %, до 30 % от выбранного; сеть свободна — +10 % в секунду). Плеер для живых источников (`rtsp(s)`, `rtmp(s)`, `udp`, `rtp`; внутренний список схем) включает низкую задержку: старт после 0,1 с буфера, не больше 1,5 с в буфере, без чтения глав и поиска вступления через FFmpeg; держит задержку около 0,3 с — буфер больше 0,8 с — скорость ×1,1, больше 2 с — ×1,25 (тон звука сохраняется), догнал — ×1 (перемоткой не прыгает: у RTSP она переоткрывает поток); RTSP — RTP поверх TCP (по Wi-Fi UDP теряется). OBS: «Буферизация сети» — 0 МБ; SRT — `?mode=listener&latency=200000`. |
+| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку); очередь отправки — ~1–1,5 с (`SEND_QUEUE` = 120 кадров вместо 400 у библиотеки, и для зрителей, подключившихся позже — правка RTSP-Server): при медленной сети теряются кадры, а не копится задержка; битрейт подстраивается под сеть (очередь заполнена больше чем на треть — видео −20 %, до 30 % от выбранного; сеть свободна — +10 % в секунду). Плеер для живых источников (`rtsp(s)`, `srt`, `udp`, `rtp`; внутренний список схем) включает низкую задержку: старт после 0,1 с буфера, не больше 1,5 с в буфере, без чтения глав и поиска вступления через FFmpeg; держит задержку около 0,3 с — буфер больше 0,8 с — скорость ×1,1, больше 2 с — ×1,25 (тон звука сохраняется), догнал — ×1 (перемоткой не прыгает: у RTSP она переоткрывает поток); RTSP — RTP поверх TCP (по Wi-Fi UDP теряется). OBS: «Буферизация сети» — 0 МБ; SRT — `?mode=listener&latency=200000`. |
 | QR-код | Не сам `rtsp://`, а ссылка на страницу `/watch` этого устройства (`CameraStream.watchUrl`, §22.1): камеры и Google Lens открывают только веб-ссылки. На странице — «Открыть в 2160 Player» (или скачать его с этого телефона) и адрес для OBS/VLC; в ссылке код защиты. Нет Wi-Fi — в QR сам адрес RTSP. |
 | Защита | Как у «Передачи между устройствами» (§22.1): если защита включена, RTSP-поток требует Basic-авторизацию — логин `CameraStream.RTSP_USER` = `2160`, пароль — текущий код (`HandoffAuth.currentCode()`: суточный или свой); раз в минуту код сверяется (суточный меняется в полночь — подключённые зрители остаются, новым нужен новый). На экране — адрес с паролем и QR (`CameraStreamState.Streaming.urlWithAuth`) для OBS/VLC; сопряжённые 2160 Player получают его по `/camera` и подключаются сами; в уведомлении адрес без пароля. Защита выключена — поток открыт для всей сети (экран предупреждает). |
 | Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах — IPv4 (по нему клиенты делают SETUP), адрес для зрителей — IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт — в `CameraStream.state` (`CameraStreamState.Streaming`). |
 
-**Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, `rtmp://` (модуль `media3-datasource-rtmp`), HLS/DASH и `udp://адрес:порт`
+**Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, HLS/DASH и `udp://адрес:порт`
 (MPEG-TS по UDP — ffmpeg, OBS, IPTV-мультикаст; встроенный источник `UdpDataSource` в `RoutingDataSource`) через
 «Ссылку» или Intent (`udp://` — только с явным компонентом: фильтров `VIEW` для этой схемы нет). Приём SRT плеер
-не умеет — SRT здесь только для отправки в OBS. Для живых источников включается низкая задержка (см. «Задержка»).
+не умеет — SRT здесь только для отправки в OBS. Просмотр `rtmp://` не поддерживается (с 0.2.5 модуль
+`media3-datasource-rtmp` убран: его `librtmp` не выровнена под страницы 16 КБ); RTMP — только для отправки на YouTube/Twitch. Для живых источников включается низкая задержка (см. «Задержка»).
 
 **Камеры в сети.** Транслирующее устройство объявляет в mDNS-записи `cam=1` (`Handoff.reannounce()` при старте и
 остановке) и отдаёт адрес по `GET /camera` (с той же защитой кодом, что `/now`). На главном экране других плееров —
@@ -2094,7 +2096,7 @@ Basic-авторизация RTSP идёт открытым текстом — �
 
 Модуль `app` (не библиотека, §22): `tv.p2160.app.handoff.Handoff`, `HandoffAuth`, `PairRequests`, `PairRequest`, `Peer` (`locked`, `camera`), `RemoteSession`, `RemoteCamera`, `PushResult`, `tv.p2160.app.share.ShareApp`, `ShareAppDialog` (§22.4), `tv.p2160.app.FaqScreen` (§22.5), `ContinueScreen` (§22.6),
 `tv.p2160.app.camera.CameraStream`, `CameraStreamService`, `CameraStreamScreen`, `CameraStreamConfig`, `CameraStreamState`,
-`StreamMode`, `StreamProtocol`, `StreamSource`, `ScreenAudio`, `CameraInfo`, `MicInfo`, `GainMeterEffect` (§22.7);
+`StreamMode`, `StreamProtocol`, `StreamSource`, `ScreenAudio`, `CameraInfo`, `MicInfo`, `GainMeterEffect`, `Ndi` (§22.7);
 `tv.p2160.app.update.Updater`, `UpdateInfo`, `UpdateState`;
 `tv.p2160.app.LocalBrowserScreen`, `LocalRoot`, `LocalKind`, `localRoots`, `listLocalMedia`, `storagePermissions` (§22.3).
 

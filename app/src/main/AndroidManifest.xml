@@ -145,7 +145,6 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
                 <data android:scheme="rtsp" />
-                <data android:scheme="rtmp" />
             </intent-filter>
             <intent-filter>
                 <action android:name="tv.p2160.action.PLAY" />
@@ -183,7 +182,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="rtsp" />
-                <data android:scheme="rtmp" />
             </intent-filter>
         </activity>
 

@@ -307,5 +307,12 @@
   "camera.watch_obs": "For OBS (Media Source, untick Local File) and VLC — the address:",
   "camera.watch_none": "Nothing is streaming right now.",
   "camera.watch_code": "Invalid link: scan the QR code on the streaming screen again (the code changes at midnight).",
-  "camera.watch_wait": "Too many wrong attempts — wait a minute."
+  "camera.watch_wait": "Too many wrong attempts — wait a minute.",
+  "camera.dest_ndi": "NDI®",
+  "camera.ndi_hint": "The source \"%1$s\" appears on the local network: OBS (DistroAV plugin) → NDI™ Source, vMix, NDI Studio Monitor. Needs fast Wi-Fi (5 GHz): NDI is lightly compressed; use 720p on a weak network.",
+  "camera.ndi_trademark": "NDI® is a registered trademark of Vizrt NDI AB.",
+  "camera.ndi_receivers": "NDI receivers: %1$d",
+  "camera.err_ndi": "NDI is not available on this device.",
+  "settings.ndi": "NDI®",
+  "settings.ndi_hint": "Camera and screen streaming over NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — tap to view the NDI component licenses."
 }

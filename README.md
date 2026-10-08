@@ -22,8 +22,8 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
 - **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
 - **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне — щипком двумя пальцами.
-- **Камеры в сети и приём потоков:** телефоны с 2160 Player, которые транслируют камеру, видны на главном экране других устройств (подключение — по разрешению или коду); открываются и `rtsp://`, `rtmp://`, HLS и `udp://` (MPEG-TS) с низкой задержкой.
-- **Трансляция камеры и экрана:** телефон отдаёт видео с выбранной камеры (задняя, широкоугольная, телевик, фронтальная) или свой экран — со звуком микрофона и/или телефона со звуком: RTSP-сервер на телефоне (OBS, VLC, другой 2160 Player), SRT прямо в OBS или RTMP на YouTube/Twitch; режимы (до 4K и 60 fps) — по возможностям камеры и кодировщика телефона, фонарик, фокус касанием и зум, задержка ~0,5 с, работает со свёрнутым приложением.
+- **Камеры в сети и приём потоков:** телефоны с 2160 Player, которые транслируют камеру, видны на главном экране других устройств (подключение — по разрешению или коду); открываются и `rtsp://`, HLS и `udp://` (MPEG-TS) с низкой задержкой.
+- **Трансляция камеры и экрана:** телефон отдаёт видео с выбранной камеры (задняя, широкоугольная, телевик, фронтальная) или свой экран — со звуком микрофона и/или телефона со звуком: RTSP-сервер на телефоне (OBS, VLC, другой 2160 Player), SRT прямо в OBS, NDI® (OBS с DistroAV, vMix) или RTMP на YouTube/Twitch; режимы (до 4K и 60 fps) — по возможностям камеры и кодировщика телефона, фонарик, фокус касанием и зум, задержка ~0,5 с, работает со свёрнутым приложением.
 - **Экономный движок:** аппаратные декодеры в приоритете, буфер по памяти устройства, звук без видео — через аудиочип (offload), частота экрана под видео на ТВ (23,976/24/25/50 Гц), туннельный режим для Android TV и «Статистика поверх видео» (декодеры, пропущенные кадры, буфер, сеть, процессор, память).
 - **«Продолжить просмотр» целиком:** нажмите на заголовок раздела на главном экране — откроется список всего недосмотренного.
 - **Обложки в «Продолжить просмотр» и истории:** встроенные в файл, от DLNA-сервера или рядом с файлом (`poster.jpg`, `folder.jpg`, `<имя>-thumb.jpg`, постер сериала из папки выше сезона).
@@ -163,8 +163,11 @@ Andy_bum — Telegram: [@Andy_bum](https://t.me/Andy_bum). Вопросы, ид�
 [GNU GPL v3.0](LICENSE). Приложение и библиотеку `player-core` можно свободно использовать, изменять
 и распространять, в том числе встраивать в свои приложения, — при условии, что производная работа
 тоже распространяется под GPL v3 с открытым исходным кодом. Используемые компоненты: Media3
-(Apache 2.0), FFmpeg через nextlib (GPL), smbj (Apache 2.0), libtorrent4j (MIT/BSD), RootEncoder и RTSP-Server
-(Apache 2.0; RTSP-Server — исходниками с правкой, см. `third-party/rtsp-server/NOTICE.md`), ZXing (Apache 2.0).
+(Apache 2.0), FFmpeg через nextlib (LGPL 3), smbj (Apache 2.0), libtorrent4j (MIT/BSD), RootEncoder и RTSP-Server
+(Apache 2.0; RTSP-Server — исходниками с правкой, см. `third-party/rtsp-server/NOTICE.md`), ZXing (Apache 2.0),
+NDI® SDK (заголовки — MIT; библиотека `libndi` — лицензия NDI SDK, в репозиторий не входит; распространение вместе
+с ней разрешено дополнительным разрешением [LICENSE-NDI-EXCEPTION.md](LICENSE-NDI-EXCEPTION.md)).
+NDI® is a registered trademark of Vizrt NDI AB — https://ndi.video/
 
 ---
 
@@ -177,7 +180,7 @@ intro/credits skipping (incl. audio-based intro detection), dual subtitles, resu
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
 themes, JSON language packs and self-updates from GitHub Releases. It can also stream the phone camera or screen
 (RTSP server, SRT to OBS, RTMP to YouTube/Twitch) with password protection, shows cameras of other 2160 Players on the
-LAN, plays live RTSP/RTMP/UDP with low latency, and has torrent seeding rules, a memory-sized buffer, audio offload,
+LAN, plays live RTSP/UDP with low latency, and has torrent seeding rules, a memory-sized buffer, audio offload,
 display frame-rate matching and a stats overlay.
 
 Install: grab an APK from the [latest release](https://github.com/spacesarmat/2160player/releases/latest)

@@ -11,6 +11,19 @@ val signing = Properties().apply {
 }
 fun signingValue(key: String, env: String): String? = signing.getProperty(key) ?: System.getenv(env)
 
+// NDI® SDK (закрытый, в git не кладём): ndi.sdk.dir в local.properties, NDI_SDK_DIR или путь установки по умолчанию.
+// Нет SDK — приложение собирается без NDI (пункт не показывается). Заголовки — third-party/ndi/include (MIT).
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val ndiSdkDir: File? = listOfNotNull(
+    localProps.getProperty("ndi.sdk.dir"),
+    System.getenv("NDI_SDK_DIR"),
+    "C:/Program Files/NDI/NDI 6 SDK (Android)",
+).map(::file).firstOrNull { File(it, "Lib/arm64-v8a/libndi.so").isFile }
+val ndiJniDir = layout.buildDirectory.dir("ndi-jni")
+val ndiAssetsDir = layout.buildDirectory.dir("ndi-assets")
+
 android {
     namespace = "tv.p2160.app"
     compileSdk = 37
@@ -21,6 +34,20 @@ android {
         targetSdk = 36
         versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 16
         versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.4"
+        buildConfigField("boolean", "NDI", (ndiSdkDir != null).toString())
+        if (ndiSdkDir != null) {
+            externalNativeBuild {
+                cmake { arguments += "-DNDI_INCLUDE_DIR=${rootProject.file("third-party/ndi/include").invariantSeparatorsPath}" }
+            }
+        }
+    }
+
+    // Мост к NDI (C++) и сама libndi.so — только если SDK найден.
+    if (ndiSdkDir != null) {
+        ndkVersion = "28.2.13676358"
+        externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+        sourceSets.getByName("main").jniLibs.directories.add(ndiJniDir.get().asFile.path)
+        sourceSets.getByName("main").assets.directories.add(ndiAssetsDir.get().asFile.path)
     }
 
     signingConfigs {
@@ -80,6 +107,18 @@ android {
 kotlin {
     jvmToolchain(17)
 }
+
+// libndi.so из NDI SDK → build/ndi-jni/<abi>/ (без лицензий и прочих файлов SDK).
+val copyNdi = tasks.register<Copy>("copyNdiLibs") {
+    if (ndiSdkDir != null) from(File(ndiSdkDir, "Lib")) { include("*/libndi.so") }
+    into(ndiJniDir)
+}
+// Лицензии компонентов libndi — в APK рядом с библиотекой (показываются в «О приложении»).
+val copyNdiLicenses = tasks.register<Copy>("copyNdiLicenses") {
+    if (ndiSdkDir != null) from(File(ndiSdkDir, "Lib/arm64-v8a")) { include("*.txt") }
+    into(ndiAssetsDir.map { it.dir("ndi") })
+}
+tasks.named("preBuild") { dependsOn(copyNdi, copyNdiLicenses) }
 
 dependencies {
     implementation(project(":player-core"))

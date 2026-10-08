@@ -30,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.AlertDialog
@@ -348,6 +350,37 @@ fun SettingsScreen(
             item { SettingRow(tr("settings.faq"), hint = tr("settings.faq_hint"), icon = Icons.AutoMirrored.Filled.HelpOutline, onClick = onOpenFaq) }
             item {
                 val context = LocalContext.current
+                if (tv.p2160.app.BuildConfig.NDI) {
+                    var ndiLicenses by remember { mutableStateOf<String?>(null) }
+                    SettingRow(tr("settings.ndi"), hint = tr("settings.ndi_hint"), icon = Icons.Default.Info) {
+                        ndiLicenses = runCatching {
+                            context.assets.list("ndi").orEmpty().sorted().joinToString(separator = "\n\n") { f ->
+                                context.assets.open("ndi/$f").bufferedReader().use { it.readText() }
+                            }
+                        }.getOrNull().orEmpty()
+                    }
+                    ndiLicenses?.let { text ->
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { ndiLicenses = null },
+                            title = { Text("NDI®") },
+                            text = {
+                                androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                                    Text(tr("settings.ndi_hint"))
+                                    Text(text, style = MaterialTheme.typography.bodySmall)
+                                }
+                            },
+                            confirmButton = {
+                                androidx.compose.material3.TextButton(onClick = {
+                                    runCatching {
+                                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://ndi.video/"))
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    }
+                                }) { Text("ndi.video") }
+                            },
+                            dismissButton = { androidx.compose.material3.TextButton(onClick = { ndiLicenses = null }) { Text(tr("update.close")) } },
+                        )
+                    }
+                }
                 SettingRow(tr("settings.donate"), hint = tr("settings.donate_hint"), icon = Icons.Default.Favorite) {
                     runCatching {
                         context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(Faq.DONATE_URL))

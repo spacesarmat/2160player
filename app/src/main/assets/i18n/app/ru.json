@@ -307,5 +307,12 @@
   "camera.watch_obs": "Для OBS («Источник медиа», снять «Локальный файл») и VLC — адрес:",
   "camera.watch_none": "Трансляция сейчас не идёт.",
   "camera.watch_code": "Неверная ссылка: отсканируйте QR-код с экрана трансляции ещё раз (код меняется в полночь).",
-  "camera.watch_wait": "Слишком много неверных попыток — подождите минуту."
+  "camera.watch_wait": "Слишком много неверных попыток — подождите минуту.",
+  "camera.dest_ndi": "NDI®",
+  "camera.ndi_hint": "Источник «%1$s» появится в локальной сети: OBS (плагин DistroAV) → «Источник NDI™», vMix, NDI Studio Monitor. Нужна быстрая Wi-Fi-сеть (5 ГГц): NDI передаёт почти без сжатия; для слабой сети берите 720p.",
+  "camera.ndi_trademark": "NDI® is a registered trademark of Vizrt NDI AB.",
+  "camera.ndi_receivers": "Приёмников NDI: %1$d",
+  "camera.err_ndi": "NDI недоступен на этом устройстве.",
+  "settings.ndi": "NDI®",
+  "settings.ndi_hint": "Трансляция камеры и экрана по NDI®. NDI® is a registered trademark of Vizrt NDI AB. https://ndi.video/ — нажмите, чтобы посмотреть лицензии компонентов NDI."
 }

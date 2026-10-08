@@ -551,7 +551,7 @@ object Handoff {
      * сетевые ссылки — как есть, локальные файлы — через наш /stream.
      */
     private fun shareable(context: Context, now: NowPlaying): NowPlaying? = when (now.uri.scheme?.lowercase()) {
-        "smb", "http", "https", "rtsp", "rtmp" -> now
+        "smb", "http", "https", "rtsp" -> now
         "content", "file" -> {
             val ip = localIpv4() ?: return null
             val port = server?.localPort ?: return null

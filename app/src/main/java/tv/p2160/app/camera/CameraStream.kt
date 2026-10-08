@@ -78,6 +78,8 @@ data class MicInfo(val id: Int, val labelKey: String, val name: String)
  */
 class GainMeterEffect : com.pedro.encoder.input.audio.CustomAudioEffect() {
     @Volatile var gain: Float = 1f
+    /** PCM после усиления — для NDI (44,1 кГц, стерео, 16 бит). */
+    @Volatile var pcmListener: ((ByteArray) -> Unit)? = null
     private val _level = MutableStateFlow(0f)
     /** Уровень звука 0..1 (пик за последние ~0,1 с, после усиления). */
     val level: StateFlow<Float> = _level.asStateFlow()
@@ -99,6 +101,7 @@ class GainMeterEffect : com.pedro.encoder.input.audio.CustomAudioEffect() {
             i += 2
         }
         samples += pcmBuffer.size / 2
+        pcmListener?.invoke(pcmBuffer)
         if (samples >= 8_820) { // ~0,1 с при 44,1 кГц стерео
             _level.value = peak / 32768f
             peak = 0
@@ -122,6 +125,8 @@ enum class StreamProtocol {
     SRT,
     /** Телефон отправляет поток по RTMP на сервис (YouTube, Twitch, свой сервер). */
     RTMP,
+    /** NDI® в локальной сети (OBS с DistroAV, vMix…); только если NDI есть в сборке ([Ndi.available]). */
+    NDI,
 }
 
 data class CameraStreamConfig(
@@ -268,7 +273,8 @@ object CameraStream {
             cameraId = p.getString("camera", null),
             quality = StreamMode(p.getInt("w", d.quality.width), p.getInt("h", d.quality.height), p.getInt("fps", d.quality.fps)),
             audio = p.getBoolean("audio", d.audio),
-            protocol = runCatching { StreamProtocol.valueOf(p.getString("protocol", null)!!) }.getOrDefault(d.protocol),
+            protocol = runCatching { StreamProtocol.valueOf(p.getString("protocol", null)!!) }.getOrDefault(d.protocol)
+                .let { if (it == StreamProtocol.NDI && !Ndi.available(context)) StreamProtocol.RTSP else it },
             srtUrl = p.getString("srt_url", "").orEmpty(),
             rtmpUrl = p.getString("rtmp_url", "").orEmpty(),
             rtmpKey = p.getString("rtmp_key", "").orEmpty(),
@@ -500,6 +506,9 @@ object CameraStream {
             StreamProtocol.RTSP -> RtspServerStream(app, cfg.port, checker, videoSource, audioSource)
             StreamProtocol.SRT -> SrtStream(app, checker, videoSource, audioSource)
             StreamProtocol.RTMP -> RtmpStream(app, checker, videoSource, audioSource)
+            StreamProtocol.NDI -> NdiStream(app, videoSource, audioSource, Ndi.SOURCE_NAME).also {
+                it.configure(cfg.quality.width, cfg.quality.height, cfg.quality.fps)
+            }
         }
         s.getGlInterface().autoHandleOrientation = true
         // Экран отдаёт кадр, только когда картинка меняется: без повтора поток «застывает», и плееры уходят
@@ -586,9 +595,16 @@ object CameraStream {
             StreamProtocol.RTSP -> ""
             StreamProtocol.SRT -> cfg.srtUrl.trim().takeIf { it.startsWith("srt://", true) && it.length > 6 }
             StreamProtocol.RTMP -> rtmpEndpoint(cfg.rtmpUrl, cfg.rtmpKey)
+            StreamProtocol.NDI -> if (Ndi.available(context)) "" else null
         }
         if (target == null) {
-            _state.value = CameraStreamState.Error(if (cfg.protocol == StreamProtocol.SRT) "camera.err_srt_url" else "camera.err_rtmp_url")
+            _state.value = CameraStreamState.Error(
+                when (cfg.protocol) {
+                    StreamProtocol.SRT -> "camera.err_srt_url"
+                    StreamProtocol.NDI -> "camera.err_ndi"
+                    else -> "camera.err_rtmp_url"
+                }
+            )
             return false
         }
         val s = ensurePrepared(context) ?: return false
@@ -600,8 +616,13 @@ object CameraStream {
                 // Ключ RTMP на экран и в уведомление не выводим.
                 StreamProtocol.SRT -> CameraStreamState.Streaming(target, 0, 0, StreamProtocol.SRT, connected = false)
                 StreamProtocol.RTMP -> CameraStreamState.Streaming(cfg.rtmpUrl.trim(), 0, 0, StreamProtocol.RTMP, connected = false)
+                StreamProtocol.NDI -> CameraStreamState.Streaming("NDI®: " + ndiName(context), 0, 0, StreamProtocol.NDI, connected = true)
             }
             if (s is RtspServerStream) s.startStream() else s.startStream(target)
+            if (s is NdiStream) {
+                s.attachFrames()
+                gainMeter.pcmListener = { pcm -> s.onPcm(pcm, 44_100, 2) }
+            }
             cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
             // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
@@ -673,6 +694,12 @@ object CameraStream {
             while (true) {
                 kotlinx.coroutines.delay(1_000)
                 if (_state.value !is CameraStreamState.Streaming) return@launch
+                // NDI: «зрители» — подключённые приёмники; битрейт NDI регулирует сам.
+                if (s is NdiStream) {
+                    val n = (s.getStreamClient() as NdiStreamClient).connections()
+                    _state.update { if (it is CameraStreamState.Streaming) it.copy(clients = n) else it }
+                    continue
+                }
                 val congested = runCatching { s.getStreamClient().hasCongestion(33f) }.getOrDefault(false)
                 val next = if (congested) maxOf(target * 3 / 10, current * 8 / 10) else minOf(target, current + target / 10)
                 if (next != current) {
@@ -682,6 +709,9 @@ object CameraStream {
             }
         }
     }
+
+    /** Полное имя источника NDI — так его увидят OBS/vMix: «ИМЯ-УСТРОЙСТВА (2160 Player)». */
+    fun ndiName(context: Context): String = Ndi.machineName(context) + " (" + Ndi.SOURCE_NAME + ")"
 
     /** Пароль RTSP: текущий код защиты; null — защита выключена. */
     private fun rtspPassword(): String? = if (HandoffAuth.required) HandoffAuth.currentCode() else null
@@ -707,6 +737,7 @@ object CameraStream {
         authJob = null
         bitrateJob?.cancel()
         bitrateJob = null
+        gainMeter.pcmListener = null
         // Экран: трансляция кончилась — разрешение на запись больше не держим.
         if (_config.value.source == StreamSource.SCREEN) {
             stream?.let { s -> runCatching { if (s.isStreaming) s.stopStream() } }

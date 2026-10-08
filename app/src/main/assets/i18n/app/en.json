@@ -255,7 +255,7 @@
   "camera.error": "Could not start the camera with these settings. Try another quality or camera.",
   "camera.viewers": "Viewers: %1$d",
   "camera.obs_hint": "OBS: Media Source → untick Local File → paste the address; set Network Buffering to 0 MB, otherwise OBS adds seconds of delay. VLC: Open Network Stream, Network caching 300 ms. 2160 Player: Link.",
-  "camera.hint": "The phone serves video over RTSP on its Wi-Fi network (or its hotspot). The frame is always landscape 16:9 — hold the phone horizontally to fill it. Streaming keeps going with the app minimized — stop it here or from the notification. Other devices with 2160 Player see the camera on their home screen.",
+  "camera.hint": "The phone serves video over RTSP on its Wi-Fi network (or its hotspot). The video orientation follows the phone when you start: held upright, viewers get portrait video; sideways — 16:9. Streaming keeps going with the app minimized — stop it here or from the notification. Other devices with 2160 Player see the camera on their home screen.",
   "camera.channel": "Camera streaming",
   "camera.notification_title": "Camera is streaming",
   "camera.notification_text": "%1$s · viewers: %2$d",

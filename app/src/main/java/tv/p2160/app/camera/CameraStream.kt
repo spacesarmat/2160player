@@ -255,6 +255,11 @@ object CameraStream {
         _torch.value = runCatching { source.isLanternEnabled() }.getOrDefault(false)
     }
     private var preparedFor: CameraStreamConfig? = null
+    /** Кадр подготовлен вертикальным (телефон держали вертикально). */
+    private var preparedPortrait: Boolean? = null
+
+    private fun isPortrait(context: Context): Boolean =
+        context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
     private var previewSurface: SurfaceView? = null
 
     val isStreaming: Boolean get() = stream?.isStreaming == true && _state.value is CameraStreamState.Streaming
@@ -480,7 +485,9 @@ object CameraStream {
 
     private fun ensurePrepared(context: Context): StreamBase? {
         val cfg = _config.value
-        stream?.takeIf { sameEncoder(preparedFor, cfg) }?.let { return it }
+        val portrait = isPortrait(context)
+        // Ориентация кадра — как держат телефон; повернули до старта — готовим заново (во время трансляции не трогаем).
+        stream?.takeIf { sameEncoder(preparedFor, cfg) && (it.isStreaming || preparedPortrait == portrait) }?.let { return it }
         release()
         val app = context.applicationContext
         appContext = app
@@ -509,16 +516,17 @@ object CameraStream {
             StreamProtocol.SRT -> SrtStream(app, checker, videoSource, audioSource)
             StreamProtocol.RTMP -> RtmpStream(app, checker, videoSource, audioSource)
             StreamProtocol.NDI -> NdiStream(app, videoSource, audioSource, Ndi.SOURCE_NAME).also {
-                it.configure(cfg.quality.width, cfg.quality.height, cfg.quality.fps)
+                val q = cfg.quality
+                if (portrait) it.configure(q.height, q.width, q.fps) else it.configure(q.width, q.height, q.fps)
             }
         }
         s.getGlInterface().autoHandleOrientation = true
         // Экран отдаёт кадр, только когда картинка меняется: без повтора поток «застывает», и плееры уходят
         // в буферизацию. Повторяем последний кадр не реже 15 раз в секунду (как в примере RootEncoder).
         if (screen != null) s.getGlInterface().setForceRender(true, 15)
-        // Кадр всегда горизонтальный 16:9 (ТВ, OBS): телефон вертикально — картинка с полями по бокам,
-        // и поворот во время трансляции ничего не ломает.
-        val rotation = 0
+        // Ориентация кадра — как у телефона при запуске: вертикально — вертикальный кадр (720×1280), и зрители
+        // видят его вертикальным; горизонтально — 16:9. Поворот во время трансляции кадр не меняет.
+        val rotation = if (portrait) 90 else 0
         val q = cfg.quality
         val ok = runCatching {
             s.prepareVideo(q.width, q.height, q.bitrateKbps * 1000, q.fps, iFrameInterval = 1, rotation = rotation) &&
@@ -549,6 +557,7 @@ object CameraStream {
         runCatching { s.getStreamClient().resizeCache(SEND_QUEUE) }
         stream = s
         preparedFor = cfg
+        preparedPortrait = portrait
         if (_state.value is CameraStreamState.Error) _state.value = CameraStreamState.Idle
         return s
     }
@@ -564,6 +573,12 @@ object CameraStream {
 
     /** Размер окна предпросмотра изменился. */
     fun setPreviewSize(width: Int, height: Int) {
+        // Телефон повернули до старта: кадр трансляции готовим под новую ориентацию, чтобы предпросмотр ей соответствовал.
+        val app = appContext
+        val surface = previewSurface
+        if (app != null && surface != null && stream?.isStreaming == false && preparedPortrait != null &&
+            preparedPortrait != isPortrait(app) && _config.value.source == StreamSource.CAMERA
+        ) startPreview(app, surface)
         stream?.getGlInterface()?.setPreviewResolution(width, height)
     }
 
@@ -616,6 +631,8 @@ object CameraStream {
         }
         val s = ensurePrepared(context) ?: return false.also { releaseLan() }
         if (s.isStreaming) return true
+        // Подготовили заново (телефон повернули) — вернуть предпросмотр.
+        previewSurface?.let { surface -> if (!s.isOnPreview && _config.value.source == StreamSource.CAMERA) runCatching { s.startPreview(surface) } }
         return runCatching {
             // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
             _state.value = when (cfg.protocol) {
@@ -775,6 +792,7 @@ object CameraStream {
         }
         stream = null
         preparedFor = null
+        preparedPortrait = null
     }
 
     /**

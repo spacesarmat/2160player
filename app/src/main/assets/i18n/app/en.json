@@ -291,5 +291,12 @@
   "camera.screen_audio_mic": "Microphone",
   "camera.screen_audio_device": "Phone audio",
   "camera.screen_audio_both": "Phone + microphone",
-  "camera.err_screen": "No screen recording permission — press Start streaming again and allow it."
+  "camera.err_screen": "No screen recording permission — press Start streaming again and allow it.",
+  "camera.mic_auto": "Auto",
+  "camera.mic_builtin": "Built-in",
+  "camera.mic_wired": "Headset",
+  "camera.mic_usb": "USB",
+  "camera.mic_bluetooth": "Bluetooth",
+  "camera.mic_gain": "Gain",
+  "camera.mic_level_hint": "Microphone level: red means clipping — lower the gain."
 }

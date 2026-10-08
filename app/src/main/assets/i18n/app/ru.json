@@ -291,5 +291,12 @@
   "camera.screen_audio_mic": "Микрофон",
   "camera.screen_audio_device": "Звук телефона",
   "camera.screen_audio_both": "Телефон + микрофон",
-  "camera.err_screen": "Нет разрешения на запись экрана — нажмите «Начать трансляцию» ещё раз и разрешите."
+  "camera.err_screen": "Нет разрешения на запись экрана — нажмите «Начать трансляцию» ещё раз и разрешите.",
+  "camera.mic_auto": "Авто",
+  "camera.mic_builtin": "Встроенный",
+  "camera.mic_wired": "Гарнитура",
+  "camera.mic_usb": "USB",
+  "camera.mic_bluetooth": "Bluetooth",
+  "camera.mic_gain": "Усиление",
+  "camera.mic_level_hint": "Уровень микрофона: красный — звук обрезается, уменьшите усиление."
 }

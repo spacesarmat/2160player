@@ -261,6 +261,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            // Микрофон: выбор, усиление и уровень (если звук идёт с микрофона).
+            if (config.audio && (!screen || config.screenAudio != ScreenAudio.DEVICE)) item(key = "mic") { MicControls(config, streaming != null) }
             item(key = "hint") {
                 Text(tr("camera.hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
             }
@@ -340,6 +342,46 @@ private fun ZoomAndFocus() {
         }
     }
     Text(tr("camera.focus_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+}
+
+/** Выбор микрофона, усиление (на лету) и индикатор уровня во время трансляции. */
+@Composable
+private fun MicControls(config: CameraStreamConfig, streaming: Boolean) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    val mics = remember { CameraStream.microphones(context) }
+    val level by CameraStream.gainMeter.level.collectAsState()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (mics.size > 1) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "auto") { Choice(tr("camera.mic_auto"), config.micId == null) { CameraStream.update(context) { it.copy(micId = null) } } }
+                items(mics, key = { it.id }) { m ->
+                    Choice(tr(m.labelKey), config.micId == m.id) { CameraStream.update(context) { it.copy(micId = m.id) } }
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("camera.mic_gain"), color = colors.onSurface)
+            Spacer(Modifier.size(12.dp))
+            androidx.compose.material3.Slider(
+                value = config.micGain,
+                onValueChange = { v -> CameraStream.update(context) { it.copy(micGain = (v * 10).toInt() / 10f) } },
+                valueRange = 0.5f..4f,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.size(8.dp))
+            Text("%.1f×".format(config.micGain), color = colors.onSurface, fontFamily = FontFamily.Monospace)
+        }
+        if (streaming) {
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { level.coerceIn(0f, 1f) },
+                color = if (level > 0.95f) colors.error else Color(0xFF4CAF50),
+                trackColor = colors.onSurface.copy(alpha = 0.12f),
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+            )
+            Text(tr("camera.mic_level_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 /** Адрес SRT или сервер и ключ RTMP (с заготовками сервисов). */

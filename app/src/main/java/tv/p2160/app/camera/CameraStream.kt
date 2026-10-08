@@ -69,6 +69,51 @@ enum class ScreenAudio {
     BOTH,
 }
 
+/** Микрофон устройства: встроенный, гарнитура, USB, Bluetooth. */
+data class MicInfo(val id: Int, val labelKey: String, val name: String)
+
+/**
+ * Усиление микрофона и замер уровня одним эффектом (у микрофона RootEncoder — один эффект).
+ * PCM 16 бит: умножаем с ограничением и считаем пик ~10 раз в секунду.
+ */
+class GainMeterEffect : com.pedro.encoder.input.audio.CustomAudioEffect() {
+    @Volatile var gain: Float = 1f
+    private val _level = MutableStateFlow(0f)
+    /** Уровень звука 0..1 (пик за последние ~0,1 с, после усиления). */
+    val level: StateFlow<Float> = _level.asStateFlow()
+    private var peak = 0
+    private var samples = 0
+
+    override fun process(pcmBuffer: ByteArray): ByteArray {
+        val g = gain
+        var i = 0
+        while (i + 1 < pcmBuffer.size) {
+            var v = (pcmBuffer[i].toInt() and 0xFF) or (pcmBuffer[i + 1].toInt() shl 8)
+            if (g != 1f) {
+                v = (v * g).toInt().coerceIn(-32768, 32767)
+                pcmBuffer[i] = (v and 0xFF).toByte()
+                pcmBuffer[i + 1] = (v shr 8).toByte()
+            }
+            val a = if (v < 0) -v else v
+            if (a > peak) peak = a
+            i += 2
+        }
+        samples += pcmBuffer.size / 2
+        if (samples >= 8_820) { // ~0,1 с при 44,1 кГц стерео
+            _level.value = peak / 32768f
+            peak = 0
+            samples = 0
+        }
+        return pcmBuffer
+    }
+
+    fun reset() {
+        _level.value = 0f
+        peak = 0
+        samples = 0
+    }
+}
+
 /** Куда идёт трансляция. */
 enum class StreamProtocol {
     /** RTSP-сервер на телефоне: зрители (OBS, VLC, 2160 Player) подключаются сами. */
@@ -95,6 +140,10 @@ data class CameraStreamConfig(
     val source: StreamSource = StreamSource.CAMERA,
     /** Звук при трансляции экрана (если включён [audio]). */
     val screenAudio: ScreenAudio = ScreenAudio.MIC,
+    /** Микрофон ([MicInfo.id]); null — выбирает система. */
+    val micId: Int? = null,
+    /** Усиление микрофона, 0,5–4. */
+    val micGain: Float = 1f,
 )
 
 sealed interface CameraStreamState {
@@ -222,6 +271,8 @@ object CameraStream {
             rtmpKey = p.getString("rtmp_key", "").orEmpty(),
             source = runCatching { StreamSource.valueOf(p.getString("source", null)!!) }.getOrDefault(d.source),
             screenAudio = runCatching { ScreenAudio.valueOf(p.getString("screen_audio", null)!!) }.getOrDefault(d.screenAudio),
+            micId = p.getInt("mic_id", -1).takeIf { it >= 0 },
+            micGain = p.getFloat("mic_gain", d.micGain),
         )
     }
 
@@ -236,6 +287,8 @@ object CameraStream {
             .putString("rtmp_key", c.rtmpKey)
             .putString("source", c.source.name)
             .putString("screen_audio", c.screenAudio.name)
+            .putInt("mic_id", c.micId ?: -1)
+            .putFloat("mic_gain", c.micGain)
             .apply()
     }
 
@@ -364,8 +417,11 @@ object CameraStream {
                 next.source != old.source || next.screenAudio != old.screenAudio)) return
         _config.value = next
         save(context, next)
+        // Усиление и микрофон — на лету, без пересоздания кодировщиков.
+        gainMeter.gain = next.micGain
+        if (next.micId != old.micId) applyMic(context, next.micId)
         // Адрес/ключ влияют только на старт трансляции — камеру не пересоздаём.
-        if (next.copy(srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey) == old) return
+        if (next.copy(srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey, micId = old.micId, micGain = old.micGain) == old) return
         val s = stream
         if (s != null && next.cameraId != old.cameraId && next.copy(cameraId = old.cameraId, srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey) == old) {
             _torch.value = false
@@ -383,7 +439,8 @@ object CameraStream {
 
     /** Камера и кодировщики готовы для этих настроек (адрес и ключ не в счёт — они нужны только при старте). */
     private fun sameEncoder(a: CameraStreamConfig?, b: CameraStreamConfig) =
-        a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "") == b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "")
+        a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f) ==
+            b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f)
 
     /** Разрешение на запись экрана (MediaProjection) для трансляции экрана; живёт до остановки трансляции. */
     private var projection: android.media.projection.MediaProjection? = null
@@ -428,7 +485,12 @@ object CameraStream {
                 com.pedro.encoder.input.sources.audio.InternalAudioSource(screen)
             screen != null && android.os.Build.VERSION.SDK_INT >= 29 && cfg.screenAudio == ScreenAudio.BOTH && mic ->
                 com.pedro.encoder.input.sources.audio.MixAudioSource(screen)
-            mic -> MicrophoneSource()
+            mic -> MicrophoneSource().also { m ->
+                gainMeter.gain = cfg.micGain
+                gainMeter.reset()
+                m.setAudioEffect(gainMeter)
+                if (android.os.Build.VERSION.SDK_INT >= 23) m.setPreferredDevice(micDevice(app, cfg.micId))
+            }
             else -> NoAudioSource()
         }
         val s: StreamBase = when (cfg.protocol) {
@@ -550,6 +612,38 @@ object CameraStream {
     fun stop(context: Context) {
         context.stopService(Intent(context, CameraStreamService::class.java))
         stopStreaming()
+    }
+
+    /** Усиление и уровень микрофона ([GainMeterEffect.level] — для индикатора). */
+    val gainMeter = GainMeterEffect()
+
+    /** Микрофоны устройства: встроенный, гарнитура, USB, Bluetooth (без дублей по типу и имени). */
+    fun microphones(context: Context): List<MicInfo> {
+        if (android.os.Build.VERSION.SDK_INT < 23) return emptyList()
+        val am = context.getSystemService(android.media.AudioManager::class.java) ?: return emptyList()
+        return am.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS).mapNotNull { d ->
+            val key = when (d.type) {
+                android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC -> "camera.mic_builtin"
+                android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "camera.mic_wired"
+                android.media.AudioDeviceInfo.TYPE_USB_DEVICE, android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "camera.mic_usb"
+                android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "camera.mic_bluetooth"
+                else -> if (android.os.Build.VERSION.SDK_INT >= 31 && d.type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET) "camera.mic_bluetooth" else null
+            } ?: return@mapNotNull null
+            MicInfo(d.id, key, d.productName?.toString().orEmpty())
+        }.distinctBy { it.labelKey to it.name }
+    }
+
+    private fun micDevice(context: Context, id: Int?): android.media.AudioDeviceInfo? {
+        if (id == null || android.os.Build.VERSION.SDK_INT < 23) return null
+        val am = context.getSystemService(android.media.AudioManager::class.java) ?: return null
+        return am.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.id == id }
+    }
+
+    /** Сменить микрофон на лету (у работающей записи — сразу). */
+    private fun applyMic(context: Context, id: Int?) {
+        if (android.os.Build.VERSION.SDK_INT < 23) return
+        val source = stream?.audioSource as? MicrophoneSource ?: return
+        runCatching { source.setPreferredDevice(micDevice(context, id)) }
     }
 
     /** Пароль RTSP: текущий код защиты; null — защита выключена. */

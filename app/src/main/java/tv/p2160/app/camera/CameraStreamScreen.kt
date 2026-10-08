@@ -462,7 +462,9 @@ private fun PushStatus(s: CameraStreamState.Streaming) {
 private fun StreamAddress(s: CameraStreamState.Streaming) {
     val colors = MaterialTheme.colorScheme
     val full = s.urlWithAuth
-    val qr = remember(full) { ShareApp.qr(full, 512).asImageBitmap() }
+    // В QR — страница /watch: её откроет камера любого телефона (кнопка — 2160 Player или установка).
+    val qrText = CameraStream.watchUrl(s) ?: full
+    val qr = remember(qrText) { ShareApp.qr(qrText, 512).asImageBitmap() }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(colors.surfaceVariant).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -480,6 +482,8 @@ private fun StreamAddress(s: CameraStreamState.Streaming) {
             Text(tr("camera.viewers", s.clients) + if (s.bitrateKbps > 0) " · ${s.bitrateKbps} kbit/s" else "",
                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
+            Text(tr("camera.qr_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(4.dp))
             Text(tr("camera.obs_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }

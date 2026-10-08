@@ -69,6 +69,8 @@ data class RemoteSession(
  * - `GET /now` — что сейчас играет (URI, доступный другим устройствам, и позиция);
  * - `POST /play` — предложение продолжить просмотр здесь (показываем диалог подтверждения);
  * - `GET /camera` — адрес трансляции камеры этого устройства (`rtsp://…`), 204 — камера не транслируется;
+ * - `GET /watch?k=код` — страница «Смотреть трансляцию» для QR-кода (камера телефона откроет её в браузере,
+ *   кнопка — 2160 Player или скачивание APK); `k` — текущий код защиты (без защиты не нужен);
  * - `GET /hello?id&name&port&auth&cam` — «я тоже здесь»: найдя устройство по mDNS, плеер сообщает о себе
  *   напрямую. Так обнаружение работает и там, где роутер пропускает multicast только в одну сторону
  *   (Wi-Fi ↔ провод): записи без «привета» и mDNS дольше [HELLO_TTL_MS] удаляются;
@@ -103,6 +105,9 @@ object Handoff {
     private const val HELLO_INTERVAL_MS = 60_000L
     private const val HELLO_TTL_MS = 3 * 60_000L
     @Volatile private var helloLoop: java.util.concurrent.Future<*>? = null
+    /** Неверные коды на `/watch`: после 5 подряд — минута ожидания (перебор 6 цифр по сети). */
+    private var watchFailures = 0
+    private var watchLockedUntil = 0L
     private var nsd: NsdManager? = null
     private var registration: NsdManager.RegistrationListener? = null
     private var discovery: NsdManager.DiscoveryListener? = null
@@ -414,6 +419,22 @@ object Handoff {
                 // Он нас знает, а мы его только что узнали — ответный «привет», чтобы он узнал наш порт/флаги.
                 if (!known) _peers.value.firstOrNull { it.id == id }?.let { p -> pool.execute { hello(p) } }
             }
+            method == "GET" && path == "/watch" -> {
+                val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
+                    ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
+                val t = tv.p2160.core.i18n.I18n.get(ctx).current
+                if (cam == null) return respond(out, 404, simplePage(t["camera.watch_none"]), "text/html; charset=utf-8")
+                val now = System.currentTimeMillis()
+                val ok = synchronized(this) {
+                    if (now < watchLockedUntil) return respond(out, 429, simplePage(t["camera.watch_wait"]), "text/html; charset=utf-8")
+                    val good = !HandoffAuth.required || query.getQueryParameter("k") == HandoffAuth.currentCode()
+                    if (good) watchFailures = 0 else if (++watchFailures >= 5) { watchFailures = 0; watchLockedUntil = now + 60_000 }
+                    good
+                }
+                if (!ok) return respond(out, 403, simplePage(t["camera.watch_code"]), "text/html; charset=utf-8")
+                val page = tv.p2160.app.camera.WatchPage.html(t, deviceName(ctx), cam.urlWithAuth, tv.p2160.app.share.ShareApp.wifiUrl())
+                respond(out, 200, page, "text/html; charset=utf-8")
+            }
             method == "GET" && path == "/camera" -> {
                 val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
                     ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
@@ -494,6 +515,12 @@ object Handoff {
             out.flush()
         }
     }
+
+    /** Короткая страница с одним сообщением (для `/watch`). */
+    private fun simplePage(text: String) =
+        "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+            "<body style=\"background:#0e0e10;color:#eee;font-family:system-ui;padding:24px\"><p>" +
+            text.replace("<", "&lt;") + "</p></body>"
 
     private fun respond(out: OutputStream, code: Int, body: String, type: String = "text/plain") {
         val bytes = body.toByteArray()

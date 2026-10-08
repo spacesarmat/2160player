@@ -298,5 +298,14 @@
   "camera.mic_usb": "USB",
   "camera.mic_bluetooth": "Bluetooth",
   "camera.mic_gain": "Gain",
-  "camera.mic_level_hint": "Microphone level: red means clipping — lower the gain."
+  "camera.mic_level_hint": "Microphone level: red means clipping — lower the gain.",
+  "camera.qr_hint": "QR code — point a phone camera at it: 2160 Player opens (or offers to install it straight from this phone).",
+  "camera.watch_text": "A camera stream on your network. Open it in 2160 Player — or in any player that supports RTSP.",
+  "camera.watch_open": "Open in 2160 Player",
+  "camera.watch_other": "Open in another player",
+  "camera.watch_install": "No 2160 Player? Download it from this phone",
+  "camera.watch_obs": "For OBS (Media Source, untick Local File) and VLC — the address:",
+  "camera.watch_none": "Nothing is streaming right now.",
+  "camera.watch_code": "Invalid link: scan the QR code on the streaming screen again (the code changes at midnight).",
+  "camera.watch_wait": "Too many wrong attempts — wait a minute."
 }

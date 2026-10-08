@@ -647,6 +647,13 @@ object CameraStream {
         runCatching { source.setPreferredDevice(micDevice(context, id)) }
     }
 
+    /**
+     * Ссылка для QR-кода: страница `/watch` этого устройства (камера телефона откроет её, кнопка — 2160 Player
+     * или установка). null — нет сети Wi-Fi.
+     */
+    fun watchUrl(s: CameraStreamState.Streaming): String? =
+        Handoff.baseUrl()?.let { base -> "$base/watch" + (s.password?.let { "?k=$it" } ?: "") }
+
     /** Пароль RTSP: текущий код защиты; null — защита выключена. */
     private fun rtspPassword(): String? = if (HandoffAuth.required) HandoffAuth.currentCode() else null
 

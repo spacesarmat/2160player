@@ -67,7 +67,7 @@ import tv.p2160.core.i18n.tr
 fun CameraStreamScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
-    remember { CameraStream.load(context) }
+    CameraStream.load(context) // один раз за процесс (внутри проверка)
     val state by CameraStream.state.collectAsState()
     val config by CameraStream.config.collectAsState()
     val cameras = remember { CameraStream.cameras(context) }

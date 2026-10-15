@@ -23,6 +23,12 @@ app/release/
 # Локальные данные Claude Code (рабочие копии агентов)
 .claude/
 
+# Локальный OSV / dependency audit (не коммитить)
+deps-*.txt
+osv-*.json
+vuln-*.json
+osv-query.mjs
+
 # Промежуточные рендеры логотипа
 design/logo-v2/_shots/
 design/logo-v2/final/_src/

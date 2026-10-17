@@ -431,17 +431,29 @@ class TorrentSession(
             }
             awaitPiece(piece, stallTimeoutMs)
             val n = minOf(length.toLong(), span.pieceEnd(piece) - position).toInt()
-            val raf = file ?: RandomAccessFile(path, "r").also { file = it }
-            raf.seek(position)
-            var total = 0
-            while (total < n) {
-                val r = raf.read(buffer, offset + total, n - total)
-                if (r < 0) break
-                total += r
+            if (n <= 0) throw IOException("short read at $position in ${path.name}")
+            // Кусок уже отмечен скачанным, а файл на диске ещё короче — короткая пауза, не обрыв воспроизведения.
+            for (attempt in 0 until 8) {
+                if (closed) throw IOException("stream closed")
+                val raf = file ?: RandomAccessFile(path, "r").also { file = it }
+                raf.seek(position)
+                var total = 0
+                while (total < n) {
+                    val r = raf.read(buffer, offset + total, n - total)
+                    if (r <= 0) break
+                    total += r
+                }
+                if (total > 0) {
+                    entry.lastActiveAt = System.currentTimeMillis()
+                    return total
+                }
+                if (attempt < 7) {
+                    Thread.sleep(50)
+                    runCatching { file?.close() }
+                    file = null
+                }
             }
-            if (total <= 0) throw IOException("short read at $position in ${path.name}")
-            entry.lastActiveAt = System.currentTimeMillis()
-            return total
+            throw IOException("short read at $position in ${path.name}")
         }
 
         /** Есть ли все байты диапазона (без ожидания). */

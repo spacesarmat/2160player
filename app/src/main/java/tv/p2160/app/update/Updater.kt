@@ -70,7 +70,8 @@ object Updater {
         if (!isAutoCheck(context)) return
         val p = prefs(context)
         if (System.currentTimeMillis() - p.getLong("last", 0) < CHECK_INTERVAL_MS) return
-        val info = runCatching { fetchLatest() }.getOrNull()
+        val info = runCatching { fetchLatest() }.getOrElse { return }
+        // Неудачная проверка (сеть, лимит GitHub) не отодвигает следующую попытку на 12 часов.
         p.edit().putLong("last", System.currentTimeMillis()).apply()
         if (info != null && info.version != p.getString("skipped", null) && _state.value == UpdateState.Idle) {
             _state.value = UpdateState.Available(info)

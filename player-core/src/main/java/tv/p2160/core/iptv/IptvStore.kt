@@ -79,16 +79,16 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     /** Меняется при каждой загрузке телепрограммы — повод перерисовать «сейчас/далее». */
     val guideVersion: StateFlow<Int> = _guideVersion.asStateFlow()
 
-    /** Текущий сеанс просмотра: URL канала → (плейлист, канал) — для подписи в плеере. */
-    @Volatile private var session: Map<String, Pair<String, IptvChannel>> = emptyMap()
+    /** Текущий сеанс: URL, id плейлиста, канал. Список, а не карта: у повторов URL совпадает. */
+    @Volatile private var session: List<Triple<String, String, IptvChannel>> = emptyList()
     @Volatile private var sessionRestoring = false
     private val guideAttempts = ConcurrentHashMap<String, Long>()
 
     init {
         // Переключили канал в плеере — он и становится «последним».
         scope.launch {
-            PlayerExtensions.nowPlaying.map { it?.uri?.toString() }.distinctUntilChanged().collect { uri ->
-                val (playlistId, channel) = uri?.let { session[it] } ?: return@collect
+            PlayerExtensions.nowPlaying.map { it?.uri?.toString() to it?.title }.distinctUntilChanged().collect { (uri, title) ->
+                val (playlistId, channel) = uri?.let { lookupChannel(it, title) } ?: return@collect
                 if (lastChannel(playlistId) != channel.id) setLastChannel(playlistId, channel.id)
             }
         }
@@ -269,7 +269,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
         val start = index - window.first
         val chosen = channels[index]
         setLastChannel(playlistId, chosen.id)
-        session = items.associate { it.url to (playlistId to it) }
+        session = items.map { Triple(it.url, playlistId, it) }
         return PlaybackRequest(
             items = items.map { MediaEntry(Uri.parse(it.url), it.name) },
             startIndex = start,
@@ -280,8 +280,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
 
     /** Подпись в плеере: «Передача · 18:00–19:00». */
     override fun describe(entry: MediaEntry, nowMs: Long): String? {
-        val key = entry.uri.toString()
-        val hit = session[key]
+        val hit = lookupChannel(entry.uri.toString(), entry.title)
         if (hit == null) {
             restoreSession()
             return null
@@ -301,6 +300,14 @@ class IptvStore private constructor(context: Context) : LiveGuide {
         return "${now.title} · ${formatClock(now.startMs)}–${formatClock(now.stopMs)}"
     }
 
+    /** При одинаковом URL берём канал с тем же названием, иначе первый. */
+    private fun lookupChannel(url: String, title: String?): Pair<String, IptvChannel>? {
+        val hits = session.filter { it.first == url }
+        if (hits.isEmpty()) return null
+        val hit = if (!title.isNullOrBlank()) hits.firstOrNull { it.third.name == title } ?: hits.first() else hits.first()
+        return hit.second to hit.third
+    }
+
     /** Плеер открыт после перезапуска процесса: восстанавливаем соответствие URL → канал. */
     private fun restoreSession() {
         if (sessionRestoring) return
@@ -309,7 +316,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
         scope.launch {
             runCatching {
                 val parsed = channels(id)
-                if (session.isEmpty()) session = parsed.channels.associate { it.url to (id to it) }
+                if (session.isEmpty()) session = parsed.channels.map { Triple(it.url, id, it) }
             }
             sessionRestoring = false
         }

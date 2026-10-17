@@ -2,6 +2,7 @@ package tv.p2160.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -45,6 +46,19 @@ class LocalBrowserTest {
     @Test
     fun unreadableFolderIsNull() {
         assertNull(listLocalMedia(File(tmp.root, "missing")))
+    }
+
+    @Test
+    fun playlistRelativePathStaysInFolder() {
+        val dir = tmp.newFolder("pl")
+        val clip = File(dir, "a.mp4").apply { writeText("x") }
+        val outside = File(tmp.root, "secret.mp4").apply { writeText("y") }
+        assertEquals(clip.canonicalFile, resolvePlaylistFile(dir, "a.mp4"))
+        assertEquals(clip.canonicalFile, resolvePlaylistFile(dir, "./a.mp4"))
+        assertNull(resolvePlaylistFile(dir, "../secret.mp4"))
+        assertNull(resolvePlaylistFile(dir, "..\\secret.mp4"))
+        assertEquals(outside.canonicalFile, resolvePlaylistFile(dir, outside.canonicalPath))
+        assertTrue(resolvePlaylistFile(dir, "nested/../a.mp4") == clip.canonicalFile)
     }
 
     @Test

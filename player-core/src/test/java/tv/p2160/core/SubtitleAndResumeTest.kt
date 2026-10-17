@@ -30,6 +30,16 @@ class SubtitleAndResumeTest {
     }
 
     @Test
+    fun sidecarStemRequiresDotBoundary() {
+        assertTrue(SubtitleSupport.matchesStem("Movie", "Movie.srt"))
+        assertTrue(SubtitleSupport.matchesStem("Movie", "Movie.ru.srt"))
+        assertFalse(SubtitleSupport.matchesStem("Movie", "Movie2.srt"))
+        assertFalse(SubtitleSupport.matchesStem("Show.S01E1", "Show.S01E10.srt"))
+        assertTrue(SubtitleSupport.matchesStem("Show.S01E01", "Show.S01E01.en.ass"))
+        assertFalse(SubtitleSupport.matchesStem("", "Movie.srt"))
+    }
+
+    @Test
     fun subtitleMimeAndLanguageFromName() {
         assertEquals("application/x-subrip", SubtitleSupport.mimeForName("Movie.ru.srt"))
         assertEquals("text/x-ssa", SubtitleSupport.mimeForName("Movie.ASS"))

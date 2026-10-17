@@ -64,6 +64,16 @@ object SubtitleSupport {
             }.getOrDefault(uri)
         }
 
+    /**
+     * Имя субтитров относится к видео с основой [base]: `Movie.srt`, `Movie.ru.srt`.
+     * `Movie2.srt` и `Show.S01E10.srt` к `Show.S01E1` не подходят — после основы нужна точка.
+     */
+    fun matchesStem(base: String, fileName: String): Boolean {
+        if (base.isEmpty() || fileName.length <= base.length) return false
+        if (!fileName.startsWith(base)) return false
+        return fileName[base.length] == '.'
+    }
+
     /** Ищет субтитры рядом с локальным видео: `Movie.mkv` → `Movie.srt`, `Movie.ru.srt`… */
     fun findSidecars(context: Context, videoUri: Uri): List<Uri> {
         if (videoUri.scheme == "smb") return findSmbSidecars(context, videoUri)
@@ -72,7 +82,7 @@ object SubtitleSupport {
         val base = video.nameWithoutExtension
         val dir = video.parentFile ?: return emptyList()
         return dir.listFiles().orEmpty()
-            .filter { it.isFile && it.extension.lowercase() in EXTENSIONS && it.name.startsWith(base) }
+            .filter { it.isFile && it.extension.lowercase() in EXTENSIONS && matchesStem(base, it.name) }
             .sortedBy { it.name }
             .map { Uri.fromFile(it) }
     }
@@ -82,7 +92,7 @@ object SubtitleSupport {
         val dir = video.parent ?: return emptyList()
         val base = video.name.substringBeforeLast('.')
         SmbConnections.list(context, dir)
-            .filter { !it.isDirectory && it.name.startsWith(base) && it.name.substringAfterLast('.').lowercase() in EXTENSIONS }
+            .filter { !it.isDirectory && matchesStem(base, it.name) && it.name.substringAfterLast('.').lowercase() in EXTENSIONS }
             .map { it.path.toUri() }
     }.getOrDefault(emptyList())
 

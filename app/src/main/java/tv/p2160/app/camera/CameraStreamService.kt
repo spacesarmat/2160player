@@ -16,6 +16,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -29,6 +30,7 @@ import tv.p2160.core.i18n.I18n
  */
 class CameraStreamService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var notifyJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,8 +69,9 @@ class CameraStreamService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        // Адрес в уведомлении.
-        scope.launch {
+        // Адрес в уведомлении. Повторный старт не должен копить коллекторы одного и того же потока.
+        notifyJob?.cancel()
+        notifyJob = scope.launch {
             CameraStream.state.collect { s ->
                 if (s is CameraStreamState.Streaming) {
                     getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification(s))

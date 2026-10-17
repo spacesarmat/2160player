@@ -917,7 +917,7 @@ class PlayerController(
 
     fun markIntroEnd() = updateMarks {
         val pos = player.currentPosition
-        it.copy(introEndMs = pos, introStartMs = it.introStartMs?.takeIf { s -> s < pos } ?: 0L)
+        it.copy(introEndMs = pos, introStartMs = it.introStartMs?.takeIf { s -> s < pos })
     }
 
     fun markCreditsStart() = updateMarks {
@@ -1001,12 +1001,17 @@ class PlayerController(
     }
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
-        if (!config.saveHistory || request.liveTv || player.isCurrentMediaItemLive) return
+        if (!config.saveHistory || request.liveTv) return
         val key = keyAt(index) ?: return
         val entry = request.items.getOrNull(index) ?: return
-        val tracks = player.currentTracks
-        val audio = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current).firstOrNull { it.selected }
-        val text = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull { it.selected }
+        // Автопереход уже переключил плеер: дорожки и «это прямой эфир» относятся к текущему пункту,
+        // а не к сохраняемому. Живой текущий пункт историю не пишет; предыдущий фильм — пишет.
+        val current = index == player.currentMediaItemIndex
+        if (current && player.isCurrentMediaItemLive) return
+        val previous = if (current) null else store.get(key)
+        val tracks = if (current) player.currentTracks else null
+        val audio = tracks?.let { TrackLabels.collect(it, C.TRACK_TYPE_AUDIO, i18n.current).firstOrNull { t -> t.selected } }
+        val text = tracks?.let { TrackLabels.collect(it, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull { t -> t.selected } }
         val duration = durationMs.coerceAtLeast(0)
         val finished = ResumeStore.isFinished(positionMs, duration)
         store.save(
@@ -1017,13 +1022,17 @@ class PlayerController(
                 positionMs = if (finished) 0 else positionMs.coerceAtLeast(0),
                 durationMs = duration,
                 finished = finished,
-                audioLanguage = audio?.language,
-                audioLabel = audio?.label,
-                textLanguage = text?.language,
-                textLabel = text?.label?.takeUnless { text.external },
-                textDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT),
-                speed = playbackSpeed,
-                subtitleDelayMs = player.subtitleDelayMilliseconds,
+                audioLanguage = if (current) audio?.language else previous?.audioLanguage,
+                audioLabel = if (current) audio?.label else previous?.audioLabel,
+                textLanguage = if (current) text?.language else previous?.textLanguage,
+                textLabel = if (current) text?.label?.takeUnless { text.external } else previous?.textLabel,
+                textDisabled = if (current) {
+                    player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+                } else {
+                    previous?.textDisabled ?: false
+                },
+                speed = if (current) playbackSpeed else previous?.speed ?: 1f,
+                subtitleDelayMs = if (current) player.subtitleDelayMilliseconds else previous?.subtitleDelayMs ?: 0,
             )
         )
     }
@@ -1170,8 +1179,8 @@ class PlayerController(
     private suspend fun buildMediaItem(index: Int): MediaItem {
         val entry: MediaEntry = request.items[index]
         val external = subtitles[index]
-        // Субтитры рядом с локальным файлом подхватываем автоматически.
-        if (index == request.startIndex && external.isEmpty()) {
+        // Субтитры рядом с локальным файлом — у каждого пункта плейлиста, не только у стартового.
+        if (external.isEmpty()) {
             withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.forEach { uri ->
                 val name = uri.lastPathSegment
                 external += ExternalSubtitle(uri, name, SubtitleSupport.languageFromName(name))

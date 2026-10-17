@@ -217,6 +217,20 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            item(key = "latency") {
+                FocusCard(
+                    onClick = { CameraStream.update(context) { it.copy(lowLatency = !it.lowLatency) } },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("camera.low_latency"), color = colors.onSurface)
+                            Text(tr("camera.low_latency_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(tr(if (config.lowLatency) "torrent.on" else "torrent.off"), color = colors.primary)
+                    }
+                }
+            }
             item(key = "q-title") { SectionTitle(tr("camera.quality")) }
             item(key = "quality") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

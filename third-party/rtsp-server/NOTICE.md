@@ -20,3 +20,6 @@
   конкретного клиента. `PLAY` по-прежнему без `RTP-Info`.
 - `RtspServer.bindAddresses` и `StreamServerSocket.create(port, address)`: можно слушать список адресов вместо
   `0.0.0.0`. `null` оставляет прежнее поведение библиотеки. 2160 Player передаёт только частные адреса.
+- Принятый Java-сокет зрителя включает `TCP_NODELAY`. `RtspServer.sendBufferSize` (через `RtspServerStream.setSendBufferSize`)
+  задаёт `SO_SNDBUF` в байтах; 0 оставляет буфер операционной системы. 2160 Player ставит 64 КБ только при включённой
+  «Минимальной задержке». Сокеты Ktor эта правка не трогает: приложение слушает типом Java.

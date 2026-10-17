@@ -22,6 +22,8 @@
   "faq.share.a": "Settings → About → Share the app: \"Send the file\" (Quick Share, Bluetooth, Telegram) or \"Share over Wi-Fi\" — another device on the same network downloads the player straight from this one via a QR code. No router? Turn on the phone's hotspot. If you have a single-architecture build (arm64-v8a), the player downloads over Wi-Fi and keeps a package for all devices — a single copy, updated together with the player.",
   "faq.scale.q": "Black bars / the picture doesn't fill the screen",
   "faq.scale.a": "The \"Video\" button (frame icon, top right) → Scale: Whole picture, Fit width, Fit height, Fill screen (crop), Stretch. On a phone just pinch: spread two fingers to fill, pinch in to fit. The choice is remembered.",
+  "faq.screen.q": "The screen turns off while a video is playing",
+  "faq.screen.a": "Settings → Playback → \"Keep the screen on while watching\" (on by default). The screen stays on only while a video or live stream is actually playing, including while it buffers. Pause, the end of the file, or leaving the player lets it sleep again. Music without a picture does not keep the screen on.",
   "faq.dv.q": "It says \"Dolby Vision is not supported here — the HDR10 base layer is shown\"",
   "faq.dv.a": "The device can't decode this Dolby Vision profile (usually profile 7 from UHD Blu-ray remuxes). Instead of playing sound only, the player shows the compatible HDR10 layer — the picture is correct, just without DV dynamic metadata.",
   "faq.hdr_dark.q": "An HDR movie looks dim or washed out",

@@ -103,23 +103,27 @@ object Updater {
                 dir.listFiles()?.forEach { it.delete() }
                 val file = File(dir, "2160player-${info.version}.apk")
                 val conn = open(info.apkUrl)
-                val total = conn.contentLengthLong.takeIf { it > 0 } ?: info.apkSize
-                conn.inputStream.use { input ->
-                    file.outputStream().use { out ->
-                        val buf = ByteArray(64 * 1024)
-                        var done = 0L
-                        var lastReport = 0L
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            out.write(buf, 0, n)
-                            done += n
-                            if (total > 0 && done - lastReport > 256 * 1024) {
-                                lastReport = done
-                                _state.value = UpdateState.Downloading(info, done.toFloat() / total)
+                try {
+                    val total = conn.contentLengthLong.takeIf { it > 0 } ?: info.apkSize
+                    conn.inputStream.use { input ->
+                        file.outputStream().use { out ->
+                            val buf = ByteArray(64 * 1024)
+                            var done = 0L
+                            var lastReport = 0L
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                out.write(buf, 0, n)
+                                done += n
+                                if (total > 0 && done - lastReport > 256 * 1024) {
+                                    lastReport = done
+                                    _state.value = UpdateState.Downloading(info, done.toFloat() / total)
+                                }
                             }
                         }
                     }
+                } finally {
+                    conn.disconnect()
                 }
                 file
             }
@@ -161,7 +165,11 @@ object Updater {
     /** Последний релиз, если он новее установленной версии, иначе null. */
     private suspend fun fetchLatest(): UpdateInfo? = withContext(Dispatchers.IO) {
         val conn = open("https://api.github.com/repos/$REPO/releases/latest", "Accept" to "application/vnd.github+json")
-        val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        val json = try {
+            JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
         val version = json.getString("tag_name").removePrefix("v")
         if (!isNewer(version, currentVersion)) return@withContext null
         val assets = json.getJSONArray("assets")
@@ -190,7 +198,11 @@ object Updater {
      */
     internal suspend fun sharedAsset(version: String): Pair<String, Long> = withContext(Dispatchers.IO) {
         val conn = open("https://api.github.com/repos/$REPO/releases/tags/v$version", "Accept" to "application/vnd.github+json")
-        val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        val json = try {
+            JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            conn.disconnect()
+        }
         val assets = json.getJSONArray("assets")
         val apks = (0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name").endsWith(".apk") }
         val apk = apks.firstOrNull { "-arm-" in it.getString("name") }
@@ -205,7 +217,11 @@ object Updater {
         conn.readTimeout = 30_000
         conn.setRequestProperty("User-Agent", "2160Player/$currentVersion")
         headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
-        if (conn.responseCode !in 200..299) error("HTTP ${conn.responseCode}")
+        if (conn.responseCode !in 200..299) {
+            val code = conn.responseCode
+            conn.disconnect()
+            error("HTTP $code")
+        }
         return conn
     }
 

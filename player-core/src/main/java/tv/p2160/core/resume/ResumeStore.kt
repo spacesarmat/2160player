@@ -144,13 +144,38 @@ class ResumeStore private constructor(context: Context) :
          * Ключ файла. У сетевых ссылок отбрасываем query-строку: в ней часто живут
          * одноразовые токены, из-за которых позиция «терялась» бы при каждом запуске.
          */
-        fun keyFor(uri: Uri): String = when (uri.scheme?.lowercase()) {
-            "http", "https" -> "${uri.scheme}://${uri.host}${uri.path.orEmpty()}"
+        fun keyFor(uri: Uri): String = when (val scheme = uri.scheme?.lowercase()) {
+            "http", "https" -> networkKey(scheme, uri.host, uri.port, uri.path) ?: uri.toString()
             else -> uri.toString()
         }
 
-        /** Считаем фильм досмотренным, если осталось меньше 3% или 30 секунд. */
-        fun isFinished(positionMs: Long, durationMs: Long): Boolean =
-            durationMs > 0 && (durationMs - positionMs < 30_000 || positionMs > durationMs * 0.97)
+        /**
+         * Ключ `http`/`https` без query и фрагмента: хост, нестандартный порт и путь.
+         * Порты 80 и 443 не входят в ключ. IPv6 берётся в скобках. null — хоста нет.
+         */
+        internal fun networkKey(scheme: String, host: String?, port: Int, path: String?): String? {
+            if (host.isNullOrEmpty()) return null
+            val hostPart = if (':' in host) "[$host]" else host
+            val portPart = when {
+                port <= 0 -> ""
+                scheme == "http" && port == 80 -> ""
+                scheme == "https" && port == 443 -> ""
+                else -> ":$port"
+            }
+            return "$scheme://$hostPart$portPart${path.orEmpty()}"
+        }
+
+        /**
+         * Фильм досмотрен, если пройдено больше 97 % или (у ролика длиннее 30 с) осталось меньше 30 с.
+         * Порог в 30 с не применяется к коротким роликам: иначе они считались бы досмотренными с первой секунды
+         * и не попадали бы в «Продолжить просмотр».
+         */
+        fun isFinished(positionMs: Long, durationMs: Long): Boolean {
+            if (durationMs <= 0 || positionMs <= 0) return false
+            val remaining = durationMs - positionMs
+            val nearEndByTime = durationMs > 30_000L && remaining < 30_000L
+            val nearEndByRatio = positionMs > durationMs * 0.97
+            return nearEndByTime || nearEndByRatio
+        }
     }
 }

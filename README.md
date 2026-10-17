@@ -28,6 +28,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **«Продолжить просмотр» целиком:** нажмите на заголовок раздела на главном экране — откроется список всего недосмотренного.
 - **Обложки в «Продолжить просмотр» и истории:** встроенные в файл, от DLNA-сервера или рядом с файлом (`poster.jpg`, `folder.jpg`, `<имя>-thumb.jpg`, постер сериала из папки выше сезона).
 - **Таймер сна** (через 15–120 минут или в конце серии, с плавным затиханием) и **задержка звука** для отстающих Bluetooth-наушников и саундбаров.
+- **Экран не гаснет во время просмотра** (включено по умолчанию, Настройки → Воспроизведение): пока идёт видео или прямой эфир, в том числе при подгрузке. На паузе, в конце и после выхода экран снова может погаснуть. Музыка без картинки экран не держит.
 - **Справка и FAQ** прямо в приложении (Настройки → О приложении): ответы на частые вопросы и ссылка, куда сообщить об ошибке.
 - **Поделиться приложением без интернета:** файлом (Quick Share, Bluetooth, Telegram) или по Wi-Fi с QR-кодом — второе устройство скачает приложение прямо с первого.
 - **Умный выбор дорожек:** плеер запоминает ручной выбор озвучки и субтитров — отдельно для сериала и для набора языков (аниме — японский с субтитрами, фильмы — дубляж).
@@ -93,6 +94,13 @@ APK: `app/build/outputs/apk/debug/`. applicationId: `tv.p2160.player` (release),
 Отладочная сборка ставится отдельным приложением «2160 Тест» с красной полосой «ТЕСТ» на иконке и
 баннере ТВ (ресурсы `app/src/debug/res`, генератор — `design/debug-badge/make_debug_icons.py`).
 
+Установка на подключённый телефон или ТВ: `adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`
+(или `app-universal-debug.apk`). Запуск плеера из другого приложения — Intent `tv.p2160.action.PLAY`
+или `ACTION_VIEW` (см. [docs/API.md](docs/API.md) §3). Конфигурация движка для встраивания —
+`Player2160.config = PlayerConfig(...)`; пользовательские настройки — экран «Настройки» и `PlayerSettings`.
+
+Страницы в формате GitHub Wiki (по одной на тему, оглавление — `Home.md`): [docs/wiki/Home.md](docs/wiki/Home.md).
+
 ### Релиз
 
 Релизы подписываются одним ключом — иначе автообновление не сможет поставить новую версию поверх старой.
@@ -119,6 +127,23 @@ gh release create v0.2.0 2160player-0.2.0-*.apk --title "2160 Player 0.2.0" --no
 (`-arm-` в имени) на ARM-устройствах, иначе APK с ABI устройства (`-arm64-v8a-`, `-armeabi-v7a-`…), иначе `universal`. `versionCode`
 каждого релиза должен быть больше предыдущего.
 
+## Настройки
+
+Экран «Настройки» приложения (язык интерфейса — русский и английский, пакеты `assets/i18n`).
+Значения лежат в `SharedPreferences` `p2160_settings` и доступны встраивающим приложениям как
+`PlayerSettings` / `Settings` (полный список полей — [docs/API.md](docs/API.md) §9 и
+[docs/wiki/Settings.md](docs/wiki/Settings.md)).
+
+| Раздел | Что там |
+|---|---|
+| Интерфейс | Язык, тема |
+| Субтитры | Размер, цвет, фон, обводка, языки |
+| Воспроизведение | **Не выключать экран во время просмотра** (по умолчанию включено), продолжение с места, ночной звук и расписание, пропуск вступлений, скорость, шаг перемотки, декодер, частота экрана, туннель, offload, статистика |
+| При сворачивании | Картинка в картинке, видео в фоне, музыка в фоне |
+| Передача между устройствами | Защита кодом |
+| Обновления | Автопроверка GitHub Releases |
+| О приложении | Справка, NDI, донат, автор, «Поделиться» |
+
 ## Структура проекта
 
 ```
@@ -136,7 +161,7 @@ app/                    приложение 2160 Player: главный экр�
                         передача между устройствами (handoff/), автообновление (update/), настройки
 samples/embed-demo/     пример встраивания библиотеки
 design/                 исходники логотипа и баннера
-docs/                   документация
+docs/                   документация (API.md, EMBEDDING.md, wiki/)
 .github/                CI, шаблоны issue и PR
 ```
 
@@ -202,8 +227,10 @@ The `player-core` module is an embeddable library:
 - **Extensibility** — observe `Player2160.nowPlaying`, add toolbar buttons with
   `Player2160.registerAction(PlayerAction(...))`, change `PlayerSettings`, read `ResumeStore`.
 
-Docs are in Russian: [docs/EMBEDDING.md](docs/EMBEDDING.md) (quick start),
-[docs/API.md](docs/API.md) (reference). Code samples are self-explanatory; see
-[samples/embed-demo](samples/embed-demo). Build with `./gradlew :app:assembleDebug` (JDK 21).
+The screen stays on while a video or live stream is playing (Settings → Playback, on by default)
+and can sleep again on pause, at the end, or when you leave. Docs are in Russian:
+[docs/EMBEDDING.md](docs/EMBEDDING.md) (quick start), [docs/API.md](docs/API.md) (reference),
+[docs/wiki/Home.md](docs/wiki/Home.md) (wiki-ready pages). Code samples are self-explanatory; see
+[samples/embed-demo](samples/embed-demo). Build with `./gradlew :app:assembleDebug` (JDK 21, Android SDK platform 37).
 License: [GPL-3.0](LICENSE) — embedding apps must be GPL-3.0 as well.
 Author: Andy_bum — Telegram [@Andy_bum](https://t.me/Andy_bum). Support the project: [Boosty](https://boosty.to/djmaker/donate).

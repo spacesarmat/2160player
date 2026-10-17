@@ -238,6 +238,13 @@ class PlayerController(
     /** Открытые диски Blu-ray по индексу плейлиста. */
     private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
+    /**
+     * Скорость, выбранная пользователем или восстановленная из истории. Временные 2× (удержание)
+     * и догон живого края её не меняют — в историю пишется она, а не текущая скорость плеера.
+     */
+    private var playbackSpeed = 1f
+    /** Сейчас играет ускорение догона живого края, а не [playbackSpeed]. */
+    private var liveCatchup = false
 
     private val statsCollector = StatsCollector(
         built.player,
@@ -412,6 +419,8 @@ class PlayerController(
         resumeFrom?.let { player.seekTo(index, it) }
 
         val speed = if (request.liveTv) 1f else entry?.speed?.takeIf { it != 1f } ?: s.defaultSpeed
+        playbackSpeed = speed
+        liveCatchup = false
         player.playbackParameters = PlaybackParameters(speed)
         player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
 
@@ -683,7 +692,11 @@ class PlayerController(
     }
 
     fun setSpeed(speed: Float) {
-        player.playbackParameters = PlaybackParameters(speed.coerceIn(0.25f, 4f))
+        val value = speed.coerceIn(0.25f, 4f)
+        playbackSpeed = value
+        liveCatchup = false
+        if (speedBeforeBoost != null) speedBeforeBoost = value
+        else player.playbackParameters = PlaybackParameters(value)
         refresh()
     }
 
@@ -891,8 +904,8 @@ class PlayerController(
     fun seekToChapter(chapter: Chapter) = seekTo(chapter.startMs)
 
     fun skip(segment: SkipSegment) {
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         autoSkipped += segment
-        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: return
         if (segment.type == SegmentType.CREDITS && (segment.endMs == null || segment.endMs >= duration - 1_000) && player.hasNextMediaItem()) {
             next()
         } else {
@@ -1009,7 +1022,7 @@ class PlayerController(
                 textLanguage = text?.language,
                 textLabel = text?.label?.takeUnless { text.external },
                 textDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT),
-                speed = player.playbackParameters.speed,
+                speed = playbackSpeed,
                 subtitleDelayMs = player.subtitleDelayMilliseconds,
             )
         )
@@ -1040,13 +1053,29 @@ class PlayerController(
      * не прыгаем: у RTSP она переоткрывает поток, а камерам-серверам переходы по времени обычно не нужны.
      */
     private fun keepLiveEdge() {
-        if (!lowLatency || !player.isPlaying || speedBeforeBoost != null) return
+        // Догон только на обычной скорости: иначе он затирает выбор пользователя и 2× от удержания,
+        // а сохранённая скорость потом открывала тот же поток уже ускоренным.
+        if (!lowLatency || !player.isPlaying || speedBeforeBoost != null || playbackSpeed != 1f) {
+            if (liveCatchup && speedBeforeBoost == null) {
+                player.setPlaybackSpeed(playbackSpeed)
+                liveCatchup = false
+            }
+            return
+        }
         val buffered = player.totalBufferedDuration
-        val speed = player.playbackParameters.speed
         when {
-            buffered > LIVE_FAR_MS && speed < LIVE_FAR_SPEED -> player.setPlaybackSpeed(LIVE_FAR_SPEED)
-            buffered in (LIVE_CATCHUP_MS + 1)..LIVE_FAR_MS && speed != LIVE_CATCHUP_SPEED -> player.setPlaybackSpeed(LIVE_CATCHUP_SPEED)
-            buffered <= LIVE_TARGET_MS && speed > 1f -> player.setPlaybackSpeed(1f)
+            buffered > LIVE_FAR_MS -> {
+                if (player.playbackParameters.speed != LIVE_FAR_SPEED) player.setPlaybackSpeed(LIVE_FAR_SPEED)
+                liveCatchup = true
+            }
+            buffered in (LIVE_CATCHUP_MS + 1)..LIVE_FAR_MS -> {
+                if (player.playbackParameters.speed != LIVE_CATCHUP_SPEED) player.setPlaybackSpeed(LIVE_CATCHUP_SPEED)
+                liveCatchup = true
+            }
+            buffered <= LIVE_TARGET_MS && liveCatchup -> {
+                player.setPlaybackSpeed(playbackSpeed)
+                liveCatchup = false
+            }
         }
     }
 

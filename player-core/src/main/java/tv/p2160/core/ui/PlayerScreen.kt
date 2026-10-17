@@ -312,7 +312,17 @@ fun PlayerScreen(
                     }
                 },
         ) {
-            VideoSurface(controller, settings.subtitleStyle, resizeMode, controlsVisible && !inPictureInPicture)
+            val keepOn = shouldKeepScreenOn(
+                enabled = settings.keepScreenOn,
+                isPlaying = state.isPlaying,
+                isBuffering = state.isBuffering,
+                playWhenReady = controller.player.playWhenReady,
+                ended = state.ended,
+                hasError = state.error != null,
+                hasVideo = state.hasVideo,
+                isLive = state.isLive || state.liveTv,
+            )
+            VideoSurface(controller, settings.subtitleStyle, resizeMode, controlsVisible && !inPictureInPicture, keepOn)
             // Частота экрана под частоту кадров (ТВ).
             MatchDisplayFrameRate(controller, settings.frameRateMatching && state.hasVideo, state.videoFrameRate)
             if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle)
@@ -788,7 +798,13 @@ private fun AudioOnlyArt(title: String, theme: PlayerTheme) {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoSurface(controller: PlayerController, style: SubtitleStyle, resizeMode: ResizeMode, controlsVisible: Boolean) {
+private fun VideoSurface(
+    controller: PlayerController,
+    style: SubtitleStyle,
+    resizeMode: ResizeMode,
+    controlsVisible: Boolean,
+    keepScreenOn: Boolean,
+) {
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -797,10 +813,13 @@ private fun VideoSurface(controller: PlayerController, style: SubtitleStyle, res
                 setShutterBackgroundColor(AndroidColor.BLACK)
                 setKeepContentOnPlayerReset(true)
                 player = controller.player
-                keepScreenOn = true
+                this.keepScreenOn = keepScreenOn
             }
         },
         update = { view ->
+            // FLAG_KEEP_SCREEN_ON на окне, пока поверхность прикреплена. Снятие флага — пауза/конец;
+            // отсоединение view при выходе снимает его само.
+            view.keepScreenOn = keepScreenOn
             if (view.player !== controller.player) view.player = controller.player
             view.resizeMode = when (resizeMode) {
                 ResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -831,6 +850,7 @@ private fun VideoSurface(controller: PlayerController, style: SubtitleStyle, res
                 setBottomPaddingFraction(if (controlsVisible) style.bottomPadding + 0.2f else style.bottomPadding)
             }
         },
+        onRelease = { view -> view.keepScreenOn = false },
     )
 }
 

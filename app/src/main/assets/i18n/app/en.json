@@ -54,6 +54,8 @@
   "settings.edge_outline": "Outline",
   "settings.edge_shadow": "Shadow",
   "settings.section_playback": "Playback",
+  "settings.keep_screen_on": "Keep the screen on while watching",
+  "settings.keep_screen_on_hint": "While a video or live stream is playing, the screen does not dim or turn off. On pause, at the end, and after you leave, it can sleep again",
   "settings.default_speed": "Default speed",
   "settings.seek_step": "Seek step",
   "settings.seconds": "%1$d s",

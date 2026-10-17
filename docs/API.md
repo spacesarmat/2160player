@@ -281,7 +281,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.6")
+    implementation("tv.p2160:player-core:0.2.7-beta")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) — Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }

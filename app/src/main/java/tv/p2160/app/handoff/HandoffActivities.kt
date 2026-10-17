@@ -71,17 +71,30 @@ class HandoffReceiveActivity : ComponentActivity() {
         dialogContent {
             val focus = remember { FocusRequester() }
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            val code = if (HandoffAuth.required) HandoffAuth.currentCode().chunked(3).joinToString(" ") else null
             AlertDialog(
                 onDismissRequest = ::finish,
                 icon = { Icon(Icons.Default.Devices, null) },
                 title = { Text(tr("handoff.incoming_title", from)) },
-                text = { Text("${session.title}\n${formatTime(session.positionMs)}") },
-                confirmButton = {
-                    TextButton(onClick = { Handoff.play(this, session); finish() }, modifier = Modifier.focusRequester(focus)) {
-                        Text(tr("handoff.watch_here"))
-                    }
+                text = {
+                    Text(
+                        buildString {
+                            append(session.title)
+                            append('\n')
+                            append(formatTime(session.positionMs))
+                            if (code != null) {
+                                append("\n\n")
+                                append(tr("handoff.incoming_verify", code))
+                            }
+                        },
+                    )
                 },
-                dismissButton = { TextButton(onClick = ::finish) { Text(tr("app.cancel")) } },
+                confirmButton = {
+                    TextButton(onClick = { Handoff.play(this, session); finish() }) { Text(tr("handoff.watch_here")) }
+                },
+                dismissButton = {
+                    TextButton(onClick = ::finish, modifier = Modifier.focusRequester(focus)) { Text(tr("app.cancel")) }
+                },
             )
         }
     }

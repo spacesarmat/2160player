@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import tv.p2160.core.secret.FieldSecrets
 import java.util.UUID
 
 /** Сохранённый SMB-сервер (общая папка NAS/ПК). */
@@ -72,7 +73,7 @@ data class SmbPath(val host: String, val share: String, val path: String) {
     }
 }
 
-/** Хранилище серверов. Пароли лежат в приватных настройках приложения. */
+/** Хранилище серверов. Пароль в настройках — шифротекст [FieldSecrets], в памяти — открытый. */
 class SmbServers private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("p2160_smb", Context.MODE_PRIVATE)
     private val _servers = MutableStateFlow(read())
@@ -101,7 +102,7 @@ class SmbServers private constructor(context: Context) {
                 share = o.getString("share"),
                 path = o.optString("path"),
                 username = o.optString("user"),
-                password = o.optString("pass"),
+                password = FieldSecrets.open(o.optString("pass")),
                 domain = o.optString("domain"),
             )
         }
@@ -113,7 +114,7 @@ class SmbServers private constructor(context: Context) {
             arr.put(
                 JSONObject()
                     .put("id", s.id).put("name", s.name).put("host", s.host).put("share", s.share)
-                    .put("path", s.path).put("user", s.username).put("pass", s.password).put("domain", s.domain)
+                    .put("path", s.path).put("user", s.username).put("pass", FieldSecrets.seal(s.password)).put("domain", s.domain)
             )
         }
         prefs.edit().putString("servers", arr.toString()).apply()

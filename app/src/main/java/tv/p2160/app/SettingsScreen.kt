@@ -287,6 +287,7 @@ fun SettingsScreen(
                 val context = LocalContext.current
                 var mode by remember { mutableStateOf(HandoffAuth.mode) }
                 var revision by remember { mutableStateOf(0) }
+                var confirmOff by remember { mutableStateOf(false) }
                 val modes = listOf(
                     Choice(strings["settings.handoff_off"], HandoffAuth.Mode.OFF, strings["settings.handoff_off_hint"]),
                     Choice(strings["settings.handoff_daily"], HandoffAuth.Mode.DAILY, strings["settings.handoff_daily_hint"]),
@@ -300,10 +301,12 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingRow(tr("settings.handoff_protection"), value = modes.first { it.value == mode }.label, hint = tr("settings.handoff_protection_hint")) {
                         ask(strings["settings.handoff_protection"], modes, mode) { m ->
-                            if (m == HandoffAuth.Mode.CUSTOM && !HandoffAuth.isValidCustomCode(HandoffAuth.customCode)) {
+                            if (m == HandoffAuth.Mode.CUSTOM && !HandoffAuth.isUsableCustomCode(HandoffAuth.customCode)) {
                                 textInput = TextRequest(strings["settings.handoff_custom_set"], strings["settings.handoff_custom_rule"], "") { code ->
                                     if (HandoffAuth.isValidCustomCode(code)) { HandoffAuth.customCode = code; setMode(m) }
                                 }
+                            } else if (m == HandoffAuth.Mode.OFF && !HandoffAuth.offWarningSeen) {
+                                confirmOff = true
                             } else {
                                 setMode(m)
                             }
@@ -321,6 +324,27 @@ fun SettingsScreen(
                             }
                         }
                         HandoffAuth.Mode.OFF -> Unit
+                    }
+                    if (confirmOff) {
+                        val focus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                        AlertDialog(
+                            onDismissRequest = { confirmOff = false },
+                            title = { Text(tr("settings.handoff_off_warn_title")) },
+                            text = { Text(tr("settings.handoff_off_warn")) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    HandoffAuth.offWarningSeen = true
+                                    confirmOff = false
+                                    setMode(HandoffAuth.Mode.OFF)
+                                }) { Text(tr("settings.handoff_off_warn_ok")) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmOff = false }, modifier = Modifier.focusRequester(focus)) {
+                                    Text(tr("app.cancel"))
+                                }
+                            },
+                        )
                     }
                     val trusted = remember(revision) { HandoffAuth.trustedDevices() }
                     SettingRow(

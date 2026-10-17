@@ -33,6 +33,8 @@
         android:largeHeap="true"
         android:name=".App"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
         android:banner="@drawable/tv_banner"

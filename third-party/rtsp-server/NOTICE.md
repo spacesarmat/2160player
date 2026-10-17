@@ -15,3 +15,8 @@
   медленной сети).
 - `RtspServer.allowLocal` (+ `ClientSocket.local`): фильтр входящих по локальному адресу подключения — 2160 Player
   не обслуживает зрителей, пришедших через мобильную сеть (только Wi-Fi, Ethernet, точка доступа).
+- `ServerCommandManager`: Basic-авторизация на `DESCRIBE` и `SETUP` (не только на `DESCRIBE`). `PLAY`, `PAUSE` и
+  `TEARDOWN` отвечают 401, пока на этом соединении не прошёл успешный `SETUP`. Флаг сессии — у копии менеджера
+  конкретного клиента. `PLAY` по-прежнему без `RTP-Info`.
+- `RtspServer.bindAddresses` и `StreamServerSocket.create(port, address)`: можно слушать список адресов вместо
+  `0.0.0.0`. `null` оставляет прежнее поведение библиотеки. 2160 Player передаёт только частные адреса.

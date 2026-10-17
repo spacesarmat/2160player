@@ -38,6 +38,7 @@ class RtspServer(
   private val TAG = "RtspServer"
   private var socketType = SocketType.JAVA
   private var server = StreamServerSocket(socketType)
+  private val extraServers = mutableListOf<StreamServerSocket>()
   val serverIp: String get() = getIPAddress()
   private val clients = mutableListOf<ServerClient>()
   private val scope = CoroutineScope(Dispatchers.IO)
@@ -141,43 +142,67 @@ class RtspServer(
             return@launch
           }
         }
-        server.create(port)
+        val addresses = bindAddresses?.invoke()
+        if (addresses == null) {
+          server.create(port)
+        } else if (addresses.isEmpty()) {
+          onMainThread {
+            connectChecker.onConnectionFailed("No private LAN address")
+          }
+          return@launch
+        } else {
+          var bound = port
+          addresses.forEachIndexed { index, addr ->
+            val sock = if (index == 0) server else StreamServerSocket(socketType).also { extraServers.add(it) }
+            sock.create(bound, addr)
+            if (index == 0 && port == 0) bound = sock.localPort()
+          }
+        }
         Log.i(TAG, "Server started: $serverIp:$port")
       } catch (e: Exception) {
+        extraServers.forEach { runCatching { it.close() } }
+        extraServers.clear()
+        runCatching { server.close() }
         onMainThread {
           connectChecker.onConnectionFailed("Server creation failed")
         }
         Log.e(TAG, "Error", e)
         return@launch
       }
-      while (running) {
-        try {
-          Log.i(TAG, "Waiting client...")
-          val clientSocket = server.accept()
-          // 2160 Player: только локальная сеть — подключения через мобильный интерфейс закрываем.
-          if (allowLocal?.invoke(clientSocket.local) == false) {
-            Log.w(TAG, "Client rejected (not LAN): ${clientSocket.host}")
-            runCatching { clientSocket.socket.close() }
-            continue
+      val sockets = listOf(server) + extraServers.toList()
+      val acceptJobs = sockets.map { sock ->
+        launch {
+          while (running) {
+            try {
+              Log.i(TAG, "Waiting client...")
+              val clientSocket = sock.accept()
+              // 2160 Player: только локальная сеть — подключения через мобильный интерфейс закрываем.
+              if (allowLocal?.invoke(clientSocket.local) == false) {
+                Log.w(TAG, "Client rejected (not LAN): ${clientSocket.host}")
+                runCatching { clientSocket.socket.close() }
+                continue
+              }
+              Log.i(TAG, "Client connected: ${clientSocket.host}")
+              val client = ServerClient(delay, socketType, clientSocket.host, clientSocket.socket, serverIp, port,
+                socketTimeout, serverCommandManager, this@RtspServer)
+              client.setLogs(isEnableLogs)
+              // 2160 Player: размер очереди — и для новых зрителей (иначе у них 400 кадров ≈ 5 с задержки).
+              cacheSizeForNew?.let { client.resizeCache(it) }
+              client.startClient()
+              synchronized(clients) {
+                clients.add(client)
+              }
+            } catch (_: IOException) {
+              // server.close called
+              break
+            } catch (e: Exception) {
+              Log.e(TAG, "Error", e)
+              continue
+            }
           }
-          Log.i(TAG, "Client connected: ${clientSocket.host}")
-          val client = ServerClient(delay, socketType, clientSocket.host, clientSocket.socket, serverIp, port,
-            socketTimeout, serverCommandManager, this@RtspServer)
-          client.setLogs(isEnableLogs)
-          // 2160 Player: размер очереди — и для новых зрителей (иначе у них 400 кадров ≈ 5 с задержки).
-          cacheSizeForNew?.let { client.resizeCache(it) }
-          client.startClient()
-          synchronized(clients) {
-            clients.add(client)
-          }
-        } catch (_: IOException) {
-          // server.close called
-          break
-        } catch (e: Exception) {
-          Log.e(TAG, "Error", e)
-          continue
         }
       }
+      acceptJobs.forEach { it.join() }
       Log.i(TAG, "Server finished")
     }
   }
@@ -189,6 +214,8 @@ class RtspServer(
       clients.forEach { it.stopClient() }
       clients.clear()
     }
+    extraServers.forEach { runCatching { it.close() } }
+    extraServers.clear()
     server.close()
     CoroutineScope(Dispatchers.IO).launch {
       job?.cancelAndJoin()
@@ -413,6 +440,11 @@ class RtspServer(
      * не обслуживает зрителей, пришедших через мобильную сеть. null — без фильтра (как в оригинале).
      */
     @JvmStatic @Volatile var allowLocal: ((java.net.InetAddress?) -> Boolean)? = null
+    /**
+     * 2160 Player: адреса, на которых слушать. null — все интерфейсы (как в оригинале).
+     * Пустой список — не стартовать. Иначе по сокету на каждый адрес, один и тот же порт.
+     */
+    @JvmStatic @Volatile var bindAddresses: (() -> List<java.net.InetAddress>)? = null
     private const val VPN_INTERFACE = "tun"
     private const val DEFAULT_IP = "0.0.0.0"
   }

@@ -27,6 +27,9 @@ import kotlinx.coroutines.launch
 import tv.p2160.app.handoff.Handoff
 import tv.p2160.app.handoff.HandoffAuth
 import tv.p2160.app.handoff.Lan
+import tv.p2160.app.handoff.constantTimeEquals
+import tv.p2160.core.secret.FieldSecrets
+import java.security.SecureRandom
 
 /** Камера устройства для выбора в трансляции. */
 data class CameraInfo(
@@ -189,12 +192,19 @@ sealed interface CameraStreamState {
  */
 object CameraStream {
     const val DEFAULT_PORT = 8554
-    /** Логин RTSP при защите; пароль — код «Передачи между устройствами» ([HandoffAuth.currentCode]). */
+    /** Логин RTSP при защите. Пароль — случайный на каждую трансляцию, не PIN сопряжения. */
     const val RTSP_USER = "2160"
+    /** QR `/watch` живёт столько, потом нужен новый с экрана трансляции. */
+    private const val WATCH_TTL_MS = 15 * 60 * 1000L
     /** Очередь отправки, кадров (звук ~43/с + видео 30–60/с): около 1–1,5 с. */
     private const val SEND_QUEUE = 120
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
     private var authJob: kotlinx.coroutines.Job? = null
+    /** Пароль текущего RTSP-сеанса. null — защита выключена или трансляция не идёт. */
+    private var streamPassword: String? = null
+    private var watchKey: String? = null
+    private var watchKeyUntil = 0L
+    private val secrets = SecureRandom()
     private const val TAG = "CameraStream"
 
     private val _state = MutableStateFlow<CameraStreamState>(CameraStreamState.Idle)
@@ -284,7 +294,7 @@ object CameraStream {
                 .let { if (it == StreamProtocol.NDI && !Ndi.available(context)) StreamProtocol.RTSP else it },
             srtUrl = p.getString("srt_url", "").orEmpty(),
             rtmpUrl = p.getString("rtmp_url", "").orEmpty(),
-            rtmpKey = p.getString("rtmp_key", "").orEmpty(),
+            rtmpKey = FieldSecrets.open(p.getString("rtmp_key", "").orEmpty()),
             source = runCatching { StreamSource.valueOf(p.getString("source", null)!!) }.getOrDefault(d.source),
             screenAudio = runCatching { ScreenAudio.valueOf(p.getString("screen_audio", null)!!) }.getOrDefault(d.screenAudio),
             micId = p.getInt("mic_id", -1).takeIf { it >= 0 },
@@ -300,7 +310,7 @@ object CameraStream {
             .putString("protocol", c.protocol.name)
             .putString("srt_url", c.srtUrl)
             .putString("rtmp_url", c.rtmpUrl)
-            .putString("rtmp_key", c.rtmpKey)
+            .putString("rtmp_key", FieldSecrets.seal(c.rtmpKey))
             .putString("source", c.source.name)
             .putString("screen_audio", c.screenAudio.name)
             .putInt("mic_id", c.micId ?: -1)
@@ -543,7 +553,7 @@ object CameraStream {
         if (s is RtspServerStream) {
             s.getStreamClient().setClientListener(clients)
             // Защита как у «Передачи между устройствами»: включена — поток по логину 2160 и текущему коду.
-            s.getStreamClient().setAuthorization(RTSP_USER.takeIf { HandoffAuth.required }, rtspPassword())
+            s.getStreamClient().setAuthorization(RTSP_USER.takeIf { streamPassword != null }, streamPassword)
             // Адрес в ответах сервера (Content-Base) — IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
             s.getStreamClient().forceIpType(com.pedro.rtspserver.server.IpType.IPv4)
         } else {
@@ -629,14 +639,22 @@ object CameraStream {
             _state.value = CameraStreamState.Error("camera.err_no_lan")
             return false
         }
+        if (cfg.protocol == StreamProtocol.RTSP && stream?.isStreaming != true) {
+            streamPassword = if (HandoffAuth.required) newSecret(9) else null
+            watchKey = null
+            watchKeyUntil = 0L
+        }
         val s = ensurePrepared(context) ?: return false.also { releaseLan() }
         if (s.isStreaming) return true
+        if (s is RtspServerStream) {
+            s.getStreamClient().setAuthorization(RTSP_USER.takeIf { streamPassword != null }, streamPassword)
+        }
         // Подготовили заново (телефон повернули) — вернуть предпросмотр.
         previewSurface?.let { surface -> if (!s.isOnPreview && _config.value.source == StreamSource.CAMERA) runCatching { s.startPreview(surface) } }
         return runCatching {
             // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
             _state.value = when (cfg.protocol) {
-                StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0, password = rtspPassword())
+                StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0, password = streamPassword)
                 // Ключ RTMP на экран и в уведомление не выводим.
                 StreamProtocol.SRT -> CameraStreamState.Streaming(target, 0, 0, StreamProtocol.SRT, connected = false)
                 StreamProtocol.RTMP -> CameraStreamState.Streaming(cfg.rtmpUrl.trim(), 0, 0, StreamProtocol.RTMP, connected = false)
@@ -650,7 +668,7 @@ object CameraStream {
             cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
             // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
-            if (s is RtspServerStream) watchCode(s)
+            if (s is RtspServerStream) watchSecrets(s)
             adaptBitrate(s, cfg.quality.bitrateKbps * 1000)
             true
         }.getOrElse { e ->
@@ -703,8 +721,35 @@ object CameraStream {
      * Ссылка для QR-кода: страница `/watch` этого устройства (камера телефона откроет её, кнопка — 2160 Player
      * или установка). null — нет сети Wi-Fi.
      */
-    fun watchUrl(s: CameraStreamState.Streaming): String? =
-        Handoff.baseUrl()?.let { base -> "$base/watch" + (s.password?.let { "?k=$it" } ?: "") }
+    fun watchUrl(s: CameraStreamState.Streaming): String? {
+        if (s.protocol != StreamProtocol.RTSP) return null
+        val base = Handoff.baseUrl() ?: return null
+        val key = currentWatchKey()
+        return if (key == null) "$base/watch" else "$base/watch?k=$key"
+    }
+
+    /**
+     * Ключ страницы `/watch` на 15 минут. Пустой, если защита выключена.
+     * Истёкший ключ здесь выпускается заново — так QR на экране обновляется.
+     */
+    private fun currentWatchKey(): String? {
+        if (!HandoffAuth.required) return null
+        if (streamPassword == null && !isServing) return null
+        val now = System.currentTimeMillis()
+        if (watchKey == null || now >= watchKeyUntil) {
+            watchKey = newSecret(16)
+            watchKeyUntil = now + WATCH_TTL_MS
+        }
+        return watchKey
+    }
+
+    /** Сверка `k` без выпуска нового ключа. Защита выключена — страница открыта. */
+    internal fun watchKeyMatches(presented: String?): Boolean {
+        if (!HandoffAuth.required) return true
+        val key = watchKey ?: return false
+        if (System.currentTimeMillis() >= watchKeyUntil) return false
+        return constantTimeEquals(presented.orEmpty(), key)
+    }
 
     private var bitrateJob: kotlinx.coroutines.Job? = null
 
@@ -738,17 +783,25 @@ object CameraStream {
     /** Полное имя источника NDI — так его увидят OBS/vMix: «ИМЯ-УСТРОЙСТВА (2160 Player)». */
     fun ndiName(context: Context): String = Ndi.machineName(context) + " (" + Ndi.SOURCE_NAME + ")"
 
-    /** Пароль RTSP: текущий код защиты; null — защита выключена. */
-    private fun rtspPassword(): String? = if (HandoffAuth.required) HandoffAuth.currentCode() else null
+    /** Пароль сеанса не крутится сам. Меняется только если защиту включили или выключили во время трансляции. */
+    private fun syncStreamPassword(): String? {
+        if (!HandoffAuth.required) {
+            streamPassword = null
+            return null
+        }
+        return streamPassword ?: newSecret(9).also { streamPassword = it }
+    }
 
-    /** Суточный код меняется в полночь (или его сменили в настройках): обновляем пароль для новых зрителей. */
-    private fun watchCode(s: RtspServerStream) {
+    private fun newSecret(bytes: Int): String =
+        ByteArray(bytes).also(secrets::nextBytes).joinToString("") { "%02x".format(it) }
+
+    private fun watchSecrets(s: RtspServerStream) {
         authJob?.cancel()
         authJob = scope.launch {
             while (true) {
                 kotlinx.coroutines.delay(60_000)
                 val current = (_state.value as? CameraStreamState.Streaming)?.takeIf { it.protocol == StreamProtocol.RTSP } ?: return@launch
-                val pass = rtspPassword()
+                val pass = syncStreamPassword()
                 if (pass != current.password) {
                     s.getStreamClient().setAuthorization(RTSP_USER.takeIf { pass != null }, pass)
                     _state.value = current.copy(password = pass)
@@ -758,6 +811,9 @@ object CameraStream {
     }
 
     internal fun stopStreaming() {
+        streamPassword = null
+        watchKey = null
+        watchKeyUntil = 0L
         releaseLan()
         authJob?.cancel()
         authJob = null
@@ -826,7 +882,8 @@ object CameraStream {
      */
     private fun useLan(context: Context, protocol: StreamProtocol, target: String): Boolean {
         val app = context.applicationContext
-        RtspServer.allowLocal = { Lan.isLocal(app, it) }
+        RtspServer.allowLocal = { Lan.accepts(app, it) }
+        RtspServer.bindAddresses = { Lan.bindable(app) }
         return when (protocol) {
             StreamProtocol.RTSP, StreamProtocol.NDI -> Lan.ipv4(app) != null
             StreamProtocol.SRT, StreamProtocol.RTMP -> {

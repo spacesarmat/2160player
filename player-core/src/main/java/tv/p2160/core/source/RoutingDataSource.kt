@@ -47,6 +47,9 @@ class RoutingDataSource(
                 custom.getOrPut(scheme!!) { factory.createDataSource().also { s -> listeners.forEach(s::addTransferListener) } }
             } ?: default
         }
+        // Смена схемы без close() оставляла открытым предыдущий SMB/диск/UDP.
+        val previous = current
+        if (previous != null && previous !== source) runCatching { previous.close() }
         current = source
         return source.open(dataSpec)
     }

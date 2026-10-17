@@ -70,4 +70,10 @@ class SegmentsTest {
         assertTrue(segments[1].contains(1_450_000, 1_500_000))
         assertFalse(segments[1].contains(1_400_000, 1_500_000))
     }
+
+    @Test
+    fun introWithoutStartIsNotSkippedFromZero() {
+        val marks = ManualMarks(introEndMs = 90_000)
+        assertTrue(marks.toSegments(durationMs = 1_500_000).isEmpty())
+    }
 }

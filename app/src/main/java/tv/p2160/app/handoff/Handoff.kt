@@ -487,33 +487,37 @@ object Handoff {
     ) {
         RandomAccessSources.open(context, uri).use { src ->
             val size = src.size
-            var start = 0L
-            var end = size - 1
-            val m = range?.let { Regex("bytes=(\\d*)-(\\d*)").find(it) }
-            if (m != null) {
-                val a = m.groupValues[1]
-                val b = m.groupValues[2]
-                if (a.isNotEmpty()) { start = a.toLong(); if (b.isNotEmpty()) end = minOf(b.toLong(), size - 1) }
-                else if (b.isNotEmpty()) start = size - b.toLong()
+            val spec = ByteRanges.resolve(range, size)
+            if (spec == null) {
+                out.write(
+                    "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */$size\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .toByteArray(),
+                )
+                out.flush()
+                return@use
             }
-            val status = if (m != null) "206 Partial Content" else "200 OK"
+            val start = spec.start
+            val end = spec.endInclusive
+            val status = if (spec.partial) "206 Partial Content" else "200 OK"
             val head = buildString {
                 append("HTTP/1.1 $status\r\n")
                 append("Accept-Ranges: bytes\r\n")
                 append("Content-Type: $type\r\n")
                 if (fileName != null) append("Content-Disposition: attachment; filename=\"$fileName\"\r\n")
-                append("Content-Length: ${end - start + 1}\r\n")
-                if (m != null) append("Content-Range: bytes $start-$end/$size\r\n")
+                append("Content-Length: ${spec.length}\r\n")
+                if (spec.partial) append("Content-Range: bytes $start-$end/$size\r\n")
                 append("Connection: close\r\n\r\n")
             }
             out.write(head.toByteArray())
-            val buf = ByteArray(256 * 1024)
-            var pos = start
-            while (pos <= end) {
-                val n = src.read(pos, buf, 0, minOf(buf.size.toLong(), end - pos + 1).toInt())
-                if (n <= 0) break
-                out.write(buf, 0, n)
-                pos += n
+            if (spec.length > 0) {
+                val buf = ByteArray(256 * 1024)
+                var pos = start
+                while (pos <= end) {
+                    val n = src.read(pos, buf, 0, minOf(buf.size.toLong(), end - pos + 1).toInt())
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    pos += n
+                }
             }
             out.flush()
         }

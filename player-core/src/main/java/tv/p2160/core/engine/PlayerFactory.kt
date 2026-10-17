@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -52,7 +53,7 @@ internal class BuiltPlayer(
  * - passthrough AC3/E-AC3/DTS на ресивер, если он есть (решает штатный AudioSink);
  * - HLS / DASH / SmoothStreaming / RTSP / прогрессивные файлы (MKV, MP4, TS, AVI, WebM, FLV, OGG…).
  */
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalApi::class)
 internal object PlayerFactory {
 
     const val USER_AGENT = "2160Player/1.0 (Linux; Android) ExoPlayerLib"

@@ -238,6 +238,13 @@ class PlayerController(
     /** Открытые диски Blu-ray по индексу плейлиста. */
     private val discs = HashMap<Int, DiscSession>()
     private var speedBeforeBoost: Float? = null
+    /**
+     * Скорость, выбранная пользователем или восстановленная из истории. Временные 2× (удержание)
+     * и догон живого края её не меняют — в историю пишется она, а не текущая скорость плеера.
+     */
+    private var playbackSpeed = 1f
+    /** Сейчас играет ускорение догона живого края, а не [playbackSpeed]. */
+    private var liveCatchup = false
 
     private val statsCollector = StatsCollector(
         built.player,
@@ -412,6 +419,8 @@ class PlayerController(
         resumeFrom?.let { player.seekTo(index, it) }
 
         val speed = if (request.liveTv) 1f else entry?.speed?.takeIf { it != 1f } ?: s.defaultSpeed
+        playbackSpeed = speed
+        liveCatchup = false
         player.playbackParameters = PlaybackParameters(speed)
         player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
 
@@ -683,7 +692,11 @@ class PlayerController(
     }
 
     fun setSpeed(speed: Float) {
-        player.playbackParameters = PlaybackParameters(speed.coerceIn(0.25f, 4f))
+        val value = speed.coerceIn(0.25f, 4f)
+        playbackSpeed = value
+        liveCatchup = false
+        if (speedBeforeBoost != null) speedBeforeBoost = value
+        else player.playbackParameters = PlaybackParameters(value)
         refresh()
     }
 
@@ -891,8 +904,8 @@ class PlayerController(
     fun seekToChapter(chapter: Chapter) = seekTo(chapter.startMs)
 
     fun skip(segment: SkipSegment) {
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         autoSkipped += segment
-        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: return
         if (segment.type == SegmentType.CREDITS && (segment.endMs == null || segment.endMs >= duration - 1_000) && player.hasNextMediaItem()) {
             next()
         } else {
@@ -904,7 +917,7 @@ class PlayerController(
 
     fun markIntroEnd() = updateMarks {
         val pos = player.currentPosition
-        it.copy(introEndMs = pos, introStartMs = it.introStartMs?.takeIf { s -> s < pos } ?: 0L)
+        it.copy(introEndMs = pos, introStartMs = it.introStartMs?.takeIf { s -> s < pos })
     }
 
     fun markCreditsStart() = updateMarks {
@@ -988,12 +1001,17 @@ class PlayerController(
     }
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
-        if (!config.saveHistory || request.liveTv || player.isCurrentMediaItemLive) return
+        if (!config.saveHistory || request.liveTv) return
         val key = keyAt(index) ?: return
         val entry = request.items.getOrNull(index) ?: return
-        val tracks = player.currentTracks
-        val audio = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current).firstOrNull { it.selected }
-        val text = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull { it.selected }
+        // Автопереход уже переключил плеер: дорожки и «это прямой эфир» относятся к текущему пункту,
+        // а не к сохраняемому. Живой текущий пункт историю не пишет; предыдущий фильм — пишет.
+        val current = index == player.currentMediaItemIndex
+        if (current && player.isCurrentMediaItemLive) return
+        val previous = if (current) null else store.get(key)
+        val tracks = if (current) player.currentTracks else null
+        val audio = tracks?.let { TrackLabels.collect(it, C.TRACK_TYPE_AUDIO, i18n.current).firstOrNull { t -> t.selected } }
+        val text = tracks?.let { TrackLabels.collect(it, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull { t -> t.selected } }
         val duration = durationMs.coerceAtLeast(0)
         val finished = ResumeStore.isFinished(positionMs, duration)
         store.save(
@@ -1004,13 +1022,17 @@ class PlayerController(
                 positionMs = if (finished) 0 else positionMs.coerceAtLeast(0),
                 durationMs = duration,
                 finished = finished,
-                audioLanguage = audio?.language,
-                audioLabel = audio?.label,
-                textLanguage = text?.language,
-                textLabel = text?.label?.takeUnless { text.external },
-                textDisabled = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT),
-                speed = player.playbackParameters.speed,
-                subtitleDelayMs = player.subtitleDelayMilliseconds,
+                audioLanguage = if (current) audio?.language else previous?.audioLanguage,
+                audioLabel = if (current) audio?.label else previous?.audioLabel,
+                textLanguage = if (current) text?.language else previous?.textLanguage,
+                textLabel = if (current) text?.label?.takeUnless { text.external } else previous?.textLabel,
+                textDisabled = if (current) {
+                    player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+                } else {
+                    previous?.textDisabled ?: false
+                },
+                speed = if (current) playbackSpeed else previous?.speed ?: 1f,
+                subtitleDelayMs = if (current) player.subtitleDelayMilliseconds else previous?.subtitleDelayMs ?: 0,
             )
         )
     }
@@ -1040,13 +1062,29 @@ class PlayerController(
      * не прыгаем: у RTSP она переоткрывает поток, а камерам-серверам переходы по времени обычно не нужны.
      */
     private fun keepLiveEdge() {
-        if (!lowLatency || !player.isPlaying || speedBeforeBoost != null) return
+        // Догон только на обычной скорости: иначе он затирает выбор пользователя и 2× от удержания,
+        // а сохранённая скорость потом открывала тот же поток уже ускоренным.
+        if (!lowLatency || !player.isPlaying || speedBeforeBoost != null || playbackSpeed != 1f) {
+            if (liveCatchup && speedBeforeBoost == null) {
+                player.setPlaybackSpeed(playbackSpeed)
+                liveCatchup = false
+            }
+            return
+        }
         val buffered = player.totalBufferedDuration
-        val speed = player.playbackParameters.speed
         when {
-            buffered > LIVE_FAR_MS && speed < LIVE_FAR_SPEED -> player.setPlaybackSpeed(LIVE_FAR_SPEED)
-            buffered in (LIVE_CATCHUP_MS + 1)..LIVE_FAR_MS && speed != LIVE_CATCHUP_SPEED -> player.setPlaybackSpeed(LIVE_CATCHUP_SPEED)
-            buffered <= LIVE_TARGET_MS && speed > 1f -> player.setPlaybackSpeed(1f)
+            buffered > LIVE_FAR_MS -> {
+                if (player.playbackParameters.speed != LIVE_FAR_SPEED) player.setPlaybackSpeed(LIVE_FAR_SPEED)
+                liveCatchup = true
+            }
+            buffered in (LIVE_CATCHUP_MS + 1)..LIVE_FAR_MS -> {
+                if (player.playbackParameters.speed != LIVE_CATCHUP_SPEED) player.setPlaybackSpeed(LIVE_CATCHUP_SPEED)
+                liveCatchup = true
+            }
+            buffered <= LIVE_TARGET_MS && liveCatchup -> {
+                player.setPlaybackSpeed(playbackSpeed)
+                liveCatchup = false
+            }
         }
     }
 
@@ -1141,8 +1179,8 @@ class PlayerController(
     private suspend fun buildMediaItem(index: Int): MediaItem {
         val entry: MediaEntry = request.items[index]
         val external = subtitles[index]
-        // Субтитры рядом с локальным файлом подхватываем автоматически.
-        if (index == request.startIndex && external.isEmpty()) {
+        // Субтитры рядом с локальным файлом — у каждого пункта плейлиста, не только у стартового.
+        if (external.isEmpty()) {
             withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.forEach { uri ->
                 val name = uri.lastPathSegment
                 external += ExternalSubtitle(uri, name, SubtitleSupport.languageFromName(name))

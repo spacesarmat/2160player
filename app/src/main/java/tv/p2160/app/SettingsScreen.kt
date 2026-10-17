@@ -202,6 +202,11 @@ fun SettingsScreen(
             }
 
             item { SectionTitle(tr("settings.section_playback")) }
+            item {
+                ToggleRow(tr("settings.keep_screen_on"), tr("settings.keep_screen_on_hint"), s.keepScreenOn) { v ->
+                    update { it.copy(keepScreenOn = v) }
+                }
+            }
             item { ToggleRow(tr("settings.auto_resume"), null, s.autoResume) { v -> update { it.copy(autoResume = v) } } }
             item { ToggleRow(tr("settings.smart_tracks"), tr("settings.smart_tracks_hint"), s.smartTracks) { v -> update { it.copy(smartTracks = v) } } }
             item {

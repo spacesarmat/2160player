@@ -54,6 +54,8 @@
   "settings.edge_outline": "Контур",
   "settings.edge_shadow": "Тень",
   "settings.section_playback": "Воспроизведение",
+  "settings.keep_screen_on": "Не выключать экран во время просмотра",
+  "settings.keep_screen_on_hint": "Пока идёт видео или прямой эфир, экран не гаснет и не тускнеет. На паузе, в конце и после выхода — как обычно",
   "settings.default_speed": "Скорость по умолчанию",
   "settings.seek_step": "Шаг перемотки",
   "settings.seconds": "%1$d с",

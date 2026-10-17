@@ -79,6 +79,11 @@ data class Settings(
     val audioOffload: Boolean = true,
     /** Слой «Статистика» поверх видео: декодеры, кадры, буфер, сеть, процессор, память. */
     val statsOverlay: Boolean = false,
+    /**
+     * Не гасить экран, пока идёт видео или прямой эфир. На паузе, в конце и после выхода
+     * экран снова может погаснуть. Музыка без картинки экран не держит.
+     */
+    val keepScreenOn: Boolean = true,
 ) {
     /** Нужен ли ночной звук сейчас: включён вручную или попадаем в расписание. */
     fun nightModeAt(minuteOfDay: Int): Boolean =
@@ -156,6 +161,7 @@ class PlayerSettings private constructor(context: Context) {
             tunneling = prefs.getBoolean("tunneling", d.tunneling),
             audioOffload = prefs.getBoolean("audio_offload", d.audioOffload),
             statsOverlay = prefs.getBoolean("stats_overlay", d.statsOverlay),
+            keepScreenOn = prefs.getBoolean("keep_screen_on", d.keepScreenOn),
         )
     }
 
@@ -191,6 +197,7 @@ class PlayerSettings private constructor(context: Context) {
             .putBoolean("tunneling", s.tunneling)
             .putBoolean("audio_offload", s.audioOffload)
             .putBoolean("stats_overlay", s.statsOverlay)
+            .putBoolean("keep_screen_on", s.keepScreenOn)
             .apply()
     }
 

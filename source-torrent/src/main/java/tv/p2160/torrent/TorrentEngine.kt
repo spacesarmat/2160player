@@ -18,6 +18,7 @@ import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.MediaEntry
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.source.RoutingDataSource
+import tv.p2160.core.subtitle.SubtitleSupport
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -352,7 +353,7 @@ class TorrentEngine private constructor(context: Context) {
         val videos = playlist.size
         val items = playlist.map { f ->
             val base = f.name.substringBeforeLast('.').lowercase()
-            val subs = subtitles.filter { s -> videos == 1 || s.name.lowercase().startsWith(base) }
+            val subs = subtitles.filter { s -> videos == 1 || SubtitleSupport.matchesStem(base, s.name.lowercase()) }
             MediaEntry(
                 uri = uriFor(id, f),
                 title = f.name.substringBeforeLast('.'),

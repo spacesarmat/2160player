@@ -216,14 +216,29 @@ private fun playlistRequest(file: File): PlaybackRequest? {
         val uri = when {
             url.isEmpty() -> return@mapNotNull null
             "://" in url || url.startsWith("content:", true) -> url.toUri()
-            else -> {
-                val path = url.replace('\\', '/')
-                Uri.fromFile(if (path.startsWith("/")) File(path) else File(parent, path))
-            }
+            else -> Uri.fromFile(resolvePlaylistFile(parent, url) ?: return@mapNotNull null)
         }
         MediaEntry(uri, ch.name.ifBlank { null })
     }
     return if (items.isEmpty()) null else PlaybackRequest(items)
+}
+
+/**
+ * Локальный файл из m3u. Относительный путь не выходит из папки плейлиста (`../`).
+ * Абсолютный путь оставляем: так в плейлистах указывают файл на другом диске.
+ */
+internal fun resolvePlaylistFile(parent: File?, rawUrl: String): File? {
+    val path = rawUrl.trim().replace('\\', '/')
+    if (path.isEmpty()) return null
+    val absolute = path.startsWith("/")
+    val file = if (absolute) File(path) else File(parent ?: return null, path)
+    val resolved = runCatching { file.canonicalFile }.getOrNull() ?: return null
+    if (!absolute) {
+        val root = parent!!.canonicalFile
+        val child = resolved.path
+        if (child != root.path && !child.startsWith(root.path + File.separator)) return null
+    }
+    return resolved
 }
 
 /**

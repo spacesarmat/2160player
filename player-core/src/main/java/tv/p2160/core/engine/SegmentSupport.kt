@@ -66,7 +66,11 @@ data class ManualMarks(
     val isEmpty: Boolean get() = introEndMs == null && creditsFromEndMs == null
 
     fun toSegments(durationMs: Long): List<SkipSegment> = buildList {
-        if (introEndMs != null) add(SkipSegment(SegmentType.INTRO, introStartMs ?: 0L, introEndMs))
+        // Без начала вступление не считаем с нуля: иначе «отметить конец» пропускает весь ролик.
+        val start = introStartMs
+        if (introEndMs != null && start != null && start < introEndMs) {
+            add(SkipSegment(SegmentType.INTRO, start, introEndMs))
+        }
         if (creditsFromEndMs != null && durationMs > creditsFromEndMs) {
             add(SkipSegment(SegmentType.CREDITS, durationMs - creditsFromEndMs, null))
         }

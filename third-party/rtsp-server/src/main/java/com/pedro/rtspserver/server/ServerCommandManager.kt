@@ -37,50 +37,55 @@ class ServerCommandManager: CommandsManager() {
     this.serverPort = serverPort
   }
 
+  /** Успешный SETUP на этом соединении. PLAY/PAUSE/TEARDOWN до него не принимаются. */
+  private var setupDone = false
+
   fun createResponse(method: Method, request: String, cSeq: Int, clientIp: String): String {
     return when (method){
       Method.OPTIONS -> createOptions(cSeq)
       Method.DESCRIBE -> {
-        if (needAuth()) {
-          val auth = getAuth(request)
-          val data = "$user:$password"
-          val base64Data = Base64.encode(data.toByteArray())
-          if (base64Data.trim() == auth.trim()) {
-            Log.i(TAG, "basic auth success")
-            createDescribe(cSeq, clientIp) // auth accepted
-          } else {
-            Log.e(TAG, "basic auth error")
-            createError(401, cSeq)
-          }
-        } else {
-          createDescribe(cSeq, clientIp)
-        }
+        if (allowAuth(request)) createDescribe(cSeq, clientIp) else createError(401, cSeq)
       }
       Method.SETUP -> {
-        val track = getTrack(request)
-        if (track != null) {
-          protocol = getProtocol(request, track)
-          when (protocol) {
-            Protocol.TCP -> {
-              createSetup(cSeq, track, clientIp)
-            }
-            Protocol.UDP -> {
-              if (loadPorts(request, track)) createSetup(cSeq, track, clientIp) else createError(500, cSeq)
-            }
-          }
-        } else {
-          createError(500, cSeq)
+        if (!allowAuth(request)) return createError(401, cSeq)
+        val track = getTrack(request) ?: return createError(500, cSeq)
+        protocol = getProtocol(request, track)
+        val response = when (protocol) {
+          Protocol.TCP -> createSetup(cSeq, track, clientIp)
+          Protocol.UDP -> if (loadPorts(request, track)) createSetup(cSeq, track, clientIp) else createError(500, cSeq)
         }
+        if (response.startsWith("RTSP/1.0 200")) setupDone = true
+        response
       }
-      Method.PLAY -> createPlay(cSeq)
-      Method.PAUSE -> createPause(cSeq)
-      Method.TEARDOWN -> createTeardown(cSeq)
+      Method.PLAY -> if (setupDone) createPlay(cSeq) else createError(401, cSeq)
+      Method.PAUSE -> if (setupDone) createPause(cSeq) else createError(401, cSeq)
+      Method.TEARDOWN -> if (setupDone) createTeardown(cSeq) else createError(401, cSeq)
       else -> createError(400, cSeq)
     }
   }
 
   private fun needAuth(): Boolean {
     return !user.isNullOrEmpty() && !password.isNullOrEmpty()
+  }
+
+  /** Basic, если пароль задан. Сравнение без раннего выхода. Без пароля DESCRIBE/SETUP открыты. */
+  private fun allowAuth(request: String): Boolean {
+    if (!needAuth()) return true
+    val expected = Base64.encode("$user:$password".toByteArray())
+    val ok = constantTimeEquals(expected.trim(), getAuth(request).trim())
+    if (ok) Log.i(TAG, "basic auth success") else Log.e(TAG, "basic auth error")
+    return ok
+  }
+
+  private fun constantTimeEquals(a: String, b: String): Boolean {
+    val n = maxOf(a.length, b.length)
+    var r = a.length xor b.length
+    for (i in 0 until n) {
+      val ca = if (i < a.length) a[i].code else 0
+      val cb = if (i < b.length) b[i].code else 0
+      r = r or (ca xor cb)
+    }
+    return r == 0
   }
 
   private fun getAuth(request: String): String {

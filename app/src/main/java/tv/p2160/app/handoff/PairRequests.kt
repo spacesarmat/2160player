@@ -57,7 +57,7 @@ object PairRequests {
         }
         val strings = I18n.get(context).current
         ensureChannel(context, strings["handoff.pair_channel"])
-        val text = if (HandoffAuth.mode == HandoffAuth.Mode.DAILY) {
+        val text = if (HandoffAuth.required) {
             strings.format("handoff.pair_text_code", HandoffAuth.currentCode().chunked(3).joinToString(" "))
         } else {
             strings["handoff.pair_text"]
@@ -159,20 +159,22 @@ class PairRequestActivity : ComponentActivity() {
         dialogContent {
             val focus = remember { FocusRequester() }
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-            val code = if (HandoffAuth.mode == HandoffAuth.Mode.DAILY) HandoffAuth.currentCode().chunked(3).joinToString(" ") else null
+            val code = if (HandoffAuth.required) HandoffAuth.currentCode().chunked(3).joinToString(" ") else null
             AlertDialog(
-                onDismissRequest = ::finish,
+                onDismissRequest = { PairRequests.decide(this, nonce, name, allow = false); finish() },
                 icon = { Icon(Icons.Default.Devices, null) },
                 title = { Text(tr("handoff.pair_title", name)) },
                 text = { Text(if (code != null) tr("handoff.pair_text_code", code) else tr("handoff.pair_text")) },
                 confirmButton = {
-                    TextButton(
-                        onClick = { PairRequests.decide(this, nonce, name, allow = true); finish() },
-                        modifier = Modifier.focusRequester(focus),
-                    ) { Text(tr("handoff.pair_allow")) }
+                    TextButton(onClick = { PairRequests.decide(this, nonce, name, allow = true); finish() }) {
+                        Text(tr("handoff.pair_allow"))
+                    }
                 },
                 dismissButton = {
-                    TextButton(onClick = { PairRequests.decide(this, nonce, name, allow = false); finish() }) { Text(tr("handoff.pair_deny")) }
+                    TextButton(
+                        onClick = { PairRequests.decide(this, nonce, name, allow = false); finish() },
+                        modifier = Modifier.focusRequester(focus),
+                    ) { Text(tr("handoff.pair_deny")) }
                 },
             )
         }

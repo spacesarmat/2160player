@@ -17,6 +17,7 @@ import tv.p2160.core.source.RandomAccessSources
 import java.io.BufferedInputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
@@ -67,8 +68,9 @@ data class RemoteSession(
  * - `GET /now` — что сейчас играет (URI, доступный другим устройствам, и позиция);
  * - `POST /play` — предложение продолжить просмотр здесь (показываем диалог подтверждения);
  * - `GET /camera` — адрес трансляции камеры этого устройства (`rtsp://…`), 204 — камера не транслируется;
- * - `GET /watch?k=код` — страница «Смотреть трансляцию» для QR-кода (камера телефона откроет её в браузере,
- *   кнопка — 2160 Player или скачивание APK); `k` — текущий код защиты (без защиты не нужен);
+ * - `GET /watch?k=ключ` — страница «Смотреть трансляцию» для QR-кода (камера телефона откроет её в браузере,
+ *   кнопка — 2160 Player или скачивание APK); `k` — отдельный короткий ключ трансляции, не PIN сопряжения
+ *   (без защиты не нужен);
  * - `GET /hello?id&name&port&auth&cam` — «я тоже здесь»: найдя устройство по mDNS, плеер сообщает о себе
  *   напрямую. Так обнаружение работает и там, где роутер пропускает multicast только в одну сторону
  *   (Wi-Fi ↔ провод): записи без «привета» и mDNS дольше [HELLO_TTL_MS] удаляются;
@@ -76,7 +78,8 @@ data class RemoteSession(
  *   чтобы ТВ мог досмотреть видео, лежащее в памяти телефона;
  * - `GET /pair/challenge`, `GET /pair/status`, `POST /pair` — сопряжение: хозяин отвечает в уведомлении
  *   «Разрешить/Отклонить» ([PairRequests]) или клиент вводит код ([HandoffAuth]); при включённой защите
- *   `/now` и `/play` требуют заголовок `X-P2160-Token`, иначе 401.
+ *   `/now`, `/play` и `/camera` требуют заголовок `X-P2160-Token`, иначе 401.
+ *   Сервер слушает только частные адреса локальных интерфейсов (не 0.0.0.0).
  * Работает только в одной локальной сети (Wi-Fi, точка доступа телефона): mDNS и прямые соединения
  * через мобильную сеть (NAT оператора) не проходят.
  * Сервер работает, пока приложение на экране.
@@ -95,6 +98,7 @@ object Handoff {
 
     private var app: Context? = null
     private var server: ServerSocket? = null
+    private val extraSockets = ArrayList<ServerSocket>()
     private val pool = Executors.newCachedThreadPool()
     /** Когда последний раз слышали устройство (mDNS или /hello), по id. */
     private val lastSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -121,10 +125,17 @@ object Handoff {
         val ctx = context.applicationContext
         app = ctx
         HandoffAuth.init(ctx)
-        val socket = runCatching { ServerSocket(0) }.getOrElse { Log.w(TAG, "server", it); return }
+        val opened = bindPrivate(ctx)
+        if (opened.isEmpty()) {
+            Log.w(TAG, "no private LAN address")
+            return
+        }
+        val socket = opened[0]
         server = socket
-        Log.i(TAG, "listening on ${socket.localPort}, protection ${HandoffAuth.mode}")
-        pool.execute { acceptLoop(socket) }
+        extraSockets.clear()
+        extraSockets.addAll(opened.drop(1))
+        Log.i(TAG, "listening on ${socket.localPort} via ${opened.size} address(es), protection ${HandoffAuth.mode}")
+        opened.forEach { pool.execute { acceptLoop(it) } }
         nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
         register(socket.localPort, deviceName(ctx))
         discover()
@@ -139,13 +150,30 @@ object Handoff {
         }
     }
 
+    /** По одному сокету на частный адрес локального интерфейса. Порт берётся у первого, остальные — тот же. */
+    private fun bindPrivate(ctx: Context): List<ServerSocket> {
+        val opened = ArrayList<ServerSocket>()
+        for (addr in Lan.bindable(ctx)) {
+            val port = opened.firstOrNull()?.localPort ?: 0
+            val sock = runCatching {
+                ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(addr, port))
+                }
+            }.onFailure { Log.w(TAG, "bind $addr", it) }.getOrNull() ?: continue
+            opened += sock
+        }
+        return opened
+    }
+
     @Synchronized
     fun stop() {
         runCatching { registration?.let { nsd?.unregisterService(it) } }
         runCatching { discovery?.let { nsd?.stopServiceDiscovery(it) } }
         registration = null
         discovery = null
-        runCatching { server?.close() }
+        (listOfNotNull(server) + extraSockets.toList()).forEach { runCatching { it.close() } }
+        extraSockets.clear()
         server = null
         helloLoop?.cancel(true)
         helloLoop = null
@@ -338,8 +366,8 @@ object Handoff {
     }
 
     private fun handle(client: Socket) {
-        // Только локальная сеть: подключение, пришедшее через мобильный интерфейс, не обслуживаем.
-        if (!Lan.isLocal(app ?: return, client.localAddress)) {
+        // Только частный адрес локального интерфейса: не мобильная сеть и не глобальный IPv6 на Wi-Fi.
+        if (!Lan.accepts(app ?: return, client.localAddress)) {
             Log.w(TAG, "not LAN: ${client.localAddress}")
             return
         }
@@ -356,117 +384,84 @@ object Handoff {
         }
         val (method, target) = requestLine.split(' ').let { it.getOrNull(0).orEmpty() to it.getOrNull(1).orEmpty() }
         val path = target.substringBefore('?')
-        val query = Uri.parse("http://x$target")
+        val query = decodeQuery(target.substringAfter('?', ""))
+        val body = if (method == "POST") readBody(input, headers) else ""
         val out = client.getOutputStream()
-        val ctx = app ?: return respond(out, 503, "")
-        // Защита кодом: что играет и «продолжить здесь» — только сопряжённым устройствам.
-        if ((path == "/now" || path == "/play" || path == "/camera") && !HandoffAuth.isAuthorized(headers[TOKEN_HEADER.lowercase()])) {
-            return respond(out, 401, "")
-        }
-        when {
-            method == "GET" && path == "/pair/challenge" -> {
-                val clientId = query.getQueryParameter("id").orEmpty()
-                val name = query.getQueryParameter("name").orEmpty().ifBlank { "?" }.take(64)
-                val nonce = HandoffAuth.newChallenge(clientId, name)
-                if (nonce == null) {
-                    respond(out, 403, "") // недавно отклонён — не беспокоим хозяина
-                } else {
-                    respond(out, 200, JSONObject().put("nonce", nonce).toString(), "application/json")
-                    PairRequests.show(ctx, nonce, name)
-                }
+        if (app == null) return respond(out, 503, "")
+        when (val result = routeHandoff(method, path, query, headers, body, remoteHost, routes)) {
+            is HandoffHttpResult.Text -> respond(out, result.code, result.body, result.type)
+            is HandoffHttpResult.Stream -> {
+                val uri = shared[result.token] ?: return respond(out, 404, "")
+                serveFile(app ?: return, uri, result.range, out)
             }
-            method == "GET" && path == "/pair/status" -> {
-                val nonce = query.getQueryParameter("nonce").orEmpty()
-                val (decision, token) = HandoffAuth.status(nonce) ?: return respond(out, 404, "")
-                val json = JSONObject().put("state", decision.name.lowercase())
-                token?.let { json.put("token", it) }
-                if (decision != HandoffAuth.Decision.PENDING) PairRequests.cancel(ctx, nonce)
-                respond(out, 200, json.toString(), "application/json")
-            }
-            method == "POST" && path == "/pair" -> {
-                val json = JSONObject(readBody(input, headers))
-                val (result, token) = HandoffAuth.verify(
-                    nonce = json.optString("nonce"),
-                    clientId = json.optString("id"),
-                    clientName = json.optString("name").take(64),
-                    proof = json.optString("proof"),
-                )
-                when (result) {
-                    HandoffAuth.PairResult.OK -> {
-                        PairRequests.cancel(ctx, json.optString("nonce"))
-                        respond(out, 200, JSONObject().put("token", token).toString(), "application/json")
-                    }
-                    HandoffAuth.PairResult.WRONG_CODE -> respond(out, 403, "")
-                    HandoffAuth.PairResult.LOCKED -> respond(out, 429, "")
-                    HandoffAuth.PairResult.FAILED -> respond(out, 400, "")
-                }
-            }
-            method == "GET" && path == "/hello" -> {
-                val id = query.getQueryParameter("id").orEmpty()
-                val port = query.getQueryParameter("port")?.toIntOrNull()
-                if (id.isBlank() || id == deviceId || port == null || remoteHost == null) return respond(out, 400, "")
-                val known = _peers.value.any { it.id == id }
-                Log.d(TAG, "hello <- ${query.getQueryParameter("name")} $remoteHost:$port cam=${query.getQueryParameter("cam")}")
-                helloCamera[id] = query.getQueryParameter("cam") == "1"
-                upsertPeer(
-                    Peer(
-                        id = id,
-                        name = query.getQueryParameter("name").orEmpty().ifBlank { "?" }.take(64),
-                        host = remoteHost,
-                        port = port,
-                        locked = query.getQueryParameter("auth") == "1",
-                        camera = query.getQueryParameter("cam") == "1",
-                    )
-                )
-                respond(out, 204, "")
-                // Он нас знает, а мы его только что узнали — ответный «привет», чтобы он узнал наш порт/флаги.
-                if (!known) _peers.value.firstOrNull { it.id == id }?.let { p -> pool.execute { hello(p) } }
-            }
-            method == "GET" && path == "/watch" -> {
-                val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
-                    ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
-                val t = tv.p2160.core.i18n.I18n.get(ctx).current
-                if (cam == null) return respond(out, 404, simplePage(t["camera.watch_none"]), "text/html; charset=utf-8")
-                val now = System.currentTimeMillis()
-                val ok = synchronized(this) {
-                    if (now < watchLockedUntil) return respond(out, 429, simplePage(t["camera.watch_wait"]), "text/html; charset=utf-8")
-                    val good = !HandoffAuth.required || query.getQueryParameter("k") == HandoffAuth.currentCode()
-                    if (good) watchFailures = 0 else if (++watchFailures >= 5) { watchFailures = 0; watchLockedUntil = now + 60_000 }
-                    good
-                }
-                if (!ok) return respond(out, 403, simplePage(t["camera.watch_code"]), "text/html; charset=utf-8")
-                val page = tv.p2160.app.camera.WatchPage.html(t, deviceName(ctx), cam.urlWithAuth, tv.p2160.app.share.ShareApp.wifiUrl())
-                respond(out, 200, page, "text/html; charset=utf-8")
-            }
-            method == "GET" && path == "/camera" -> {
-                val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
-                    ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP }
-                if (cam == null) respond(out, 204, "")
-                // Адрес с паролем: сюда доходят только сопряжённые устройства (или защита выключена).
-                else respond(out, 200, JSONObject().put("url", cam.urlWithAuth).put("viewers", cam.clients).toString(), "application/json")
-            }
-            method == "GET" && path == "/now" -> {
-                val now = Player2160.nowPlaying.value?.let { shareable(ctx, it) }
-                if (now == null) respond(out, 204, "") else respond(out, 200, toJson(now).toString(), "application/json")
-            }
-            method == "POST" && path == "/play" -> {
-                val json = JSONObject(readBody(input, headers))
-                respond(out, 200, "{}", "application/json")
-                val from = json.optString("from", "?")
-                HandoffReceiveActivity.show(ctx, json.toString(), from)
-            }
-            // «Поделиться приложением» по Wi-Fi: сам APK, без защиты кодом (это приложение, не просмотр).
-            method == "GET" && path.startsWith("/app") -> {
-                serveFile(ctx, Uri.fromFile(tv.p2160.app.share.ShareApp.sharedApk(ctx)), headers["range"], out,
+            is HandoffHttpResult.Apk -> {
+                val ctx = app ?: return
+                serveFile(ctx, Uri.fromFile(tv.p2160.app.share.ShareApp.sharedApk(ctx)), result.range, out,
                     type = "application/vnd.android.package-archive", fileName = tv.p2160.app.share.ShareApp.fileName())
             }
-            method == "GET" && path.startsWith("/stream/") -> {
-                val token = path.removePrefix("/stream/").substringBefore('/')
-                val uri = shared[token] ?: return respond(out, 404, "")
-                serveFile(ctx, uri, headers["range"], out)
-            }
-            else -> respond(out, 404, "")
         }
+    }
+
+    private val routes = object : HandoffRoutes {
+        override val deviceId: String get() = Handoff.deviceId
+        override fun authorized(token: String?) = HandoffAuth.isAuthorized(token)
+        override fun beginChallenge(id: String, name: String, remoteIp: String) = HandoffAuth.beginChallenge(id, name, remoteIp)
+        override fun showChallenge(nonce: String, name: String) { app?.let { PairRequests.show(it, nonce, name) } }
+        override fun status(nonce: String, remoteIp: String) = HandoffAuth.status(nonce, remoteIp)
+        override fun cancelChallenge(nonce: String) { app?.let { PairRequests.cancel(it, nonce) } }
+        override fun verify(id: String, name: String, nonce: String, proof: String) =
+            HandoffAuth.verify(nonce, id, name, proof)
+        override fun onHello(id: String, name: String, port: Int, auth: Boolean, camera: Boolean, remoteHost: String) {
+            val known = _peers.value.any { it.id == id }
+            Log.d(TAG, "hello <- $name $remoteHost:$port cam=$camera")
+            helloCamera[id] = camera
+            upsertPeer(Peer(id, name, remoteHost, port, auth, camera))
+            if (!known) _peers.value.firstOrNull { it.id == id }?.let { p -> pool.execute { hello(p) } }
+        }
+        override fun watch(key: String?): WatchGate {
+            val streaming = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
+                ?.protocol == tv.p2160.app.camera.StreamProtocol.RTSP
+            if (!streaming) return WatchGate.NONE
+            val now = System.currentTimeMillis()
+            return synchronized(Handoff) {
+                if (now < watchLockedUntil) return WatchGate.LOCKED
+                val good = tv.p2160.app.camera.CameraStream.watchKeyMatches(key)
+                if (good) watchFailures = 0 else if (++watchFailures >= 5) {
+                    watchFailures = 0
+                    watchLockedUntil = now + 60_000
+                }
+                if (good) WatchGate.OK else WatchGate.BAD
+            }
+        }
+        override fun watchBody(gate: WatchGate): String {
+            val ctx = app ?: return ""
+            val t = tv.p2160.core.i18n.I18n.get(ctx).current
+            return when (gate) {
+                WatchGate.NONE -> simplePage(t["camera.watch_none"])
+                WatchGate.LOCKED -> simplePage(t["camera.watch_wait"])
+                WatchGate.BAD -> simplePage(t["camera.watch_code"])
+                WatchGate.OK -> {
+                    val cam = tv.p2160.app.camera.CameraStream.state.value as tv.p2160.app.camera.CameraStreamState.Streaming
+                    tv.p2160.app.camera.WatchPage.html(t, deviceName(ctx), cam.urlWithAuth, tv.p2160.app.share.ShareApp.wifiUrl())
+                }
+            }
+        }
+        override fun cameraJson(): String? {
+            val cam = (tv.p2160.app.camera.CameraStream.state.value as? tv.p2160.app.camera.CameraStreamState.Streaming)
+                ?.takeIf { it.protocol == tv.p2160.app.camera.StreamProtocol.RTSP } ?: return null
+            return JSONObject().put("url", cam.urlWithAuth).put("viewers", cam.clients).toString()
+        }
+        override fun nowJson(): String? {
+            val ctx = app ?: return null
+            val now = Player2160.nowPlaying.value?.let { shareable(ctx, it) } ?: return null
+            return toJson(now).toString()
+        }
+        override fun onPlay(body: String) {
+            val ctx = app ?: return
+            val from = runCatching { JSONObject(body).optString("from", "?") }.getOrDefault("?")
+            HandoffReceiveActivity.show(ctx, body, from)
+        }
+        override fun hasStream(token: String) = shared.containsKey(token)
     }
 
     private fun readBody(input: BufferedInputStream, headers: Map<String, String>): String {
@@ -576,7 +571,7 @@ object Handoff {
         .put("position", now.positionMs)
         .put("duration", now.durationMs)
         .put("playing", now.isPlaying)
-        .put("headers", JSONObject(now.headers))
+        .put("headers", JSONObject(handoffHeaders(now.headers, HandoffAuth.required)))
         .put("from", app?.let(::deviceName) ?: "?")
 
     internal fun sessionFromJson(peer: Peer?, json: JSONObject): RemoteSession {

@@ -70,6 +70,36 @@ object Lan {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * Частный IPv4 (RFC1918 и link-local 169.254/16) или IPv6 link-local/ULA.
+     * Публичный адрес на том же Wi-Fi и loopback сюда не входят: на них серверы не слушаем.
+     */
+    fun isPrivate(address: InetAddress): Boolean {
+        if (address.isLoopbackAddress || address.isAnyLocalAddress) return false
+        if (address is Inet4Address) {
+            val b = address.address
+            val a = b[0].toInt() and 0xff
+            val c = b[1].toInt() and 0xff
+            return a == 10 || (a == 172 && c in 16..31) || (a == 192 && c == 168) || (a == 169 && c == 254)
+        }
+        if (address.isLinkLocalAddress) return true
+        val first = address.address.firstOrNull()?.toInt()?.and(0xff) ?: return false
+        return first == 0xfc || first == 0xfd
+    }
+
+    /** Адреса, на которых можно слушать: частные адреса локальных интерфейсов, сначала IPv4. */
+    fun bindable(context: Context): List<InetAddress> {
+        val names = interfaces(context)
+        return runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUp && it.name in names }
+                .flatMap { it.inetAddresses.toList() }
+                .filter { isPrivate(it) }
+                .distinctBy { it.hostAddress }
+                .sortedBy { if (it is Inet4Address && !it.isLinkLocalAddress) 0 else 1 }
+        }.getOrDefault(emptyList())
+    }
+
     /** Подключение пришло на локальный интерфейс (или с самого устройства), а не через мобильную сеть. */
     fun isLocal(context: Context, local: InetAddress?): Boolean {
         if (local == null) return false
@@ -77,6 +107,10 @@ object Lan {
         val ni = runCatching { NetworkInterface.getByInetAddress(local) }.getOrNull() ?: return false
         return ni.name in interfaces(context)
     }
+
+    /** И интерфейс локальный, и адрес частный (не глобальный IPv6 на wlan и не белый IPv4). */
+    fun accepts(context: Context, local: InetAddress?): Boolean =
+        local != null && isPrivate(local) && isLocal(context, local)
 
     /**
      * Адрес назначения (только IP-литерал, без DNS) лежит в подсети одного из локальных интерфейсов — туда

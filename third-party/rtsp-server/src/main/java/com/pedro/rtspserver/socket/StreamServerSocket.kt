@@ -6,6 +6,7 @@ import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.toJavaAddress
 import kotlinx.coroutines.Dispatchers
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 
@@ -16,19 +17,39 @@ class StreamServerSocket(
     private var javaServer: ServerSocket? = null
     private var selectorManager: SelectorManager? = null
 
-    suspend fun create(port: Int) {
+    /**
+     * [address] == null — все интерфейсы, как раньше.
+     * Иначе только этот адрес (частный IPv4 или link-local/ULA).
+     */
+    suspend fun create(port: Int, address: InetAddress? = null) {
         when (type) {
             SocketType.KTOR -> {
                 selectorManager?.close()
                 val manager = SelectorManager(Dispatchers.IO)
                 selectorManager = manager
-                ktorServer = aSocket(manager).tcp()
-                    .bind("0.0.0.0", port)
+                val tcp = aSocket(manager).tcp()
+                ktorServer = if (address == null) {
+                    tcp.bind("0.0.0.0", port)
+                } else {
+                    tcp.bind(io.ktor.network.sockets.InetSocketAddress(address.hostAddress ?: "0.0.0.0", port))
+                }
             }
             SocketType.JAVA -> {
-                javaServer = ServerSocket(port)
+                javaServer = if (address == null) {
+                    ServerSocket(port)
+                } else {
+                    ServerSocket().apply {
+                        reuseAddress = true
+                        bind(InetSocketAddress(address, port))
+                    }
+                }
             }
         }
+    }
+
+    fun localPort(): Int = when (type) {
+        SocketType.JAVA -> javaServer?.localPort ?: 0
+        SocketType.KTOR -> (ktorServer?.localAddress?.toJavaAddress() as? InetSocketAddress)?.port ?: 0
     }
 
     suspend fun accept(): ClientSocket {

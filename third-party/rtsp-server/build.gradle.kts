@@ -15,6 +15,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -29,4 +33,6 @@ dependencies {
     }
     implementation(libs.ktor.network)
     implementation(libs.ktor.network.tls)
+
+    testImplementation(libs.junit)
 }

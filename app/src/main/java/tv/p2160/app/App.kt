@@ -15,6 +15,8 @@ import tv.p2160.core.api.PlayerAction
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Пароли SMB и ключ RTMP — в Keystore до того, как их прочитают экраны.
+        tv.p2160.core.secret.FieldSecrets.migrate(this)
         // Настройки передачи читают HandoffAuth до старта сервера (onStart приходит позже первого кадра).
         tv.p2160.app.handoff.HandoffAuth.init(this)
         // Схема torrent:// для плеера (сам libtorrent запускается лениво).

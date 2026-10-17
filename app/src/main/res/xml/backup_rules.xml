@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="p2160_smb.xml" />
+    <exclude domain="sharedpref" path="p2160_handoff.xml" />
+    <exclude domain="sharedpref" path="p2160_camera.xml" />
+    <exclude domain="file" path="iptv" />
+</full-backup-content>

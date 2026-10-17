@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="p2160_smb.xml" />
+        <exclude domain="sharedpref" path="p2160_handoff.xml" />
+        <exclude domain="sharedpref" path="p2160_camera.xml" />
+        <exclude domain="file" path="iptv" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="p2160_smb.xml" />
+        <exclude domain="sharedpref" path="p2160_handoff.xml" />
+        <exclude domain="sharedpref" path="p2160_camera.xml" />
+        <exclude domain="file" path="iptv" />
+    </device-transfer>
+</data-extraction-rules>

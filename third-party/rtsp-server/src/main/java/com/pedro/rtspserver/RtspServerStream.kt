@@ -34,6 +34,11 @@ class RtspServerStream(
     super.startStream("")
   }
 
+  /** 2160 Player: буфер отправки TCP для зрителей, которые подключатся дальше. 0 — размер ОС. */
+  fun setSendBufferSize(bytes: Int) {
+    rtspServer.sendBufferSize = bytes.coerceAtLeast(0)
+  }
+
   override fun onAudioInfoImp(sampleRate: Int, isStereo: Boolean) {
     rtspServer.setAudioInfo(sampleRate, isStereo)
   }

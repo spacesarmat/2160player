@@ -155,6 +155,11 @@ data class CameraStreamConfig(
     val micId: Int? = null,
     /** Усиление микрофона, 0,5–4. */
     val micGain: Float = 1f,
+    /**
+     * Короче очереди и буфер SRT, шумодав камеры выключен. По умолчанию выключено: на слабой сети
+     * короткая очередь чаще теряет кадры. Ключи низкой задержки кодека и обход H.264 у NDI включены всегда.
+     */
+    val lowLatency: Boolean = false,
 )
 
 sealed interface CameraStreamState {
@@ -196,8 +201,8 @@ object CameraStream {
     const val RTSP_USER = "2160"
     /** QR `/watch` живёт столько, потом нужен новый с экрана трансляции. */
     private const val WATCH_TTL_MS = 15 * 60 * 1000L
-    /** Очередь отправки, кадров (звук ~43/с + видео 30–60/с): около 1–1,5 с. */
-    private const val SEND_QUEUE = 120
+    /** Не выбрасывать очередь чаще, чем раз в две секунды: иначе зритель не успевает получить ключевой кадр. */
+    private const val STALE_DROP_INTERVAL_MS = 2_000L
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
     private var authJob: kotlinx.coroutines.Job? = null
     /** Пароль текущего RTSP-сеанса. null — защита выключена или трансляция не идёт. */
@@ -299,6 +304,7 @@ object CameraStream {
             screenAudio = runCatching { ScreenAudio.valueOf(p.getString("screen_audio", null)!!) }.getOrDefault(d.screenAudio),
             micId = p.getInt("mic_id", -1).takeIf { it >= 0 },
             micGain = p.getFloat("mic_gain", d.micGain),
+            lowLatency = p.getBoolean("low_latency", d.lowLatency),
         )
     }
 
@@ -315,6 +321,7 @@ object CameraStream {
             .putString("screen_audio", c.screenAudio.name)
             .putInt("mic_id", c.micId ?: -1)
             .putFloat("mic_gain", c.micGain)
+            .putBoolean("low_latency", c.lowLatency)
             .apply()
     }
 
@@ -446,10 +453,18 @@ object CameraStream {
         // Усиление и микрофон — на лету, без пересоздания кодировщиков.
         gainMeter.gain = next.micGain
         if (next.micId != old.micId) applyMic(context, next.micId)
-        // Адрес/ключ влияют только на старт трансляции — камеру не пересоздаём.
-        if (next.copy(srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey, micId = old.micId, micGain = old.micGain) == old) return
+        if (next.lowLatency != old.lowLatency) stream?.let { applyTransportLatency(it, next) }
+        // Адрес, ключ и профиль задержки на камеру не влияют — кодировщики не пересоздаём.
+        if (next.copy(
+                srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey,
+                micId = old.micId, micGain = old.micGain, lowLatency = old.lowLatency,
+            ) == old
+        ) return
         val s = stream
-        if (s != null && next.cameraId != old.cameraId && next.copy(cameraId = old.cameraId, srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey) == old) {
+        if (s != null && next.cameraId != old.cameraId && next.copy(
+                cameraId = old.cameraId, srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey, lowLatency = old.lowLatency,
+            ) == old
+        ) {
             _torch.value = false
             _zoom.value = 1f
             next.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.openCameraId(id) }
@@ -465,8 +480,8 @@ object CameraStream {
 
     /** Камера и кодировщики готовы для этих настроек (адрес и ключ не в счёт — они нужны только при старте). */
     private fun sameEncoder(a: CameraStreamConfig?, b: CameraStreamConfig) =
-        a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f) ==
-            b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f)
+        a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f, lowLatency = false) ==
+            b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f, lowLatency = false)
 
     /** Разрешение на запись экрана (MediaProjection) для трансляции экрана; живёт до остановки трансляции. */
     private var projection: android.media.projection.MediaProjection? = null
@@ -497,7 +512,11 @@ object CameraStream {
         val cfg = _config.value
         val portrait = isPortrait(context)
         // Ориентация кадра — как держат телефон; повернули до старта — готовим заново (во время трансляции не трогаем).
-        stream?.takeIf { sameEncoder(preparedFor, cfg) && (it.isStreaming || preparedPortrait == portrait) }?.let { return it }
+        stream?.takeIf { sameEncoder(preparedFor, cfg) && (it.isStreaming || preparedPortrait == portrait) }?.let {
+            if (it is NdiStream) ndiConfigure(it, cfg, portrait)
+            applyTransportLatency(it, cfg)
+            return it
+        }
         release()
         val app = context.applicationContext
         appContext = app
@@ -526,8 +545,7 @@ object CameraStream {
             StreamProtocol.SRT -> SrtStream(app, checker, videoSource, audioSource)
             StreamProtocol.RTMP -> RtmpStream(app, checker, videoSource, audioSource)
             StreamProtocol.NDI -> NdiStream(app, videoSource, audioSource, Ndi.SOURCE_NAME).also {
-                val q = cfg.quality
-                if (portrait) it.configure(q.height, q.width, q.fps) else it.configure(q.width, q.height, q.fps)
+                ndiConfigure(it, cfg, portrait)
             }
         }
         s.getGlInterface().autoHandleOrientation = true
@@ -562,9 +580,9 @@ object CameraStream {
         }
         // Библиотека по умолчанию пишет в лог каждый пакет — это лишняя нагрузка на процессор.
         s.getStreamClient().setLogs(false)
-        // Короткая очередь отправки (~1,5 с звука и видео вместо ~5 с): при медленной сети лучше потерять кадры,
-        // чем копить задержку, которая потом не уходит.
-        runCatching { s.getStreamClient().resizeCache(SEND_QUEUE) }
+        // NDI кодировщик остановит сам. Для RTSP/SRT/RTMP — низкая задержка кодека до старта (GOP остаётся 1 с).
+        if (cfg.protocol != StreamProtocol.NDI) EncoderLatency.tune(s, q.fps)
+        applyTransportLatency(s, cfg)
         stream = s
         preparedFor = cfg
         preparedPortrait = portrait
@@ -665,6 +683,7 @@ object CameraStream {
                 s.attachFrames()
                 gainMeter.pcmListener = { pcm -> s.onPcm(pcm, 44_100, 2) }
             }
+            applyCaptureHints(s, cfg)
             cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
             // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
@@ -751,7 +770,52 @@ object CameraStream {
         return constantTimeEquals(presented.orEmpty(), key)
     }
 
+    private fun ndiConfigure(s: NdiStream, cfg: CameraStreamConfig, portrait: Boolean) {
+        val q = cfg.quality
+        if (portrait) s.configure(q.height, q.width, q.fps, cfg.lowLatency)
+        else s.configure(q.width, q.height, q.fps, cfg.lowLatency)
+    }
+
+    /**
+     * Очередь, задержка SRT и буфер RTSP. Без «Минимальной задержки» очередь 120 кадров (~1–1,5 с) и SRT 120 мс —
+     * как раньше. С ней — 30 кадров и SRT 80 мс. Буфер TCP ужимается только в этом режиме; Nagle выключен всегда.
+     */
+    private fun applyTransportLatency(s: StreamBase, cfg: CameraStreamConfig) {
+        runCatching { s.getStreamClient().setDelay(0) }
+        runCatching { s.getStreamClient().resizeCache(StreamLatency.sendQueue(cfg.lowLatency)) }
+        if (s is SrtStream) runCatching { s.getStreamClient().setLatency(StreamLatency.srtLatencyMs(cfg.lowLatency)) }
+        if (s is RtspServerStream) s.setSendBufferSize(StreamLatency.rtspSendBuffer(cfg.lowLatency) ?: 0)
+    }
+
+    /** Со следующего запуска камеры: фиксированный fps и без шумодава/резкости — они добавляют кадры задержки. */
+    private fun applyCaptureHints(s: StreamBase, cfg: CameraStreamConfig) {
+        if (!cfg.lowLatency || cfg.source != StreamSource.CAMERA) return
+        val cam = s.videoSource as? Camera2Source ?: return
+        val fps = cfg.quality.fps.coerceAtLeast(1)
+        runCatching {
+            cam.setDynamicFps(false)
+            cam.setCustomRequest { b ->
+                b.set(android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(fps, fps))
+                b.set(android.hardware.camera2.CaptureRequest.NOISE_REDUCTION_MODE, android.hardware.camera2.CaptureRequest.NOISE_REDUCTION_MODE_OFF)
+                b.set(android.hardware.camera2.CaptureRequest.EDGE_MODE, android.hardware.camera2.CaptureRequest.EDGE_MODE_OFF)
+            }
+        }.onFailure { Log.w(TAG, "capture latency", it) }
+    }
+
     private var bitrateJob: kotlinx.coroutines.Job? = null
+    private var lastStaleDropMs = 0L
+
+    /** Очередь забита — выбросить её и попросить ключевой кадр, а не копить секунды. */
+    private fun dropStale(s: StreamBase) {
+        val items = runCatching { s.getStreamClient().getItemsInCache() }.getOrDefault(0)
+        val size = runCatching { s.getStreamClient().getCacheSize() }.getOrDefault(0)
+        if (!StreamLatency.shouldDropStale(true, items, size)) return
+        val now = System.currentTimeMillis()
+        if (now - lastStaleDropMs < STALE_DROP_INTERVAL_MS) return
+        lastStaleDropMs = now
+        runCatching { s.getStreamClient().clearCache() }
+        runCatching { s.requestKeyframe() }
+    }
 
     /**
      * Битрейт под сеть: очередь отправки заполнена больше чем на треть — снижаем видео на 20 % (до 30 % от
@@ -770,6 +834,7 @@ object CameraStream {
                     _state.update { if (it is CameraStreamState.Streaming) it.copy(clients = n) else it }
                     continue
                 }
+                if (_config.value.lowLatency) dropStale(s)
                 val congested = runCatching { s.getStreamClient().hasCongestion(33f) }.getOrDefault(false)
                 val next = if (congested) maxOf(target * 3 / 10, current * 8 / 10) else minOf(target, current + target / 10)
                 if (next != current) {
@@ -819,6 +884,7 @@ object CameraStream {
         authJob = null
         bitrateJob?.cancel()
         bitrateJob = null
+        lastStaleDropMs = 0L
         gainMeter.pcmListener = null
         // Экран: трансляция кончилась — разрешение на запись больше не держим.
         if (_config.value.source == StreamSource.SCREEN) {

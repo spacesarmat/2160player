@@ -52,6 +52,12 @@ class RtspServer(
   private var delay: Long? = null
   private var socketTimeout: Long = StreamSocket.DEFAULT_TIMEOUT
 
+  /**
+   * 2160 Player: SO_SNDBUF новых зрителей, байт. 0 — буфер ОС.
+   * Имеет смысл до [startServer]; уже принятые сокеты не меняются.
+   */
+  var sendBufferSize: Int = 0
+
   val droppedAudioFrames: Long
     get() = synchronized(clients) {
       var items = 0L
@@ -175,6 +181,8 @@ class RtspServer(
           while (running) {
             try {
               Log.i(TAG, "Waiting client...")
+              // Размер буфера читается перед каждым accept: переключатель задержки меняет его на лету.
+              sock.sendBufferSize = sendBufferSize
               val clientSocket = sock.accept()
               // 2160 Player: только локальная сеть — подключения через мобильный интерфейс закрываем.
               if (allowLocal?.invoke(clientSocket.local) == false) {

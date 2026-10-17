@@ -22,8 +22,8 @@ import java.nio.ByteBuffer
  * Vizrt NDI AB (https://ndi.video/).
  *
  * Библиотека NDI SDK (`libndi.so`, закрыта) входит в APK, только если SDK был при сборке ([BuildConfig.NDI]),
- * и загружается динамически (см. `cpp/ndi_bridge.cpp`). Кадры — сырые (RGBX), NDI сжимает их сам; звук — PCM
- * 16 бит с микрофона.
+ * и загружается динамически (см. `cpp/ndi_bridge.cpp`). Кадры — сырые RGBX (GL отдаёт RGBA; перевод в NV12
+ * на CPU был бы лишним проходом перед SpeedHQ), одна копия в native; звук — PCM 16 бит с микрофона.
  */
 object Ndi {
     const val URL = "https://ndi.video/"
@@ -81,12 +81,12 @@ object Ndi {
         private var handle = nativeCreateSender(name)
         val isOpen: Boolean get() = handle != 0L
 
-        fun sendVideo(buffer: ByteBuffer, width: Int, height: Int, stride: Int, fps: Int) {
-            if (handle != 0L) nativeSendVideo(handle, buffer, width, height, stride, fps * 1000, 1000)
+        fun sendVideo(buffer: ByteBuffer, width: Int, height: Int, stride: Int, fps: Int, timecode100ns: Long) {
+            if (handle != 0L) nativeSendVideo(handle, buffer, width, height, stride, fps * 1000, 1000, timecode100ns)
         }
 
-        fun sendAudio(pcm: ByteArray, sampleRate: Int, channels: Int) {
-            if (handle != 0L) nativeSendAudio(handle, pcm, pcm.size, sampleRate, channels)
+        fun sendAudio(pcm: ByteArray, sampleRate: Int, channels: Int, timecode100ns: Long) {
+            if (handle != 0L) nativeSendAudio(handle, pcm, pcm.size, sampleRate, channels, timecode100ns)
         }
 
         /** Сколько приёмников подключено. */
@@ -102,16 +102,20 @@ object Ndi {
     @JvmStatic private external fun nativeLoad(): Boolean
     @JvmStatic private external fun nativeInit(configDir: String?): Boolean
     @JvmStatic private external fun nativeCreateSender(name: String): Long
-    @JvmStatic private external fun nativeSendVideo(handle: Long, buffer: ByteBuffer, width: Int, height: Int, stride: Int, fpsN: Int, fpsD: Int)
-    @JvmStatic private external fun nativeSendAudio(handle: Long, pcm: ByteArray, length: Int, sampleRate: Int, channels: Int)
+    @JvmStatic private external fun nativeSendVideo(
+        handle: Long, buffer: ByteBuffer, width: Int, height: Int, stride: Int, fpsN: Int, fpsD: Int, timecode100ns: Long,
+    )
+    @JvmStatic private external fun nativeSendAudio(
+        handle: Long, pcm: ByteArray, length: Int, sampleRate: Int, channels: Int, timecode100ns: Long,
+    )
     @JvmStatic private external fun nativeConnections(handle: Long): Int
     @JvmStatic private external fun nativeDestroySender(handle: Long)
 }
 
 /**
- * «Поток» RootEncoder для NDI: камера/экран идут через тот же GL-конвейер (предпросмотр, зум, фокус), а кадры
- * забираются в [ImageReader] и отдаются в NDI. Кодировщики RootEncoder работают вхолостую (их вывод не нужен),
- * сеть — у NDI.
+ * «Поток» RootEncoder для NDI: камера/экран идут через тот же GL-конвейер (предпросмотр, зум, фокус).
+ * После старта кодировщики H.264 и AAC останавливаются: их поверхность снимается, и [ImageReader] становится
+ * единственным выходом GL. Сеть — у NDI. Звук — PCM с микрофона, не AAC.
  */
 internal class NdiStream(
     context: Context,
@@ -119,6 +123,7 @@ internal class NdiStream(
     audioSource: AudioSource,
     private val name: String,
 ) : StreamBase(context, videoSource, audioSource) {
+    private val appTag = "Ndi"
     private val appContext = context.applicationContext
     var sender: Ndi.Sender? = null
         private set
@@ -128,17 +133,21 @@ internal class NdiStream(
     private var width = 0
     private var height = 0
     private var fps = 30
-    private var frame: ByteBuffer? = null
+    private var maxImages = StreamLatency.NDI_IMAGES_DEFAULT
+    private val clock = NdiClock()
+    private var pipelineLoggedNs = 0L
 
-    fun configure(width: Int, height: Int, fps: Int) {
+    fun configure(width: Int, height: Int, fps: Int, lowLatency: Boolean) {
         this.width = width
         this.height = height
         this.fps = fps
+        this.maxImages = StreamLatency.ndiImages(lowLatency)
     }
 
-    /** PCM с микрофона (из [GainMeterEffect]) — в NDI. */
+    /** PCM с микрофона (из [GainMeterEffect]) — в NDI, с таймкодом от первого кадра. */
     fun onPcm(pcm: ByteArray, sampleRate: Int, channels: Int) {
-        sender?.sendAudio(pcm, sampleRate, channels)
+        val tc = clock.onAudio(pcm.size, sampleRate, channels)
+        sender?.sendAudio(pcm, sampleRate, channels, tc)
     }
 
     override fun startStreamImp(endPoint: String) {
@@ -148,48 +157,92 @@ internal class NdiStream(
             acquire()
         }
         check(Ndi.prepare(appContext)) { "camera.err_no_lan" }
+        clock.reset()
+        pipelineLoggedNs = 0L
         sender = Ndi.Sender(name)
     }
 
     /**
-     * Подключить приёмник кадров — после startStream (GL уже работает). Берём второй выход GL («запись»):
-     * основной RootEncoder при старте занимает своим кодировщиком.
+     * Подключить приёмник кадров — после startStream (GL уже работает). Кодировщик H.264 больше не нужен:
+     * снимаем его поверхность и отдаём [ImageReader] единственным выходом GL (один проход, не «кодирование + запись»).
+     * [ImageReader.acquireLatestImage] оставляет только свежий кадр.
      */
     fun attachFrames() {
         if (reader != null) return
-        val t = HandlerThread("ndi-video").apply { start() }
+        releaseEncodedPipeline()
+        val t = HandlerThread("ndi-video").apply {
+            start()
+            priority = Thread.MAX_PRIORITY
+        }
         thread = t
-        val r = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
+        val r = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, maxImages)
+        var urgent = false
         r.setOnImageAvailableListener({ ir ->
+            if (!urgent) {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+                urgent = true
+            }
+            // Старые кадры, которые GL успел положить в очередь, не отправляем.
             val image = runCatching { ir.acquireLatestImage() }.getOrNull() ?: return@setOnImageAvailableListener
             try {
                 val plane = image.planes[0]
-                // Буфер ImageReader (память графического буфера) NDI читает как чёрный кадр — отдаём копию.
-                val src = plane.buffer
-                val copy = frame?.takeIf { it.capacity() >= src.remaining() }
-                    ?: ByteBuffer.allocateDirect(src.remaining()).also { frame = it }
-                copy.clear()
-                copy.put(src)
-                copy.flip()
-                sender?.sendVideo(copy, image.width, image.height, plane.rowStride, fps)
+                if (plane.pixelStride != 4) {
+                    Log.w(appTag, "unexpected pixel stride ${plane.pixelStride}")
+                    return@setOnImageAvailableListener
+                }
+                val tc = clock.onVideo(image.timestamp)
+                // Копию делает native: прямой буфер плоскости NDI читает чёрным.
+                sender?.sendVideo(plane.buffer, image.width, image.height, plane.rowStride, fps, tc)
+                logPipeline(image.timestamp)
             } finally {
                 image.close()
             }
         }, Handler(t.looper))
         reader = r
-        getGlInterface().setEncoderRecordSize(width, height)
-        getGlInterface().addMediaCodecRecordSurface(r.surface)
+        getGlInterface().setEncoderSize(width, height)
+        getGlInterface().addMediaCodecSurface(r.surface)
+    }
+
+    /** Снять H.264/AAC, которые [com.pedro.library.base.StreamBase.startStream] уже запустил. Микрофон остаётся. */
+    private fun releaseEncodedPipeline() {
+        runCatching { getGlInterface().removeMediaCodecSurface() }
+        runCatching { getGlInterface().removeMediaCodecRecordSurface() }
+        // Снятие поверхности ставится в очередь GL. Ждём её, и только потом release поверхности кодека.
+        drainGl()
+        EncoderLatency.stopEncoders(this)
+    }
+
+    /** remove/add поверхности GL выполняются на её потоке и возвращаются сразу. Дождаться очереди. */
+    private fun drainGl() {
+        val exec = runCatching {
+            val field = getGlInterface().javaClass.getDeclaredField("executor")
+            field.isAccessible = true
+            field.get(getGlInterface()) as? java.util.concurrent.ExecutorService
+        }.getOrNull() ?: return
+        val latch = java.util.concurrent.CountDownLatch(1)
+        if (runCatching { exec.submit { latch.countDown() } }.isFailure) return
+        runCatching { latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS) }
+    }
+
+    private fun logPipeline(captureNs: Long) {
+        val us = StreamLatency.captureToSendUs(captureNs, System.nanoTime()) ?: return
+        val now = System.nanoTime()
+        if (now - pipelineLoggedNs < 1_000_000_000L) return
+        pipelineLoggedNs = now
+        Log.i(appTag, "pipeline ${us}us")
     }
 
     override fun stopStreamImp() {
+        runCatching { getGlInterface().removeMediaCodecSurface() }
         runCatching { getGlInterface().removeMediaCodecRecordSurface() }
+        drainGl()
         reader?.close()
         reader = null
         thread?.quitSafely()
         thread = null
-        frame = null
         sender?.close()
         sender = null
+        clock.reset()
         runCatching { multicast?.release() }
         multicast = null
     }

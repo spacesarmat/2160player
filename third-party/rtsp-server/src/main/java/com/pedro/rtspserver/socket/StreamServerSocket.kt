@@ -18,6 +18,12 @@ class StreamServerSocket(
     private var selectorManager: SelectorManager? = null
 
     /**
+     * 2160 Player: SO_SNDBUF принятого сокета, байт. 0 — не менять буфер ОС.
+     * TCP_NODELAY включается всегда (для живого видео Nagle только добавляет задержку).
+     */
+    var sendBufferSize: Int = 0
+
+    /**
      * [address] == null — все интерфейсы, как раньше.
      * Иначе только этот адрес (частный IPv4 или link-local/ULA).
      */
@@ -70,6 +76,7 @@ class StreamServerSocket(
             }
             SocketType.JAVA -> {
                 val socket = javaServer?.accept() ?: throw IllegalStateException("Server not available")
+                tuneAcceptedSocket(socket, sendBufferSize)
                 val hostAddress = socket.inetAddress.hostAddress ?: "0.0.0.0"
                 ClientSocket(
                     host = hostAddress,
@@ -97,4 +104,10 @@ class StreamServerSocket(
             }
         } catch (_: Exception) {}
     }
+}
+
+/** Живой RTSP: без алгоритма Нейгла. [sendBufferSize] > 0 — ещё и меньший буфер отправки. */
+internal fun tuneAcceptedSocket(socket: java.net.Socket, sendBufferSize: Int) {
+    socket.tcpNoDelay = true
+    if (sendBufferSize > 0) socket.sendBufferSize = sendBufferSize
 }

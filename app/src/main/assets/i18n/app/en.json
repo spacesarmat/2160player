@@ -147,6 +147,8 @@
   "update.installing": "Installing…",
   "update.up_to_date": "You have the latest version (%1$s)",
   "update.failed": "Update failed: %1$s",
+  "update.rate_limited": "GitHub is temporarily limiting update checks. Try again in %1$d min",
+  "update.notes_fallback": "Release notes are unavailable right now.",
   "update.close": "Close",
   "app.back_to_exit": "Press Back again to exit",
   "settings.background": "Video in background",

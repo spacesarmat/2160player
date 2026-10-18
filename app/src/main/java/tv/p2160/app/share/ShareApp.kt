@@ -22,7 +22,9 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import tv.p2160.app.BuildConfig
 import tv.p2160.app.handoff.Handoff
+import tv.p2160.app.update.GitHubRateLimit
 import tv.p2160.app.update.Updater
+import tv.p2160.core.i18n.I18n
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -113,7 +115,7 @@ object ShareApp {
         _full.value = FullState.Downloading(0f)
         val part = File(dir.apply { mkdirs() }, target.name + ".part")
         try {
-            val (url, size) = Updater.sharedAsset(BuildConfig.VERSION_NAME)
+            val (url, size) = Updater.sharedAsset(context, BuildConfig.VERSION_NAME)
             val conn = Updater.open(url)
             val total = conn.contentLengthLong.takeIf { it > 0 } ?: size
             conn.inputStream.use { input ->
@@ -143,7 +145,12 @@ object ShareApp {
         } catch (e: Exception) {
             part.delete()
             Log.w("ShareApp", "full package: ${e.message}")
-            _full.value = if (auto) FullState.None else FullState.Failed(e.message ?: e.javaClass.simpleName)
+            val message = if (e is GitHubRateLimit) {
+                I18n.get(context).current.format("update.rate_limited", e.minutes())
+            } else {
+                e.message ?: e.javaClass.simpleName
+            }
+            _full.value = if (auto) FullState.None else FullState.Failed(message)
         }
     }
 

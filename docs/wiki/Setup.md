@@ -57,7 +57,9 @@ adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 
 `-Pp2160.abi=arm` — один APK с `arm64-v8a` и `armeabi-v7a`. Тег релиза — `v<versionName>`.
 `versionCode` каждого релиза больше предыдущего. Автообновление берёт с GitHub Releases APK
-с `-arm-` в имени на ARM, иначе APK под ABI устройства, иначе `universal`.
+с `-arm-` в имени на ARM, иначе APK под ABI устройства, иначе `universal`. Если `api.github.com`
+отвечает 403/429, тег читается из редиректа `releases/latest`, а файл проверяется `HEAD` по
+`releases/download`; повторная проверка шлёт сохранённый `ETag`.
 
 ## Конфигурация
 

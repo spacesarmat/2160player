@@ -380,12 +380,13 @@ fun SettingsScreen(
                 }
             }
             item {
+                val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 val updateState by Updater.state.collectAsStateWithLifecycle()
                 SettingRow(
                     tr("settings.update_check"),
                     value = if (updateState == UpdateState.Checking) tr("settings.update_checking") else Updater.currentVersion,
-                ) { scope.launch { Updater.check() } }
+                ) { scope.launch { Updater.check(context) } }
             }
 
             item { SectionTitle(tr("settings.section_about")) }

@@ -1960,9 +1960,20 @@ RTSP-трансляция камеры, §22.7). Другие
 
 Только для APK из GitHub Releases (не для Google Play):
 
-- запрос `https://api.github.com/repos/spacesarmat/2160player/releases/latest`; версия — `tag_name`
-  без префикса `v` (теги вида `v<versionName>`), сравнивается с `BuildConfig.VERSION_NAME` по числам
-  `1.2.3` (суффиксы `-beta` игнорируются);
+- запрос `https://api.github.com/repos/spacesarmat/2160player/releases/latest` с заголовком
+  `Accept: application/vnd.github+json` и, если проверка уже была, `If-None-Match` сохранённого `ETag`.
+  Ответ `304` квоту не тратит: тело берётся из прошлого JSON (SharedPreferences `p2160_update`, ключи
+  `etag_latest` / `body_latest`). Версия — `tag_name` без префикса `v` (теги вида `v<versionName>`),
+  сравнивается с `BuildConfig.VERSION_NAME` по числам `1.2.3` (суффиксы `-beta` игнорируются);
+- если API отвечает `403` или `429` (квота 60 запросов в час на IP: `X-RateLimit-Remaining: 0` или
+  `Retry-After`), код наружу не показывается. Запасной путь не входит в эту квоту: `GET
+  https://github.com/spacesarmat/2160player/releases/latest` с `instanceFollowRedirects = false`, тег
+  из заголовка `Location` (`…/releases/tag/vX.Y.Z`). Ссылка на APK собирается как
+  `https://github.com/spacesarmat/2160player/releases/download/vX.Y.Z/2160player-X.Y.Z-<arm|abi|universal>-release.apk`
+  в том же порядке, что и выбор ассета ниже, и проверяется `HEAD` (берётся первый ответ 2xx). Текст
+  релиза в этом случае короткий. Если запасной путь тоже не удался — «GitHub временно ограничил
+  проверки обновлений, попробуйте через N мин»: N из `X-RateLimit-Reset` (иначе из `Retry-After`,
+  иначе час);
 - из ассетов `*.apk` выбирается первый, чьё имя содержит `-<abi>-` для ABI из `Build.SUPPORTED_ABIS`
   (по порядку), иначе содержащий `universal`;
 - APK скачивается в `cacheDir/update` и ставится через `PackageInstaller` (сессия `MODE_FULL_INSTALL`,
@@ -2052,7 +2063,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 |---|---|
 | Где | `filesDir/share-apk/2160player-<версия>-arm.apk` — одна копия; отдаётся в FileProvider как `files-path share-apk/`. |
 | Когда качается | При запуске (`ShareApp.prepareFull(context, auto = true)`) — только по безлимитной сети, тихо; или кнопкой «Скачать пакет для всех устройств» в диалоге (`auto = false`, ошибка показывается). |
-| Откуда | Релиз `v<VERSION_NAME>` (`GET /repos/<repo>/releases/tags/v…`, `Updater.sharedAsset`): ассет `-arm-`, иначе `universal`. Скачивается во временный `.part`, проверяется `getPackageArchiveInfo` (пакет `tv.p2160.player` и та же версия), затем переименовывается. |
+| Откуда | Релиз `v<VERSION_NAME>` (`GET /repos/<repo>/releases/tags/v…`, `Updater.sharedAsset`, с `ETag` как у проверки обновления): ассет `-arm-`, иначе `universal`. При `403`/`429` API — те же прямые ссылки `releases/download` и `HEAD`, без кода ошибки. Скачивается во временный `.part`, проверяется `getPackageArchiveInfo` (пакет `tv.p2160.player` и та же версия), затем переименовывается. |
 | Очистка | При каждом запуске удаляется всё, кроме пакета текущей версии; после перехода на общий ARM-APK папка очищается целиком. `Updater.cleanup` при запуске удаляет и скачанный APK обновления из `cacheDir/update`. |
 | Использование | `ShareApp.sharedApk(context)` — полный пакет, если он нужен и скачан, иначе установленный APK: его отдают «Отправить файл» и `GET /app/…`. |
 

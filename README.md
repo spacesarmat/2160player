@@ -37,7 +37,7 @@ Jetpack Compose. Играет почти всё — от IPTV-потоков д�
 - **Продолжить на другом устройстве:** передача просмотра между телефоном и ТВ в одной сети Wi-Fi с той же позиции; на исходном устройстве — пауза. Если в сети несколько плееров — защита: новое устройство подключается один раз — кнопкой «Разрешить» в уведомлении или по коду (на сутки или свой, новый свой — от 6 цифр). На ТВ по умолчанию выбрано «Отклонить», код показан для сверки.
 - **Фоновое воспроизведение:** уведомление с управлением, экран блокировки, гарнитура и Bluetooth; что делать при сворачивании — настраивается: картинка в картинке, звук видео в фоне, музыка в фоне или пауза.
 - **Dolby Vision** на устройствах без декодера (профиль 7 из UHD-ремуксов) играет базовым слоем HDR10, а не теряет картинку.
-- **Автообновление** из GitHub Releases: проверка при запуске (можно выключить в настройках), загрузка APK под архитектуру устройства, установка в пару нажатий.
+- **Автообновление** из GitHub Releases: проверка при запуске (можно выключить в настройках), загрузка APK под архитектуру устройства, установка в пару нажатий. Если GitHub ограничивает запросы к API, проверка читает тег со страницы релиза и пишет, через сколько минут повторить.
 - **6 тем** оформления, **локализация** JSON-пакетами (ru, en) с импортом пользовательских переводов.
 
 ## Установка
@@ -203,7 +203,7 @@ decoders and a Jetpack Compose UI. It plays local files (with a built-in file br
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
 intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
-themes, JSON language packs and self-updates from GitHub Releases. It can also stream the phone camera or screen
+themes, JSON language packs and self-updates from GitHub Releases (if the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry). It can also stream the phone camera or screen
 (RTSP server, SRT to OBS, NDI®, RTMP to YouTube/Twitch; LAN/Wi-Fi only, never mobile data; optional Lowest latency shortens send queues) with a per-session RTSP password that is not the pairing PIN, shows cameras of other 2160 Players on the
 LAN, plays live RTSP/UDP with low latency, and has torrent seeding rules, a memory-sized buffer, audio offload,
 display frame-rate matching and a stats overlay.

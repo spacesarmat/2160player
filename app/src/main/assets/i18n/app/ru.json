@@ -147,6 +147,8 @@
   "update.installing": "Установка…",
   "update.up_to_date": "У вас последняя версия (%1$s)",
   "update.failed": "Не удалось обновить: %1$s",
+  "update.rate_limited": "GitHub временно ограничил проверки обновлений, попробуйте через %1$d мин",
+  "update.notes_fallback": "Текст релиза сейчас недоступен.",
   "update.close": "Закрыть",
   "app.back_to_exit": "Нажмите «Назад» ещё раз, чтобы выйти",
   "settings.background": "Видео в фоне",

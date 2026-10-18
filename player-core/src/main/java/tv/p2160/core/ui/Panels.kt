@@ -187,14 +187,16 @@ fun SidePanel(
             resetPanelScroll(revealNow.lazy, listState, scrollState)
         }
     }
+    // Фокус и доступность снаружи graphicsLayer: смена open не перезаписывает слой панели.
     Box(
-        modifier
+        Modifier
             .focusGroup()
             .focusProperties {
                 canFocus = open
                 onEnter = { if (!open) cancelFocusChange() }
             }
-            .semantics { if (!open) hideFromAccessibility() },
+            .semantics { if (!open) hideFromAccessibility() }
+            .then(modifier),
     ) {
         PanelBody(
             panel = panel,

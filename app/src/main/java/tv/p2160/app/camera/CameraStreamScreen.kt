@@ -24,9 +24,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -36,8 +38,12 @@ import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,12 +56,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import tv.p2160.app.FocusCard
@@ -245,20 +254,12 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 }
             }
             item(key = "latency") {
-                FocusCard(
-                    onClick = { CameraStream.update(context) { it.copy(lowLatency = !it.lowLatency) } },
-                    modifier = Modifier.fillMaxWidth(),
+                SwitchLine(
+                    title = tr("camera.low_latency"),
+                    hint = tr("camera.low_latency_hint"),
                     checked = config.lowLatency,
-                    mergeDescendants = true,
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("camera.low_latency"), color = colors.onSurface)
-                            Text(tr("camera.low_latency_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(tr(if (config.lowLatency) "torrent.on" else "torrent.off"), color = colors.primary)
-                    }
-                }
+                    onClick = { CameraStream.update(context) { it.copy(lowLatency = !it.lowLatency) } },
+                )
             }
             item(key = "q-title") { SectionTitle(tr("camera.quality")) }
             item(key = "quality") {
@@ -272,35 +273,20 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 }
             }
             if (!screen && currentCam?.hasFlash == true) item(key = "torch") {
-                FocusCard(
-                    onClick = { CameraStream.setTorch(!torch) },
-                    modifier = Modifier.fillMaxWidth(),
+                SwitchLine(
+                    title = tr("camera.torch"),
                     checked = torch,
-                    mergeDescendants = true,
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (torch) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, null, tint = colors.primary)
-                        Spacer(Modifier.size(12.dp))
-                        Text(tr("camera.torch"), color = colors.onSurface, modifier = Modifier.weight(1f))
-                        Text(tr(if (torch) "torrent.on" else "torrent.off"), color = colors.primary)
-                    }
-                }
+                    leading = if (torch) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
+                    onClick = { CameraStream.setTorch(!torch) },
+                )
             }
             item(key = "audio") {
-                FocusCard(
-                    onClick = { if (streaming == null) CameraStream.update(context) { it.copy(audio = !it.audio) } },
-                    modifier = Modifier.fillMaxWidth(),
+                SwitchLine(
+                    title = tr("camera.audio"),
+                    hint = tr("camera.audio_hint"),
                     checked = config.audio,
-                    mergeDescendants = true,
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("camera.audio"), color = colors.onSurface)
-                            Text(tr("camera.audio_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(tr(if (config.audio) "torrent.on" else "torrent.off"), color = colors.primary)
-                    }
-                }
+                    onClick = { if (streaming == null) CameraStream.update(context) { it.copy(audio = !it.audio) } },
+                )
             }
             // Звук экрана: микрофон, звук телефона или оба (звук телефона — Android 10+).
             if (screen && config.audio && android.os.Build.VERSION.SDK_INT >= 29) item(key = "screen-audio") {
@@ -372,7 +358,7 @@ private fun ZoomAndFocus() {
         Icon(Icons.Default.ZoomIn, null, tint = colors.primary)
         Spacer(Modifier.size(8.dp))
         if (range.endInclusive > range.start) {
-            androidx.compose.material3.Slider(
+            PlainSlider(
                 value = zoom.coerceIn(range.start, range.endInclusive),
                 onValueChange = CameraStream::setZoom,
                 valueRange = range,
@@ -382,7 +368,7 @@ private fun ZoomAndFocus() {
             Text(tr("camera.zoom_none"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.size(8.dp))
-        Text("${UiFormat.zoom(zoom)}×", color = colors.onSurface, fontFamily = FontFamily.Monospace)
+        MeterReadout("${UiFormat.zoom(zoom)}×", colors.onSurface)
         Spacer(Modifier.size(8.dp))
         FocusCard(onClick = CameraStream::autoFocus, background = colors.surfaceVariant) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -414,14 +400,14 @@ private fun MicControls(config: CameraStreamConfig, streaming: Boolean) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("camera.mic_gain"), color = colors.onSurface)
             Spacer(Modifier.size(12.dp))
-            androidx.compose.material3.Slider(
+            PlainSlider(
                 value = config.micGain,
                 onValueChange = { v -> CameraStream.update(context) { it.copy(micGain = (v * 10).toInt() / 10f) } },
                 valueRange = 0.5f..4f,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(8.dp))
-            Text("${UiFormat.zoom(config.micGain)}×", color = colors.onSurface, fontFamily = FontFamily.Monospace)
+            MeterReadout("${UiFormat.zoom(config.micGain)}×", colors.onSurface)
         }
         if (streaming) {
             androidx.compose.material3.LinearProgressIndicator(
@@ -591,4 +577,93 @@ private fun LiveBadge() {
     ) {
         Text(tr("camera.live"), color = Color.White, style = MaterialTheme.typography.labelMedium)
     }
+}
+
+/** Строка-переключатель: виджет Switch, как в настройках. Нажатие — на всей строке. */
+@Composable
+private fun SwitchLine(
+    title: String,
+    checked: Boolean,
+    onClick: () -> Unit,
+    hint: String? = null,
+    leading: ImageVector? = null,
+) {
+    val colors = MaterialTheme.colorScheme
+    FocusCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        checked = checked,
+        mergeDescendants = true,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leading != null) {
+                Icon(leading, null, tint = colors.primary)
+                Spacer(Modifier.size(12.dp))
+            }
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(title, color = colors.onSurface)
+                if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                modifier = Modifier.focusProperties { canFocus = false },
+            )
+        }
+    }
+}
+
+/**
+ * Обычный ползунок: круглый бегунок и дорожка без точки на конце.
+ * Штатный Slider Material 3 рисует высокий бегунок и точку конца шкалы — на зуме 1×
+ * бегунок оказывается слева, а точка справа, и положение не читается.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlainSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = true,
+        valueRange = valueRange,
+        interactionSource = interaction,
+        thumb = {
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+            )
+        },
+        track = { state ->
+            SliderDefaults.Track(
+                sliderState = state,
+                thumbTrackGapSize = 0.dp,
+                drawStopIndicator = null,
+            )
+        },
+    )
+}
+
+/** «1,0×» без разрядки: моноширинный шрифт и letterSpacing bodyLarge растягивали запятую. */
+@Composable
+private fun MeterReadout(text: String, color: Color) {
+    Text(
+        text,
+        color = color,
+        maxLines = 1,
+        style = MaterialTheme.typography.titleMedium.copy(
+            letterSpacing = 0.sp,
+            fontFeatureSettings = "tnum",
+        ),
+    )
 }

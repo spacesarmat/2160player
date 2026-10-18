@@ -53,3 +53,6 @@ fun sidePanelWidthDp(availableDp: Float): Float {
  * кадр на каждом кадре анимации (0.2.10).
  */
 fun sidePanelTopClearanceDp(narrow: Boolean): Float = if (narrow) 112f else 64f
+
+/** Зазор между временем у полосы перемотки и краем открытой панели, dp. */
+const val sidePanelTransportGapDp = 12f

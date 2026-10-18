@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -520,13 +521,17 @@ private fun ToggleRow(title: String, hint: String?, checked: Boolean, onToggle: 
         checked = checked,
         mergeDescendants = true,
     ) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             // Переключатель только показывает состояние: нажатие обрабатывает вся строка (удобно с пульта).
-            Switch(checked = checked, onCheckedChange = null)
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                modifier = Modifier.focusProperties { canFocus = false },
+            )
         }
     }
 }

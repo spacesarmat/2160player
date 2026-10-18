@@ -708,7 +708,8 @@ private fun Controls(
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
                 ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
                 ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
-                ControlButton(Icons.Default.AspectRatio, tr("player.video"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
+                // Открывает панель масштаба и качества. Сама кнопка картинку не переключает — это щипок.
+                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
@@ -734,7 +735,8 @@ private fun Controls(
             // Сдвиг полосы — один padding при открытии и закрытии, без анимации ширины:
             // анимированный padding заново измерял бы полосу, кнопки и SurfaceView каждый кадр.
             val panelReserve = if (panelOpen) {
-                sidePanelWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()).dp
+                sidePanelWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()).dp +
+                    sidePanelTransportGapDp.dp
             } else {
                 0.dp
             }
@@ -958,33 +960,40 @@ private fun VideoSurface(
             // отсоединение view при выходе снимает его само.
             view.keepScreenOn = keepScreenOn
             if (view.player !== controller.player) view.player = controller.player
-            view.resizeMode = when (resizeMode) {
+            val mode = when (resizeMode) {
                 ResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                 ResizeMode.FIT_WIDTH -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
                 ResizeMode.FIT_HEIGHT -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
                 ResizeMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 ResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             }
-            view.subtitleView?.apply {
-                setStyle(
-                    CaptionStyleCompat(
-                        Color(style.textColor).toArgb(),
-                        Color(style.backgroundColor).toArgb(),
-                        AndroidColor.TRANSPARENT,
-                        when (style.edge) {
-                            SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
-                            SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
-                            SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-                        },
-                        AndroidColor.BLACK,
-                        null,
+            if (view.resizeMode != mode) view.resizeMode = mode
+            // PlayerController нестабилен, поэтому открытие панели пересобирает этот AndroidView.
+            // setStyle заново верстает субтитры — не делать этого, если стиль и панель кнопок те же.
+            val subKey = AppliedSubtitles(style, controlsVisible)
+            if (view.getTag(TAG_SUBS) != subKey) {
+                view.setTag(TAG_SUBS, subKey)
+                view.subtitleView?.apply {
+                    setStyle(
+                        CaptionStyleCompat(
+                            Color(style.textColor).toArgb(),
+                            Color(style.backgroundColor).toArgb(),
+                            AndroidColor.TRANSPARENT,
+                            when (style.edge) {
+                                SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
+                                SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                                SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                            },
+                            AndroidColor.BLACK,
+                            null,
+                        )
                     )
-                )
-                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale)
-                setApplyEmbeddedStyles(!style.overrideEmbeddedStyles)
-                setApplyEmbeddedFontSizes(!style.overrideEmbeddedStyles)
-                // Поднимаем субтитры, когда видна панель управления, чтобы она их не закрывала.
-                setBottomPaddingFraction(if (controlsVisible) style.bottomPadding + 0.2f else style.bottomPadding)
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale)
+                    setApplyEmbeddedStyles(!style.overrideEmbeddedStyles)
+                    setApplyEmbeddedFontSizes(!style.overrideEmbeddedStyles)
+                    // Поднимаем субтитры, когда видна панель управления, чтобы она их не закрывала.
+                    setBottomPaddingFraction(if (controlsVisible) style.bottomPadding + 0.2f else style.bottomPadding)
+                }
             }
         },
         onRelease = { view -> view.keepScreenOn = false },
@@ -992,6 +1001,13 @@ private fun VideoSurface(
 }
 
 private const val NEXT_COUNTDOWN_SEC = 10
+
+/** Стиль субтитров, уже применённый к [androidx.media3.ui.PlayerView]. Не путать с tag самого view. */
+private data class AppliedSubtitles(val style: SubtitleStyle, val controlsVisible: Boolean)
+
+private const val TAG_SUBS = 0x2160_0001
+private const val TAG_SEC_STYLE = 0x2160_0002
+private const val TAG_SEC_CUES = 0x2160_0003
 
 private fun digitOf(key: Key): Char? = when (key) {
     Key.Zero, Key.NumPad0 -> '0'
@@ -1022,28 +1038,34 @@ private fun SecondarySubtitleLayer(controller: PlayerController, style: Subtitle
         modifier = Modifier.fillMaxSize(),
         factory = { ctx -> SubtitleView(ctx) },
         update = { view ->
-            view.setStyle(
-                CaptionStyleCompat(
-                    Color(style.textColor).toArgb(),
-                    Color(style.backgroundColor).toArgb(),
-                    AndroidColor.TRANSPARENT,
-                    when (style.edge) {
-                        SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
-                        SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
-                        SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-                    },
-                    AndroidColor.BLACK,
-                    null,
+            if (view.getTag(TAG_SEC_STYLE) != style) {
+                view.setTag(TAG_SEC_STYLE, style)
+                view.setStyle(
+                    CaptionStyleCompat(
+                        Color(style.textColor).toArgb(),
+                        Color(style.backgroundColor).toArgb(),
+                        AndroidColor.TRANSPARENT,
+                        when (style.edge) {
+                            SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
+                            SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                            SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                        },
+                        AndroidColor.BLACK,
+                        null,
+                    )
                 )
-            )
-            view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
-            view.setApplyEmbeddedStyles(false)
-            // Текстовые реплики поднимаем наверх; картинки (PGS) оставляем на их месте.
-            view.setCues(cues.map { cue ->
-                if (cue.bitmap != null) cue
-                else cue.buildUpon().setLine(0.04f, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
-                    .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_START).build()
-            })
+                view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
+                view.setApplyEmbeddedStyles(false)
+            }
+            // Реплики те же — не перекладывать слой из-за открытия панели.
+            if (view.getTag(TAG_SEC_CUES) !== cues) {
+                view.setTag(TAG_SEC_CUES, cues)
+                view.setCues(cues.map { cue ->
+                    if (cue.bitmap != null) cue
+                    else cue.buildUpon().setLine(0.04f, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
+                        .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_START).build()
+                })
+            }
         },
     )
 }

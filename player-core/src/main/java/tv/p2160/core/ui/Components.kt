@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -282,15 +283,18 @@ fun PanelRow(
             .then(choice)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (leading != null) {
                 Icon(leading, null, tint = colors.onSurface, modifier = Modifier.size(20.dp))
                 androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
             }
-            androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(end = if (switched) 12.dp else 0.dp)) {
                 androidx.compose.material3.Text(
                     text,
-                    color = if (selected) colors.primary else colors.onSurface,
+                    color = if (selected && !switched) colors.primary else colors.onSurface,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 if (secondary != null) {
@@ -301,7 +305,14 @@ fun PanelRow(
                     )
                 }
             }
-            if (selected) {
+            if (switched) {
+                // Индикатор, как в настройках: нажатие обрабатывает вся строка (удобно с пульта).
+                androidx.compose.material3.Switch(
+                    checked = on,
+                    onCheckedChange = null,
+                    modifier = Modifier.focusProperties { canFocus = false },
+                )
+            } else if (selected) {
                 Icon(
                     androidx.compose.material.icons.Icons.Default.Check, null,
                     tint = colors.primary, modifier = Modifier.size(20.dp),

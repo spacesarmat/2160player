@@ -28,6 +28,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -46,7 +47,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,8 +62,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.text.style.Hyphens
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
@@ -77,7 +77,6 @@ import androidx.compose.material.icons.filled.LastPage
 import androidx.compose.material.icons.filled.Flag
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.engine.TrackOption
-import kotlinx.coroutines.flow.first
 import tv.p2160.core.settings.ResizeMode
 import tv.p2160.core.settings.Settings
 
@@ -135,20 +134,26 @@ class PanelActions(
 
 /**
  * Сигнал «панель открыли». [PanelBody] на это не пересобирается:
- * открытие не входит в параметры строк, только в прокрутку и фокус, и только если позиция не та.
+ * открытие не входит в параметры строк. [prepare] не возвращается, пока список
+ * не стоит вверху и этот кадр не нарисован — иначе выезд показывает чужую прокрутку.
  */
 class PanelOpenSignal {
-    private val events = MutableSharedFlow<Unit>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    private val requests = Channel<CompletableDeferred<Unit>>(Channel.BUFFERED)
 
-    fun request() {
-        events.tryEmit(Unit)
+    suspend fun prepare() {
+        val done = CompletableDeferred<Unit>()
+        requests.send(done)
+        done.await()
     }
 
     suspend fun collect(block: suspend () -> Unit) {
-        events.collect { block() }
+        for (done in requests) {
+            try {
+                block()
+            } finally {
+                if (!done.isCompleted) done.complete(Unit)
+            }
+        }
     }
 }
 
@@ -177,13 +182,13 @@ fun SidePanel(
     val revealPlace = remember { intArrayOf(0, 0) }
     val revealNow = remember { PanelRevealNow(reveal, false) }
     revealNow.index = reveal
-    // Не LaunchedEffect(panel, active): тот на каждое открытие заново крутил список и фокус
-    // и инвалидировал сохранённый состав. Здесь — только если прокрутка не совпала с целью.
+    // Собранная заранее панель помнит прошлую прокрутку. Перед выездом возвращаем
+    // её наверх, пока слой ещё за краем: переключатели и «Точно» видны.
     LaunchedEffect(openSignal) {
         openSignal.collect {
-            val moved = alignPanelToReveal(revealNow, listState, scrollState, revealPlace, bring)
-            if (moved) withFrameNanos { }
-            runCatching { focus.requestFocus() }
+            resetPanelScroll(revealNow.lazy, listState, scrollState)
+            withFrameNanos { }
+            withFrameNanos { }
         }
     }
     Box(
@@ -255,11 +260,15 @@ private fun PanelBody(
             )
             HorizontalDivider(color = colors.outlineVariant)
         }
-        val listMod = Modifier.weight(1f).fillMaxWidth().padding(bottom = listBottom).clipToBounds()
+        val listMod = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .padding(bottom = listBottom)
+            .clipToBounds()
         if (lazy) {
             LazyColumn(
                 state = listState,
-                modifier = listMod,
+                modifier = listMod.testTag("panel-scroll"),
                 contentPadding = PaddingValues(top = 4.dp),
             ) {
                 slots.list.forEach { slot ->
@@ -268,7 +277,9 @@ private fun PanelBody(
             }
         } else {
             CompositionLocalProvider(LocalBringIntoViewSpec provides panelBringIntoViewSpec) {
-                Column(listMod.verticalScroll(scrollState).padding(top = 4.dp)) {
+                // Метка на узле прокрутки, без layout-модификатора снаружи: иначе семантика сдвига на другом узле.
+                Column(listMod.verticalScroll(scrollState).testTag("panel-scroll")) {
+                    Spacer(Modifier.size(width = 0.dp, height = 4.dp))
                     for (index in slots.list.indices) {
                         val slot = slots.list[index]
                         key(slot.key) {
@@ -671,9 +682,8 @@ internal fun transportEndInsetDp(open: Boolean, screenWidthDp: Float): Float =
     if (panelReservesSpace(open)) sidePanelWidthDp(screenWidthDp) + sidePanelTransportGapDp else 0f
 
 /**
- * Прокрутка при открытии, в пикселях от верха содержимого.
- * Строка, которая влезает в первый экран, оставляет список наверху.
- * Иначе сдвиг минимальный: низ строки у нижнего края окна.
+ * Минимальный сдвиг, чтобы низ строки сел у нижнего края окна.
+ * Открытие панели это не вызывает: список всегда с нуля, иначе прячутся переключатели сверху.
  */
 internal fun scrollOffsetToReveal(itemOffset: Int, itemSize: Int, viewport: Int): Int {
     if (itemSize <= 0 || viewport <= 0 || itemOffset <= 0) return 0
@@ -683,71 +693,15 @@ internal fun scrollOffsetToReveal(itemOffset: Int, itemSize: Int, viewport: Int)
     return itemEnd - viewport
 }
 
-/** @return true, если список реально сдвинулся. */
-private suspend fun alignPanelToReveal(
-    revealNow: PanelRevealNow,
-    listState: LazyListState,
-    scrollState: ScrollState,
-    revealPlace: IntArray,
-    bring: BringIntoViewRequester,
-): Boolean {
-    val index = revealNow.index
-    if (revealNow.lazy) {
-        if (listState.layoutInfo.totalItemsCount == 0) {
-            snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+/** Перед выездом список в нуле. Не крутить к выбранной строке: у звука это прячет переключатели. */
+private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, scrollState: ScrollState) {
+    if (lazy) {
+        if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
+            listState.scrollToItem(0)
         }
-        val count = listState.layoutInfo.totalItemsCount
-        if (index == null || index <= 0 || index >= count) {
-            return scrollLazyToTop(listState)
-        }
-        val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
-        if (!atTop) listState.scrollToItem(0)
-        val info = listState.layoutInfo
-        val visible = info.visibleItemsInfo.find { it.index == index }
-        val fits = visible != null &&
-            revealDelta(visible.offset, visible.size, info.viewportStartOffset, info.viewportEndOffset) == 0
-        if (fits) return !atTop
-        revealItemMinimally(listState, index)
-        return true
+    } else if (scrollState.value != 0) {
+        scrollState.scrollTo(0)
     }
-    if ((revealPlace[1] <= 0 || scrollState.viewportSize <= 0) && index != null && index > 0) {
-        withFrameNanos { }
-    }
-    val target = if (index == null || index <= 0) {
-        0
-    } else {
-        scrollOffsetToReveal(revealPlace[0], revealPlace[1], scrollState.viewportSize)
-    }
-    if (revealPlace[1] <= 0 && index != null && index > 0) {
-        runCatching { bring.bringIntoView() }
-        return true
-    }
-    if (scrollState.value == target) return false
-    scrollState.scrollTo(target)
-    return true
-}
-
-private suspend fun scrollLazyToTop(listState: LazyListState): Boolean {
-    if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) return false
-    listState.scrollToItem(0)
-    return true
-}
-
-private suspend fun revealItemMinimally(listState: LazyListState, index: Int) {
-    val before = listState.layoutInfo
-    val visible = before.visibleItemsInfo.find { it.index == index }
-    if (visible != null) {
-        val delta = revealDelta(visible.offset, visible.size, before.viewportStartOffset, before.viewportEndOffset)
-        if (delta != 0) listState.scroll { scrollBy(delta.toFloat()) }
-        return
-    }
-    val below = index > (before.visibleItemsInfo.lastOrNull()?.index ?: -1)
-    listState.scrollToItem(index)
-    if (!below) return
-    val info = listState.layoutInfo
-    val placed = info.visibleItemsInfo.find { it.index == index } ?: return
-    val back = revealPullBack(placed.offset, placed.size, info.viewportStartOffset, info.viewportEndOffset)
-    if (back > 0) listState.scroll { scrollBy(-back.toFloat()) }
 }
 
 /** До скольких строк панель — обычная колонка, а не LazyColumn. */
@@ -773,8 +727,8 @@ private val panelBringIntoViewSpec = object : BringIntoViewSpec {
 }
 
 /**
- * Строка, которую надо показать при открытии панели. Индекс совпадает с порядком `item` в [SidePanel].
- * null — выбранное и так в начале списка.
+ * Индекс выбранной строки в порядке `item` панели. Открытие к ней не прокручивает.
+ * null — выбранного нет или оно и так первое.
  */
 internal fun panelRevealIndex(panel: Panel, state: PlayerUiState, settings: Settings, resizeMode: ResizeMode): Int? =
     when (panel) {

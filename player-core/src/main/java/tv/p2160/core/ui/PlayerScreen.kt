@@ -843,9 +843,13 @@ private fun BoxScope.ParkedPanel(
     // 0 — открыта, 1 — за правым краем. value в композиции не читается: это был бы кадр анимации.
     val slide = remember { Animatable(1f) }
     val openSignal = remember { PanelOpenSignal() }
+    // Читается только в слое: после раскладки списка заставляем записать его до выезда.
+    val layerEpoch = remember { mutableIntStateOf(0) }
     LaunchedEffect(open) {
         if (open) {
-            openSignal.request()
+            openSignal.prepare()
+            layerEpoch.intValue++
+            withFrameNanos { }
             slide.animateTo(0f, tween(200))
         } else if (slide.value != 1f) {
             slide.animateTo(1f, tween(200))
@@ -867,6 +871,10 @@ private fun BoxScope.ParkedPanel(
             clip = true
             shape = panelShape
             compositingStrategy = CompositingStrategy.Auto
+            // Не пиксель: после prepare список уже разложен, и слой перезаписывается до выезда.
+            // Иначе первый кадр скорости — пустая полоса под заголовком.
+            val epoch = layerEpoch.intValue
+            if (epoch < 0) alpha = 1f
         }
     }
     Box(Modifier.align(Alignment.TopEnd).zIndex(if (open) 1f else 0f)) {

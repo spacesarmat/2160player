@@ -90,6 +90,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.PlayerController
 import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.engine.TimeInput
@@ -907,7 +908,8 @@ private fun Modifier.parkedChrome(): Modifier = this
         layout(0, 0) {}
     }
 
-/** Полоса и время. Позицию читает только пока кнопки видны: скрытые не подписываются на тик. */
+/** Полоса и время. Один вызов [TransportReadout]: показ и скрытие не пересоздают полосу.
+ *  Тик пишется в состояние, только пока кнопки видны; скрытые держат последнее значение. */
 @Composable
 private fun PlaybackTransport(
     controller: PlayerController,
@@ -920,40 +922,25 @@ private fun PlaybackTransport(
     onGoTo: () -> Unit,
     followPosition: Boolean,
 ) {
-    val cache = remember { ProgressCache() }
-    if (followPosition) {
-        FollowingTransport(controller, cache, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
-    } else {
-        TransportReadout(cache.positionMs, cache.bufferedMs, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+    val cache = remember { mutableStateOf(readTransportProgress(controller)) }
+    val follow = remember { FollowFlag(followPosition) }
+    follow.on = followPosition
+    LaunchedEffect(controller) {
+        controller.state.collect { snapshot ->
+            if (!follow.on) return@collect
+            val next = snapshot.positionMs to snapshot.bufferedMs
+            if (cache.value != next) cache.value = next
+        }
     }
-}
-
-/** Последняя показанная позиция. Не State: пока кнопки скрыты, запись сюда никого не пересобирает. */
-private class ProgressCache {
-    var positionMs: Long = 0L
-    var bufferedMs: Long = 0L
-}
-
-@Composable
-private fun FollowingTransport(
-    controller: PlayerController,
-    cache: ProgressCache,
-    state: tv.p2160.core.engine.PlayerUiState,
-    theme: PlayerTheme,
-    stepMs: Long,
-    onSeek: (Long) -> Unit,
-    onInteraction: () -> Unit,
-    onScrub: (Long?) -> Unit,
-    onGoTo: () -> Unit,
-) {
-    val live = controller.state.collectAsStateWithLifecycle()
-    val progress by remember {
-        derivedStateOf(structuralEqualityPolicy()) { live.value.positionMs to live.value.bufferedMs }
-    }
-    val (positionMs, bufferedMs) = progress
-    cache.positionMs = positionMs
-    cache.bufferedMs = bufferedMs
+    val (positionMs, bufferedMs) = cache.value
     TransportReadout(positionMs, bufferedMs, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+}
+
+private class FollowFlag(var on: Boolean)
+
+private fun readTransportProgress(controller: PlayerController): Pair<Long, Long> {
+    val snapshot = controller.state.value
+    return snapshot.positionMs to snapshot.bufferedMs
 }
 
 @Composable

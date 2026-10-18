@@ -418,9 +418,24 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        Text(
+            label,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+            modifier = Modifier.widthIn(min = 64.dp).padding(start = 8.dp),
+        )
         ControlButton(Icons.Default.Remove, tr("panel.less"), onMinus, size = 40.dp, tint = colors.onSurface)
-        Text(value, color = colors.onSurface, style = MaterialTheme.typography.titleMedium, modifier = Modifier.widthIn(min = 72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(
+            value,
+            color = colors.onSurface,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.weight(1f).widthIn(min = 48.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
         ControlButton(Icons.Default.Add, tr("panel.more"), onPlus, size = 40.dp, tint = colors.onSurface)
         ControlButton(Icons.Default.Restore, tr("panel.reset"), onReset, size = 40.dp, tint = colors.onSurfaceVariant)
         Spacer(Modifier.size(4.dp))

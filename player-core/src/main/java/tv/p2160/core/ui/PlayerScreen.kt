@@ -47,11 +47,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,8 +73,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
@@ -110,15 +110,15 @@ fun PlayerScreen(
     onPickSubtitle: () -> Unit,
     inPictureInPicture: Boolean = false,
 ) {
-    // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель и остальной экран
-    // их не читают: иначе открытое меню пересобиралось два раза в секунду поверх SurfaceView.
-    val state by remember(controller) {
-        controller.state
-            .map { it.copy(positionMs = 0L, bufferedMs = 0L, sleepRemainingMs = null) }
-            .distinctUntilChanged()
-    }.collectAsStateWithLifecycle(
-        controller.state.value.copy(positionMs = 0L, bufferedMs = 0L, sleepRemainingMs = null),
-    )
+    // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель читает снимок без них.
+    // У derivedStateOf без политики любое новое значение — изменение, поэтому сравнение по полям
+    // (structuralEqualityPolicy): пока равны остальные, экран не пересобирается. Иначе меню дёргалось два раза в секунду.
+    val upstream = controller.state.collectAsStateWithLifecycle()
+    val state by remember {
+        derivedStateOf(structuralEqualityPolicy()) {
+            upstream.value.copy(positionMs = 0L, bufferedMs = 0L, sleepRemainingMs = null)
+        }
+    }
     val settings by settingsStore.state.collectAsStateWithLifecycle()
     val strings by I18n.get(LocalContext.current).strings.collectAsStateWithLifecycle()
     val theme = PlayerThemes.byId(settings.themeId)
@@ -247,11 +247,12 @@ fun PlayerScreen(
     }
 
     // «Почти конец» меняется один раз за ролик, а не на каждом тике позиции.
-    val nearEnd by remember(controller) {
-        controller.state.map { s ->
+    val nearEnd by remember {
+        derivedStateOf(structuralEqualityPolicy()) {
+            val s = upstream.value
             !s.isLive && !s.liveTv && s.hasNext && s.durationMs > 60_000L && s.durationMs - s.positionMs in 1L..15_000L
-        }.distinctUntilChanged()
-    }.collectAsStateWithLifecycle(false)
+        }
+    }
     val creditsWithNext = !state.liveTv && state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
     val showNextCard = creditsWithNext && nextDismissedFor != state.playlistIndex && !inPictureInPicture && settings.autoPlayNext
     val skippable = state.activeSegment?.takeIf { !creditsWithNext }
@@ -748,9 +749,10 @@ private fun PlaybackTransport(
     onScrub: (Long?) -> Unit,
     onGoTo: () -> Unit,
 ) {
-    val progress by remember(controller) {
-        controller.state.map { it.positionMs to it.bufferedMs }.distinctUntilChanged()
-    }.collectAsStateWithLifecycle(controller.state.value.positionMs to controller.state.value.bufferedMs)
+    val live = controller.state.collectAsStateWithLifecycle()
+    val progress by remember {
+        derivedStateOf(structuralEqualityPolicy()) { live.value.positionMs to live.value.bufferedMs }
+    }
     val (positionMs, bufferedMs) = progress
     val chapterMarks = remember(state.chapters) { state.chapters.map { it.startMs } }
     if (!state.isLive || (!state.liveTv && state.durationMs > 0)) {
@@ -803,9 +805,10 @@ private fun PlaybackTransport(
 /** Подпись таймера сна. Остаток меняется раз в секунду и не должен пересобирать меню. */
 @Composable
 private fun SleepClock(controller: PlayerController, theme: PlayerTheme, modifier: Modifier = Modifier) {
-    val sleep by remember(controller) {
-        controller.state.map { it.sleepRemainingMs to it.sleepAtEnd }.distinctUntilChanged()
-    }.collectAsStateWithLifecycle(controller.state.value.sleepRemainingMs to controller.state.value.sleepAtEnd)
+    val live = controller.state.collectAsStateWithLifecycle()
+    val sleep by remember {
+        derivedStateOf(structuralEqualityPolicy()) { live.value.sleepRemainingMs to live.value.sleepAtEnd }
+    }
     val (left, atEnd) = sleep
     if (left == null && !atEnd) return
     Text(

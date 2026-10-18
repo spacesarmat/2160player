@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -153,7 +154,8 @@ class PanelOpenSignal {
 
 /** Боковая панель справа. Хост держит фокус, доступность и прокрутку при открытии.
  *  [PanelBody] не знает, открыта панель или нет: повторное открытие не пересобирает строки.
- *  Состав последней панели остаётся. Несколько панелей сразу не держим — сначала замер памяти. */
+ *  Экран держит собранными «Аудио» и «Скорость» (они за краем, пока закрыты). Остальные
+ *  снимаются после выезда: «Сведения» тяжёлые. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SidePanel(
@@ -269,15 +271,17 @@ private fun PanelBody(
                 Column(listMod.verticalScroll(scrollState).padding(top = 4.dp)) {
                     for (index in slots.list.indices) {
                         val slot = slots.list[index]
-                        if (reveal != null && index == reveal && reveal > 0) {
-                            Box(
-                                Modifier.bringIntoViewRequester(bring).onGloballyPositioned { coords ->
-                                    revealPlace[0] = coords.positionInParent().y.roundToInt()
-                                    revealPlace[1] = coords.size.height
-                                },
-                            ) { slot.content() }
-                        } else {
-                            slot.content()
+                        key(slot.key) {
+                            if (reveal != null && index == reveal && reveal > 0) {
+                                Box(
+                                    Modifier.bringIntoViewRequester(bring).onGloballyPositioned { coords ->
+                                        revealPlace[0] = coords.positionInParent().y.roundToInt()
+                                        revealPlace[1] = coords.size.height
+                                    },
+                                ) { slot.content() }
+                            } else {
+                                slot.content()
+                            }
                         }
                     }
                 }
@@ -437,6 +441,8 @@ private fun PanelSlots.populate(
                 }
 
                 Panel.SPEED -> {
+                    // Не Slider: шаг 0.05 и чипы пресетов. У строки нет тени, размытия и ripple
+                    // (indication = null). Дорогая первая запись уходит на кадр прогрева, не на открытие.
                     item(key = "fine") {
                         Stepper(
                             label = tr("panel.fine"),

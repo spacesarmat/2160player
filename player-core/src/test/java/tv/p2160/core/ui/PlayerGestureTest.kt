@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertTextEquals
@@ -164,6 +165,56 @@ class PlayerGestureTest {
         rule.onNodeWithTag("panel").assertDoesNotExist()
         val restored = rule.onNodeWithTag("transport").getUnclippedBoundsInRoot().let { it.right - it.left }
         assertEquals(full.value, restored.value, 0.5f)
+    }
+
+    @Test
+    fun panelParkedOffscreenDoesNotStealTheTapBeneathIt() {
+        var parked = 0
+        var video = 0
+        rule.setContent {
+            Box(Modifier.fillMaxSize().testTag("root")) {
+                Box(Modifier.fillMaxSize().testTag("video").clickable { video++ })
+                Box(Modifier.align(Alignment.CenterEnd).width(420.dp).fillMaxHeight()) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .graphicsLayer { translationX = size.width }
+                            .clickable { parked++ }
+                            .testTag("parked"),
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag("root").performTouchInput {
+            click(Offset(this.width * 0.85f, this.height * 0.5f))
+        }
+        rule.waitForIdle()
+        assertEquals(0, parked)
+        assertEquals(1, video)
+    }
+
+    @Test
+    fun panelOnScreenReceivesTheTap() {
+        var parked = 0
+        var video = 0
+        rule.setContent {
+            Box(Modifier.fillMaxSize().testTag("root")) {
+                Box(Modifier.fillMaxSize().testTag("video").clickable { video++ })
+                Box(Modifier.align(Alignment.CenterEnd).width(420.dp).fillMaxHeight()) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .graphicsLayer { translationX = 0f }
+                            .clickable { parked++ }
+                            .testTag("parked"),
+                    )
+                }
+            }
+        }
+        rule.onNodeWithTag("root").performTouchInput {
+            click(Offset(this.width * 0.85f, this.height * 0.5f))
+        }
+        rule.waitForIdle()
+        assertEquals(1, parked)
+        assertEquals(0, video)
     }
 }
 

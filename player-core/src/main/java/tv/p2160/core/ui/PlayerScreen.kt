@@ -10,6 +10,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,13 +46,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
@@ -76,6 +82,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,7 +94,9 @@ import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.api.PlayerExtensions
+import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.engine.TimeInput
 import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
@@ -102,6 +111,7 @@ import tv.p2160.core.i18n.LocalStrings
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.settings.PlayerSettings
 import tv.p2160.core.settings.ResizeMode
+import tv.p2160.core.settings.Settings
 import tv.p2160.core.settings.SubtitleEdge
 import tv.p2160.core.settings.SubtitleStyle
 
@@ -132,23 +142,9 @@ fun PlayerScreen(
     val stepMs = settings.seekStepSeconds * 1000L
 
     var controlsVisible by remember { mutableStateOf(true) }
-    var panel by remember { mutableStateOf<Panel?>(null) }
-    // Пока панель уезжает, состав остаётся на экране — иначе она исчезнет до конца сдвига.
-    var heldPanel by remember { mutableStateOf<Panel?>(null) }
-    if (panel != null) heldPanel = panel
-    // 0 — открыта, 1 — за правым краем. value нельзя читать в композиции: это пересборка каждый кадр.
-    val panelSlide = remember { Animatable(1f) }
-    val panelOpenSignal = remember { PanelOpenSignal() }
-    // Ключ — сама панель, не «открыта ли»: смена аудио → скорость тоже докручивает новый список.
-    // value анимации в композиции не читается.
-    LaunchedEffect(panel) {
-        if (panel != null) {
-            panelOpenSignal.request()
-            panelSlide.animateTo(0f, tween(200))
-        } else if (heldPanel != null) {
-            panelSlide.animateTo(1f, tween(200))
-        }
-    }
+    // value в теле PlayerScreen не читать. Иначе открытие пересобирает весь экран:
+    // на POCO повторное открытие было 17–23 мс recompose. Читают дочерние узлы.
+    val panelState = remember { mutableStateOf<Panel?>(null) }
     var interaction by remember { mutableIntStateOf(0) }
     var resizeMode by remember { mutableStateOf(settings.resizeMode) }
     /** Подпись режима масштаба на пару секунд после переключения. */
@@ -166,7 +162,7 @@ fun PlayerScreen(
         PanelActions(
             onSelectTrack = controller::select,
             onDisableSubtitles = controller::disableSubtitles,
-            onAddSubtitle = { panel = null; pickSubtitle.value() },
+            onAddSubtitle = { panelState.value = null; pickSubtitle.value() },
             onSubtitleDelay = controller::setSubtitleDelay,
             onSecondarySubtitle = controller::setSecondarySubtitle,
             onNightMode = controller::setNightMode,
@@ -176,13 +172,13 @@ fun PlayerScreen(
                 controller.onNightScheduleChanged()
             },
             onAudioDelay = controller::setAudioDelay,
-            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
-            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
+            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panelState.value = null },
+            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panelState.value = null },
             onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
             onSpeed = controller::setSpeed,
             onAutoVideo = controller::autoVideo,
             onResize = { resizeAction.value(it) },
-            onChapter = { controller.seekToChapter(it); panel = null },
+            onChapter = { controller.seekToChapter(it); panelState.value = null },
             onMarkIntroStart = controller::markIntroStart,
             onMarkIntroEnd = controller::markIntroEnd,
             onMarkCredits = controller::markCreditsStart,
@@ -214,17 +210,16 @@ fun PlayerScreen(
     fun poke() { interaction++ }
     fun show() { controlsVisible = true; poke() }
 
-    // Автоскрытие элементов управления во время воспроизведения.
-    LaunchedEffect(controlsVisible, interaction, state.isPlaying, panel) {
-        if (controlsVisible && state.isPlaying && panel == null) {
-            delay(4_000)
-            controlsVisible = false
-        }
-    }
-    LaunchedEffect(controlsVisible, panel) {
-        if (controlsVisible && panel == null) runCatching { playFocus.requestFocus() }
-        else if (!controlsVisible && panel == null) runCatching { rootFocus.requestFocus() }
-    }
+    // Автоскрытие и фокус. Панель читается здесь, не в PlayerScreen.
+    ControlsAutoHide(
+        panelState = panelState,
+        controlsVisible = controlsVisible,
+        interaction = interaction,
+        isPlaying = state.isPlaying,
+        onHide = { controlsVisible = false },
+        playFocus = playFocus,
+        rootFocus = rootFocus,
+    )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
     LaunchedEffect(scrubTarget?.div(2_000)) {
@@ -269,7 +264,7 @@ fun PlayerScreen(
 
     BackHandler {
         when {
-            panel != null -> panel = null
+            panelState.value != null -> panelState.value = null
             else -> onBack()
         }
     }
@@ -345,7 +340,7 @@ fun PlayerScreen(
                         Key.ChannelUp -> if (state.liveTv) { zap(1); return@onPreviewKeyEvent true }
                         Key.ChannelDown -> if (state.liveTv) { zap(-1); return@onPreviewKeyEvent true }
                     }
-                    if (panel != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
+                    if (panelState.value != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
                     // Цифры: одна — проценты, несколько — время.
                     digitOf(e.key)?.let { d -> digits = (digits + d).takeLast(6); return@onPreviewKeyEvent true }
                     if (digits.isNotEmpty()) {
@@ -404,7 +399,7 @@ fun PlayerScreen(
                 TapSeekLayer(
                     stepMs = stepMs,
                     onSingleTap = {
-                        if (panel != null) panel = null
+                        if (panelState.value != null) panelState.value = null
                         else { controlsVisible = !controlsVisible; poke() }
                     },
                     onCenterDoubleTap = controller::playPause,
@@ -467,7 +462,7 @@ fun PlayerScreen(
             // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
             // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
-            ControlsFade(visible = controlsVisible, panelOpen = panelReservesSpace(panel != null)) {
+            PanelBoundControls(panelState = panelState, visible = controlsVisible) { panelOpen ->
                 Controls(
                     controller = controller,
                     state = state,
@@ -480,7 +475,7 @@ fun PlayerScreen(
                     onSeekBy = { seekWithFlash(it); poke() },
                     onNext = controller::next,
                     onPrevious = controller::previous,
-                    onPanel = { panel = it },
+                    onPanel = { panelState.value = it },
                     onInteraction = ::poke,
                     onScrub = { target ->
                         if (target != null && scrubTarget == null) scrubBase = controller.state.value.positionMs
@@ -489,7 +484,7 @@ fun PlayerScreen(
                     onGoTo = { goToDialog = true },
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
-                    panelOpen = panelReservesSpace(panel != null),
+                    panelOpen = panelOpen,
                     followPosition = controlsVisible,
                 )
             }
@@ -521,35 +516,18 @@ fun PlayerScreen(
                     )
                 }
 
-                val bottomOffset = if (controlsVisible) 110.dp else 32.dp
-                skippable?.let { seg ->
-                    if (panel == null) {
-                        SkipButton(
-                            type = seg.type,
-                            onClick = { controller.skip(seg); poke() },
-                            theme = theme,
-                            takeFocus = !controlsVisible,
-                            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
-                                .padding(end = 24.dp, bottom = bottomOffset),
-                        )
-                    }
-                }
-                if (showNextCard && panel == null) {
-                    var left by remember(state.playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
-                    LaunchedEffect(state.playlistIndex, state.isPlaying) {
-                        while (state.isPlaying && left > 0) { delay(1_000); left-- }
-                        if (left == 0) controller.next()
-                    }
-                    NextEpisodeCard(
-                        secondsLeft = left,
-                        totalSeconds = NEXT_COUNTDOWN_SEC,
-                        onPlayNow = controller::next,
-                        onCancel = { nextDismissedFor = state.playlistIndex },
-                        theme = theme,
-                        modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(end = 24.dp, bottom = bottomOffset),
-                    )
-                }
+                EdgeActions(
+                    panelState = panelState,
+                    controlsVisible = controlsVisible,
+                    skippable = skippable,
+                    showNextCard = showNextCard,
+                    playlistIndex = state.playlistIndex,
+                    isPlaying = state.isPlaying,
+                    theme = theme,
+                    onSkip = { seg -> controller.skip(seg); poke() },
+                    onNext = controller::next,
+                    onDismissNext = { nextDismissedFor = state.playlistIndex },
+                )
             }
 
             if (goToDialog) {
@@ -596,7 +574,7 @@ fun PlayerScreen(
                     Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
                         .padding(start = 24.dp, top = 72.dp).widthIn(max = 520.dp)
                         .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
-                        .clickable { panel = Panel.INFO; controller.dismissWarnings() }
+                        .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
@@ -617,31 +595,30 @@ fun PlayerScreen(
                 if (!inPictureInPicture) {
                     // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
                     // иначе «С начала» оказывается под панелью и не нажимается.
-                    val resumeEnd = transportEndInsetDp(
-                        panel != null,
-                        LocalConfiguration.current.screenWidthDp.toFloat(),
-                    ).dp
-                    Box(
-                        Modifier.align(Alignment.TopCenter).fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
-                    ) {
-                        Row(
-                            Modifier.align(Alignment.Center).widthIn(max = 560.dp)
-                                .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
-                                .padding(start = 20.dp, end = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    // Отступ читает панель этот узел, не весь экран.
+                    ResumeHintInset(panelState) { resumeEnd ->
+                        Box(
+                            Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.safeDrawing)
+                                .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
                         ) {
-                            Text(
-                                tr("player.resumed", formatTime(from)),
-                                color = theme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = controller::restartFromBeginning) {
-                                Text(tr("player.start_over"), color = theme.accent, maxLines = 1)
+                            Row(
+                                Modifier.align(Alignment.Center).widthIn(max = 560.dp)
+                                    .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
+                                    .padding(start = 20.dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    tr("player.resumed", formatTime(from)),
+                                    color = theme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = controller::restartFromBeginning) {
+                                    Text(tr("player.start_over"), color = theme.accent, maxLines = 1)
+                                }
                             }
                         }
                     }
@@ -663,38 +640,246 @@ fun PlayerScreen(
                 }
             }
 
-            // Повторное открытие не должно менять цепочку: смена слоя на parked заново измеряла
-            // панель (в трейсе Record View#draw — это отложенный measureAndLayout). Сдвиг — только
-            // translationX в лямбде. Панель остаётся измеренной; закрытая уезжает за край.
-            // Offscreen не форсируем: Auto. Сверху обычный padding, чтобы иконки оставались нажимаемыми.
-            val currentPanel = heldPanel
-            if (currentPanel != null) {
-                val density = LocalDensity.current
-                val narrowControls = LocalConfiguration.current.screenWidthDp < 600
-                val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
-                    sidePanelTopClearanceDp(narrowControls).dp
-                val panelShape = remember { RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp) }
-                val panelLayer = remember(topPad, panelShape) {
-                    Modifier.padding(top = topPad).graphicsLayer {
-                        translationX = size.width * panelSlide.value
-                        clip = true
-                        shape = panelShape
-                        compositingStrategy = CompositingStrategy.Auto
-                    }
-                }
-                SidePanel(
-                    panel = currentPanel,
-                    state = state,
-                    settings = settings,
-                    resizeMode = resizeMode,
-                    actions = panelActions,
-                    openSignal = panelOpenSignal,
-                    open = panel != null,
-                    modifier = Modifier.align(Alignment.TopEnd).then(panelLayer),
-                )
-            }
+            // Звук и скорость собраны заранее и остаются за краем. Сдвиг — translationX слоя,
+            // не offset и не ширина. Открытая панель рисуется выше закрытых.
+            PlayerPanels(
+                panelState = panelState,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = panelActions,
+            )
         }
     }
+    }
+}
+
+/** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
+@Composable
+private fun ControlsAutoHide(
+    panelState: State<Panel?>,
+    controlsVisible: Boolean,
+    interaction: Int,
+    isPlaying: Boolean,
+    onHide: () -> Unit,
+    playFocus: FocusRequester,
+    rootFocus: FocusRequester,
+) {
+    val panel = panelState.value
+    LaunchedEffect(controlsVisible, interaction, isPlaying, panel) {
+        if (controlsVisible && isPlaying && panel == null) {
+            delay(4_000)
+            onHide()
+        }
+    }
+    LaunchedEffect(controlsVisible, panel) {
+        if (controlsVisible && panel == null) runCatching { playFocus.requestFocus() }
+        else if (!controlsVisible && panel == null) runCatching { rootFocus.requestFocus() }
+    }
+}
+
+/**
+ * Кнопки и отступ полосы. Открытость читается только тут, поэтому смена панели не обходит
+ * слот-таблицу экрана. Отступ — один padding в этом кадре, без анимации ширины.
+ */
+@Composable
+private fun PanelBoundControls(
+    panelState: State<Panel?>,
+    visible: Boolean,
+    content: @Composable (panelOpen: Boolean) -> Unit,
+) {
+    val panelOpen = panelReservesSpace(panelState.value != null)
+    ControlsFade(visible = visible, panelOpen = panelOpen) {
+        content(panelOpen)
+    }
+}
+
+/** «Пропустить» и «Следующая серия» прячутся, пока панель открыта. */
+@Composable
+private fun BoxScope.EdgeActions(
+    panelState: State<Panel?>,
+    controlsVisible: Boolean,
+    skippable: SkipSegment?,
+    showNextCard: Boolean,
+    playlistIndex: Int,
+    isPlaying: Boolean,
+    theme: PlayerTheme,
+    onSkip: (SkipSegment) -> Unit,
+    onNext: () -> Unit,
+    onDismissNext: () -> Unit,
+) {
+    if (panelState.value != null) return
+    val bottomOffset = if (controlsVisible) 110.dp else 32.dp
+    skippable?.let { seg ->
+        SkipButton(
+            type = seg.type,
+            onClick = { onSkip(seg) },
+            theme = theme,
+            takeFocus = !controlsVisible,
+            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(end = 24.dp, bottom = bottomOffset),
+        )
+    }
+    if (showNextCard) {
+        var left by remember(playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
+        LaunchedEffect(playlistIndex, isPlaying) {
+            while (isPlaying && left > 0) { delay(1_000); left-- }
+            if (left == 0) onNext()
+        }
+        NextEpisodeCard(
+            secondsLeft = left,
+            totalSeconds = NEXT_COUNTDOWN_SEC,
+            onPlayNow = onNext,
+            onCancel = onDismissNext,
+            theme = theme,
+            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(end = 24.dp, bottom = bottomOffset),
+        )
+    }
+}
+
+/** Правый отступ подсказки «Продолжено с …». Меняется один раз при открытии, не на каждом кадре выезда. */
+@Composable
+private fun BoxScope.ResumeHintInset(
+    panelState: State<Panel?>,
+    content: @Composable BoxScope.(end: Dp) -> Unit,
+) {
+    val end = transportEndInsetDp(
+        panelState.value != null,
+        LocalConfiguration.current.screenWidthDp.toFloat(),
+    ).dp
+    content(end)
+}
+
+/**
+ * «Аудио» и «Скорость» собираются по одной на кадр простоя и остаются за краем экрана.
+ * Повторное открытие только анимирует `translationX`. Остальные панели живут, пока выезжают,
+ * и снимаются после закрытия. Сдвиг не через offset и не через ширину.
+ * [key] держит слоты на месте: прогрев звука не должен выбросить уже собранную скорость.
+ */
+@Composable
+private fun BoxScope.PlayerPanels(
+    panelState: MutableState<Panel?>,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+) {
+    val open = panelState.value
+    var keepAudio by remember { mutableStateOf(false) }
+    var keepSpeed by remember { mutableStateOf(false) }
+    var heldExtra by remember { mutableStateOf<Panel?>(null) }
+    val extra = open?.takeIf { it != Panel.AUDIO && it != Panel.SPEED }
+    if (extra != null) heldExtra = extra
+    LaunchedEffect(open) {
+        if (open == Panel.AUDIO) keepAudio = true
+        if (open == Panel.SPEED) keepSpeed = true
+    }
+    LaunchedEffect(Unit) {
+        // Кадры старта плеера не занимаем. Дальше — одна панель на кадр.
+        withFrameNanos { }
+        withFrameNanos { }
+        keepAudio = true
+        withFrameNanos { }
+        keepSpeed = true
+    }
+    val scope = this
+    key(Panel.AUDIO) {
+        if (keepAudio || open == Panel.AUDIO) {
+            scope.ParkedPanel(
+                panel = Panel.AUDIO,
+                open = open == Panel.AUDIO,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+            )
+        }
+    }
+    key(Panel.SPEED) {
+        if (keepSpeed || open == Panel.SPEED) {
+            scope.ParkedPanel(
+                panel = Panel.SPEED,
+                open = open == Panel.SPEED,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+            )
+        }
+    }
+    key(heldExtra ?: Unit) {
+        val shown = heldExtra
+        if (shown != null) {
+            val park = remember(shown) {
+                { if (panelState.value != shown) heldExtra = null }
+            }
+            scope.ParkedPanel(
+                panel = shown,
+                open = open == shown,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+                onParked = park,
+            )
+        }
+    }
+}
+
+/** Одна и та же ссылка: новая лямбда на каждый вызов не давала бы закрытой панели пропуститься. */
+private val StayParked: () -> Unit = {}
+
+@Composable
+private fun BoxScope.ParkedPanel(
+    panel: Panel,
+    open: Boolean,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    onParked: () -> Unit = StayParked,
+) {
+    // 0 — открыта, 1 — за правым краем. value в композиции не читается: это был бы кадр анимации.
+    val slide = remember { Animatable(1f) }
+    val openSignal = remember { PanelOpenSignal() }
+    LaunchedEffect(open) {
+        if (open) {
+            openSignal.request()
+            slide.animateTo(0f, tween(200))
+        } else if (slide.value != 1f) {
+            slide.animateTo(1f, tween(200))
+            onParked()
+        } else {
+            // Уже за краем (прогрев): не запускать tween, иначе слой 200 мс числится анимируемым.
+            onParked()
+        }
+    }
+    val density = LocalDensity.current
+    val narrowControls = LocalConfiguration.current.screenWidthDp < 600
+    val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
+        sidePanelTopClearanceDp(narrowControls).dp
+    val panelShape = remember { RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp) }
+    // Цепочка не зависит от open: смена модификатора заново измеряла список.
+    val layer = remember(topPad, panelShape) {
+        Modifier.padding(top = topPad).graphicsLayer {
+            translationX = size.width * slide.value
+            clip = true
+            shape = panelShape
+            compositingStrategy = CompositingStrategy.Auto
+        }
+    }
+    Box(Modifier.align(Alignment.TopEnd).zIndex(if (open) 1f else 0f)) {
+        SidePanel(
+            panel = panel,
+            state = state,
+            settings = settings,
+            resizeMode = resizeMode,
+            actions = actions,
+            openSignal = openSignal,
+            open = open,
+            modifier = layer,
+        )
     }
 }
 
@@ -825,7 +1010,10 @@ private fun Controls(
  * на свою ширину, а их действия читают [InteractionGate].
  * [panelOpen] — параметр, не только захват лямбды: у лямбды стабильная ссылка, и без этого
  * аргумента затухание пропускалось бы, а полоса сужалась лишь на следующей пересборке.
- * `CompositingStrategy.Auto`, не ModulateAlpha: градиенты под кнопками при модуляции альфы выглядят иначе.
+ * В лямбду слоя его не передаём: чтение там подписывало слой на весь экран, а `shadowElevation`
+ * даже нулевой держал контур тени на каждом кадре (медиана кадра на POCO выросла с 17 до 20 мс).
+ * Отступ полосы — раскладка ребёнка; она сама обновляет слой. `CompositingStrategy.Auto`, не
+ * ModulateAlpha: градиенты под кнопками при модуляции альфы выглядят иначе.
  */
 @Composable
 internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
@@ -853,9 +1041,10 @@ internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Compos
             alpha = opacity.value
             translationX = if (shown.value) 0f else size.width
             compositingStrategy = CompositingStrategy.Auto
-            // Подписка слоя на отступ: display list полосы обновляется в том же кадре,
-            // в котором панель начинает выезжать. На пиксели не влияет.
-            shadowElevation = if (reserve.value) 0f else 0f
+            // Не shadowElevation: нулевая тень всё равно оставляет контур и рисует его каждый кадр
+            // (медиана на POCO выросла с 17 до 20 мс). Чтение отступа только помечает слой
+            // в кадре, когда полоса сужается, и на пиксели не влияет.
+            translationY = if (reserve.value) 0f else 0f
         }
     }
     // Свойства, не состав: тот же focusGroup и semantics, другое значение при скрытии.
@@ -1071,8 +1260,9 @@ private fun VideoSurface(
                 ResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             }
             if (view.resizeMode != mode) view.resizeMode = mode
-            // PlayerController нестабилен, поэтому открытие панели пересобирает этот AndroidView.
-            // setStyle заново верстает субтитры — не делать этого, если стиль и панель кнопок те же.
+            // PlayerController нестабилен: любая пересборка PlayerScreen заходит в update.
+            // Открытие панели сюда больше не приходит. setStyle верстает субтитры заново —
+            // не делать этого, если стиль и видимость кнопок те же.
             val subKey = AppliedSubtitles(style, controlsVisible)
             if (view.getTag(TAG_SUBS) != subKey) {
                 view.setTag(TAG_SUBS, subKey)

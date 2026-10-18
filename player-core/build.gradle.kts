@@ -41,6 +41,11 @@ kotlin {
     jvmToolchain(17)
 }
 
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose-reports")
+    metricsDestination = layout.buildDirectory.dir("compose-metrics")
+}
+
 dependencies {
     api(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)

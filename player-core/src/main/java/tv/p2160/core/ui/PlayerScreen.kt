@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
@@ -67,6 +70,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
@@ -585,6 +589,16 @@ fun PlayerScreen(
                 }
             }
 
+            // Панель на всю высоту накрывала верхние иконки (кроме «Продолжить на другом устройстве»).
+            // Она начинается под полосой кнопок: их можно нажать и с пульта, другая иконка меняет панель.
+            val narrowControls = LocalConfiguration.current.screenWidthDp < 600
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                    .padding(top = sidePanelTopClearanceDp(narrowControls).dp),
+            ) {
             AnimatedVisibility(
                 visible = panel != null,
                 enter = slideInHorizontally { it } + fadeIn(),
@@ -625,6 +639,7 @@ fun PlayerScreen(
                         ),
                     )
                 }
+            }
             }
         }
     }

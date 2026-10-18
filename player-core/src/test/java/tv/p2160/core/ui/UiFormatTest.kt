@@ -42,4 +42,10 @@ class UiFormatTest {
         assertEquals(280f, sidePanelWidthDp(280f), 0.01f)
         assertEquals(0f, sidePanelWidthDp(0f), 0.01f)
     }
+
+    @Test
+    fun sidePanelStartsBelowTheTopBar() {
+        assertEquals(64f, sidePanelTopClearanceDp(narrow = false), 0.01f)
+        assertEquals(112f, sidePanelTopClearanceDp(narrow = true), 0.01f)
+    }
 }

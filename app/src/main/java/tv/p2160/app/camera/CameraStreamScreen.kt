@@ -62,6 +62,7 @@ import tv.p2160.app.FocusCard
 import tv.p2160.app.SectionTitle
 import tv.p2160.app.readableColumn
 import tv.p2160.app.share.ShareApp
+import tv.p2160.core.i18n.LocalStrings
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.ui.UiFormat
 
@@ -217,7 +218,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    if (protocols.any { it == StreamProtocol.NDI }) {
+                    if (config.protocol == StreamProtocol.NDI) {
                         Text(tr("camera.ndi_no_auth"), color = colors.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -228,9 +229,11 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             if (!screen) item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
             if (!screen) item(key = "cams") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val strings = LocalStrings.current
                     cameras.forEach { cam ->
                         val selected = (config.cameraId ?: cameras.firstOrNull()?.id) == cam.id
-                        Choice(tr(cam.labelKey), selected) {
+                        val label = cam.name.text({ strings[it] }, strings.locale)
+                        Choice(label, selected) {
                             // Новая камера может не уметь текущее качество — берём лучшее из того, что она умеет.
                             CameraStream.update(context) { c ->
                                 val q = if (c.quality in cam.modes || streaming != null) c.quality
@@ -564,6 +567,7 @@ private fun Choice(text: String, selected: Boolean, enabled: Boolean = true, onC
         onClick = { if (enabled) onClick() },
         selected = selected,
         mergeDescendants = true,
+        contentDescription = text,
         modifier = Modifier.heightIn(min = 48.dp),
         background = if (selected) colors.primaryContainer else colors.surfaceVariant,
     ) {

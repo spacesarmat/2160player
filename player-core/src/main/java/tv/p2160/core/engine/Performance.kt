@@ -111,8 +111,10 @@ internal fun offloadPreferences(enabled: Boolean): AudioOffloadPreferences =
     else AudioOffloadPreferences.Builder()
         .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
         .setIsGaplessSupportRequired(false)
-        // Не требуем смены скорости в offload: многие чипы её не умеют — при смене скорости Media3 сам выйдет из offload.
-        .setIsSpeedChangeSupportRequired(false)
+        // Samsung COMPRESS_OFFLOAD отклоняет AudioTrack.setPlaybackParams
+        // (IllegalArgumentException: arguments out of range), и скорость не ставится.
+        // Требуем поддержку смены скорости: offload остаётся только там, где она работает.
+        .setIsSpeedChangeSupportRequired(true)
         .build()
 
 /**

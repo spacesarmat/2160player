@@ -281,7 +281,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.9")
+    implementation("tv.p2160:player-core:0.2.10")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) — Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -533,6 +533,11 @@ PiP и паузу при уходе в фон он **не** трогает — �
 пересобирает боковую панель и кнопки: их читает снимок состояния без позиции. Полоса перемотки и часы
 подписаны на позицию отдельно. `formatSpeed` (и `UiFormat`) с 0.2.9 форматируют число локалью интерфейса:
 в русской локали `1,25`, раньше всегда была точка (`Locale.US`). Поле `PlayerUiState` не менялось.
+
+Боковая панель (звук, субтитры, скорость и остальные) с 0.2.10 начинается под верхней полосой кнопок
+(`sidePanelTopClearanceDp`: 64 dp, в портрете уже 600 dp — 112 dp, плюс отступ `safeDrawing` сверху).
+Иконки меню остаются нажимаемыми и в порядке фокуса пульта; нажатие другой иконки переключает панель.
+Ширина по-прежнему 42 % экрана в пределах 300–420 dp, подписи не рвутся посреди слова.
 
 ### 6.1. `PlayerController`
 
@@ -884,7 +889,7 @@ Player2160.settings(context).update {
 | `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 — звук позже картинки, < 0 — раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер — `setAudioDelay()` |
 | `frameRateMatching` | `Boolean` = `false` | Частота экрана под видео (§15.7): ТВ переключается в 23,976/24/25/50 Гц. Сразу. |
 | `tunneling` | `Boolean` = `false` | Туннельный режим вывода видео (Android TV). При ошибке декодера выключается сам и сохраняется `false`. Для следующего `PlayerController`. |
-| `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип. Не действует, пока включён ночной звук. Для следующего `PlayerController`. |
+| `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип, только если он умеет менять скорость (`setIsSpeedChangeSupportRequired(true)`). Иначе Samsung `COMPRESS_OFFLOAD` отклоняет `setPlaybackParams`, и скорость не ставится. Не действует, пока включён ночной звук. Для следующего `PlayerController`. |
 | `statsOverlay` | `Boolean` = `false` | Слой «Статистика» поверх видео (§15.7); переключается и в панели «Сведения» плеера. Сразу. |
 | `keepScreenOn` | `Boolean` = `true` | Не гасить экран, пока идёт видео или прямой эфир (§9.4). Сразу. Ключ SharedPreferences: `keep_screen_on`. |
 
@@ -1358,7 +1363,7 @@ class App : Application() {
 | Динамическое планирование | `ExoPlayer.Builder.experimentalSetDynamicSchedulingEnabled(true)`: цикл воспроизведения просыпается, только когда рендерерам есть работа. |
 | Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер — до 128 МБ. |
 | Видео в фоне | Видеодорожка отключается (`setInBackground`), звук без видео может уйти в offload. |
-| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, без требования смены скорости — при смене скорости Media3 сам выходит из offload). Media3 включает offload только для звука без видео и для форматов, которые умеет отдавать на аудиочип (MP3, AAC, Opus, AC3/E-AC3/DTS; FLAC — нет, он декодируется аппаратным или программным декодером); ночной звук (обработка PCM) его выключает. |
+| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, `setIsSpeedChangeSupportRequired(true)`). Samsung `COMPRESS_OFFLOAD` отклоняет `AudioTrack.setPlaybackParams` (`IllegalArgumentException: arguments out of range`), и скорость не применяется; offload остаётся только на устройствах, где смена скорости в этом режиме работает. Media3 включает offload только для звука без видео и для форматов, которые умеет отдавать на аудиочип (MP3, AAC, Opus, AC3/E-AC3/DTS; FLAC — нет, он декодируется аппаратным или программным декодером); ночной звук (обработка PCM) его выключает. |
 | Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле — режим выключается и сохраняется. |
 | Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана — без счёта; потом декодирует сам. |
 
@@ -2060,7 +2065,7 @@ ARM-устройствах берёт именно его (§22.2): устано
 | NDI® | `StreamProtocol.NDI` — отправка в локальную сеть по NDI® (NDI® is a registered trademark of Vizrt NDI AB, https://ndi.video/): источник «<ИМЯ-УСТРОЙСТВА> (2160 Player)» (`CameraStream.ndiName`; имя машины NDI — имя устройства латиницей, `Ndi.machineName`, записывается в `ndi-config.v1.json` через `NDI_CONFIG_DIR`: иначе Android даёт «LOCALHOST», и приёмники не подключаются) виден в OBS (плагин DistroAV), vMix, NDI Studio Monitor. Кадры с камеры/экрана идут через тот же GL-конвейер (предпросмотр, зум, фокус). После старта кодировщики H.264 и AAC останавливаются, `ImageReader` (RGBX) становится единственным выходом GL: второго прохода и кодирования нет. NV12 не используется — GL отдаёт RGBA, перевод в YUV на CPU добавил бы проход перед SpeedHQ, которым NDI сжимает RGBX сам. Копия кадра одна, в native (`ndi_bridge.cpp`): прямой буфер ImageReader NDI читает чёрным. `acquireLatestImage` оставляет свежий кадр. Таймкод видео — метка кадра (100 нс), звук — число PCM-сэмплов от первого кадра (пока кадра нет — синтез). Звук — PCM 16 бит с микрофона (`GainMeterEffect.pcmListener`), не AAC; «зрители» — подключённые приёмники. На устройстве `adb logcat -s Ndi:I` раз в секунду пишет `pipeline Nus` — от метки кадра до возврата из отправки NDI (сжатие на телефоне, без сети и приёмника). Если часы кадра и `nanoTime` не совпали, строка не пишется. Нужна быстрая сеть (5 ГГц). Есть, только если NDI SDK был при сборке (`BuildConfig.NDI`) и библиотека загрузилась (`Ndi.available(context)`): `libndi.so` в APK, загрузка динамическая (`cpp/ndi_bridge.cpp`, `NDIlib_v6_load`); на время трансляции — `WifiManager.MulticastLock`. Лицензия: `third-party/ndi/NOTICE.md`, [LICENSE-NDI-EXCEPTION.md](../LICENSE-NDI-EXCEPTION.md); в «О приложении» — пункт «NDI®» (знак, ссылка, лицензии компонентов `libndi`). |
 | Что | `CameraStreamConfig.source` (`StreamSource`): `CAMERA` или `SCREEN` — экран телефона (`ScreenSource` RootEncoder): при старте системный запрос записи экрана (`MediaProjectionManager.createScreenCaptureIntent`), ответ передаётся сервису (`CameraStream.startScreen`), сервис стартует с типом `mediaProjection` и только потом берёт `MediaProjection` (требование Android 14). Последний кадр повторяется не реже 15 раз в секунду (`setForceRender`) — иначе статичный экран «застывает». Звук экрана (`screenAudio`): микрофон, звук телефона (`InternalAudioSource`, Android 10+; приложения могут запрещать запись своего звука) или оба (`MixAudioSource`). Режимы — 720p/1080p × 30/60, что потянет кодировщик (`CameraStream.screenModes()`). Остановка системной кнопкой записи экрана тоже останавливает трансляцию. |
 | Куда | `CameraStreamConfig.protocol` (`StreamProtocol`): `RTSP` — сервер на телефоне (зрители подключаются сами, адрес и QR); `SRT` — телефон сам шлёт поток (`srtUrl`, например `srt://192.168.1.10:9000`; в OBS «Источник медиа»: `srt://0.0.0.0:9000?mode=listener`, формат `mpegts`); `RTMP` — на сервис (`rtmpUrl` + `rtmpKey`, заготовки YouTube `rtmp://a.rtmp.youtube.com/live2` и Twitch `rtmp://live.twitch.tv/app`; `CameraStream.rtmpEndpoint` склеивает адрес, ключ уже в адресе своего сервера тоже понимается). SRT/RTMP: до 10 повторов подключения через 5 с (`reTry`), статус «Подключение…/Подключено» (`CameraStreamState.Streaming.connected`), ключ на экран и в уведомление не выводится; неверный адрес — `camera.err_srt_url` / `camera.err_rtmp_url`, отказ по ключу — `camera.err_auth`. Настройки (камера, режим, звук, куда, адрес, ключ) сохраняются на устройстве (`CameraStream.load`). Камеры в сети (`/camera`, `cam=1`) — только для RTSP (`CameraStream.isServing`). |
-| Камера | `CameraStream.cameras(context)`: все камеры Camera2 с подписью («Задняя», «Широкоугольная», «Телевик» — по фокусному расстоянию относительно основной, «Фронтальная», «Внешняя»), режимами и наличием вспышки. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
+| Камера | `CameraStream.cameras(context)`: камеры Camera2 с разными подписями (`CameraLabels`). Одна камера стороны — «Задняя», «Фронтальная», «Внешняя». Несколько — по фокусному (`LENS_INFO_AVAILABLE_FOCAL_LENGTHS`, при известной ширине сенсора — эквивалент 35 мм) относительно основной той же стороны: «Широкая», «Сверхширокая», множитель «0,6×» / «3×» / «10×». Совпавшие имена получают сторону или номер («Фронтальная 2»). Логическая мульти-камера не показывается, если все её `physicalCameraIds` уже есть в списке. У чипа та же строка в `contentDescription`. Режимы и вспышка — как раньше. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
 | Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), — и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт — ~0,08 бит на пиксель (1080p·30 — 5 Мбит/с, 4K·30 — 20). По умолчанию 1080p·30 (`CameraStreamConfig.quality`); если у камеры его нет — лучший до 30 fps (запасной — 720p·30, `StreamMode.DEFAULT`); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
 | Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. Микрофон — `micId` из `CameraStream.microphones(context)` (встроенный, гарнитура, USB, Bluetooth; `null` — выбирает система), меняется и во время трансляции (`MicrophoneSource.setPreferredDevice`). Усиление `micGain` 0,5–4× и индикатор уровня — один эффект `GainMeterEffect` (`CameraStream.gainMeter.level`: пик 0..1 раз в ~0,1 с; красный — звук обрезается); усиление меняется на лету. Для звука экрана «Звук телефона» / «Телефон + микрофон» усиление и индикатор не действуют. |
 | Фонарик | `CameraStream.setTorch(on)` — у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
@@ -2139,7 +2144,7 @@ Basic-авторизация RTSP идёт открытым текстом — �
 - `tv.p2160.core.ui`: `ControlButton`, `SeekBar`, `PanelRow`, `SidePanel`, `Panel`, `PanelActions`,
   `SPEED_PRESETS`, `TapSeekLayer`, `ScrubPreview`, `SpeedBoostBadge`, `DigitEntryOverlay`,
   `SkipButton`, `NextEpisodeCard`, `GoToTimeDialog`, `formatTime`, `formatSpeed`, `formatDelta`,
-  `UiFormat`, `sidePanelWidthDp`;
+  `UiFormat`, `sidePanelWidthDp`, `sidePanelTopClearanceDp`;
 - `tv.p2160.core.engine`: `SecondarySubtitles`, `MediaReporter`, `ActiveDecoders`;
 - `tv.p2160.core.intro`: `IntroAnalyzer`, `IntroMatcher`, `Fingerprinter`, `Fingerprint`, `IntroStore`,
   `MediaCodecPcmDecoder`, `PcmSource`;

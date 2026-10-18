@@ -36,10 +36,10 @@ data class CameraInfo(
     val id: String,
     /** [CameraCharacteristics.LENS_FACING_BACK] / `FRONT` / `EXTERNAL`. */
     val facing: Int,
-    /** Минимальное фокусное расстояние, мм (меньше — шире угол). */
+    /** Фокусное расстояние, которым подписана камера, мм (меньше — шире угол). */
     val focalLength: Float,
-    /** Ключ подписи: `camera.back_main`, `camera.back_wide`, `camera.back_tele`, `camera.front`, `camera.external`. */
-    val labelKey: String,
+    /** Подпись для чипа: сторона, роль объектива, зум или номер, если имена совпали. */
+    val name: CameraLabels.Name,
     /** Режимы, которые умеют и эта камера, и кодировщик устройства (от меньшего к большему). */
     val modes: List<StreamMode> = emptyList(),
     /** Есть вспышка — можно включить фонарик. */
@@ -365,37 +365,50 @@ object CameraStream {
         _state.update { if (it is CameraStreamState.Streaming) it.copy(clients = n) else it }
     }
 
-    /** Камеры устройства, задние — первыми (основная, широкоугольная, телевик), потом фронтальные. */
+    /**
+     * Камеры устройства. Задние первыми, среди них — основная (первая задняя в списке системы).
+     * Имя — по стороне и фокусному относительно основной той же стороны; логическая камера
+     * скрыта, если её физические id уже есть в списке.
+     */
     fun cameras(context: Context): List<CameraInfo> {
         val manager = context.getSystemService(CameraManager::class.java) ?: return emptyList()
-        val caps = HashMap<String, Pair<List<StreamMode>, Boolean>>()
         val encoder = encoderCapabilities()
-        val raw = runCatching {
-            manager.cameraIdList.mapNotNull { id ->
+        val listed = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
+        val listedIds = listed.toSet()
+        val raw = listed.mapNotNull { id ->
+            runCatching {
                 val c = manager.getCameraCharacteristics(id)
                 val facing = c.get(CameraCharacteristics.LENS_FACING) ?: return@mapNotNull null
-                val focal = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.minOrNull() ?: 0f
-                caps[id] = modesFor(c, encoder) to (c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true)
-                Triple(id, facing, focal)
-            }
-        }.getOrDefault(emptyList())
-        val backs = raw.filter { it.second == CameraCharacteristics.LENS_FACING_BACK }.sortedBy { it.third }
-        // Основная задняя — первая в списке системы; по фокусному: короче неё — широкоугольная, длиннее — телевик.
-        val main = raw.firstOrNull { it.second == CameraCharacteristics.LENS_FACING_BACK }
-        return raw.map { (id, facing, focal) ->
-            val key = when (facing) {
-                CameraCharacteristics.LENS_FACING_FRONT -> "camera.front"
-                CameraCharacteristics.LENS_FACING_EXTERNAL -> "camera.external"
-                else -> when {
-                    main == null || id == main.first || backs.size < 2 -> "camera.back_main"
-                    focal < main.third -> "camera.back_wide"
-                    else -> "camera.back_tele"
+                val sensorWidth = c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)?.width
+                val focal = CameraLabels.pickFocal(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS), sensorWidth)
+                val logical = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+                        ?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) == true
+                } else {
+                    false
                 }
-            }
-            val (modes, flash) = caps[id] ?: (listOf(StreamMode.DEFAULT) to false)
-            CameraInfo(id, facing, focal, key, modes.ifEmpty { listOf(StreamMode.DEFAULT) }, flash)
-        }.sortedWith(compareBy({ if (it.facing == CameraCharacteristics.LENS_FACING_BACK) 0 else 1 }, { it.id != main?.first }, { it.focalLength }))
+                val physical = if (android.os.Build.VERSION.SDK_INT >= 28) c.physicalCameraIds else emptySet()
+                val duplicate = logical && physical.isNotEmpty() && physical.all { it in listedIds }
+                RawCamera(id, facing, focal, sensorWidth, duplicate, modesFor(c, encoder), c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true)
+            }.getOrNull()
+        }
+        val names = CameraLabels.names(raw.map { CameraLabels.Lens(it.id, it.facing, it.focal, it.sensorWidth, it.logicalDuplicate) })
+        val visible = raw.filter { !it.logicalDuplicate }
+        val mainBack = visible.firstOrNull { it.facing == CameraCharacteristics.LENS_FACING_BACK }?.id
+        return visible.zip(names).map { (cam, name) ->
+            CameraInfo(cam.id, cam.facing, cam.focal, name, cam.modes.ifEmpty { listOf(StreamMode.DEFAULT) }, cam.flash)
+        }.sortedWith(compareBy({ if (it.facing == CameraCharacteristics.LENS_FACING_BACK) 0 else 1 }, { it.id != mainBack }, { it.focalLength }))
     }
+
+    private data class RawCamera(
+        val id: String,
+        val facing: Int,
+        val focal: Float,
+        val sensorWidth: Float?,
+        val logicalDuplicate: Boolean,
+        val modes: List<StreamMode>,
+        val flash: Boolean,
+    )
 
     /**
      * Режимы камеры: кадры 16:9 из стандартного ряда (720p…4K), которые камера отдаёт на поверхность, × частоты

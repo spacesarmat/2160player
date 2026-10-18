@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -68,25 +70,57 @@ class PanelScrollTest {
     }
 
     @Test
-    fun speedOpensAtTheTopAndReopensThereAfterAScroll() {
+    fun speedStaysAtTheTopWhenTheFastPresetIsBelowTheFold() {
         assertOpensAtTop(
             panel = Panel.SPEED,
-            state = PlayerUiState(speed = 1f),
+            state = PlayerUiState(speed = 4f),
             topText = "panel.fine",
-            belowText = "panel.speed_normal",
+            belowText = "4×",
+            height = 160.dp,
         )
     }
 
-    private fun assertOpensAtTop(panel: Panel, state: PlayerUiState, topText: String, belowText: String) {
-        var opens by mutableIntStateOf(0)
+    @Test
+    fun speedShowsTheStepperAndNormalPresetOnAShortLandscapeScreen() {
+        // 360 dp экрана минус зазор под кнопки (64) и статус (24): панель 272 dp.
+        // «Точно» и «Обычная» оба на экране, прокрутка нулевая.
+        var open by mutableStateOf(true)
+        var resets by mutableIntStateOf(0)
         rule.setContent {
-            PanelScrollHarness(panel = panel, state = state, opens = opens)
+            PanelScrollHarness(
+                panel = Panel.SPEED,
+                state = PlayerUiState(speed = 1f),
+                resets = resets,
+                open = open,
+                height = 272.dp,
+            )
+        }
+        rule.waitForIdle()
+        rule.runOnIdle { resets++ }
+        rule.waitForIdle()
+        assertEquals(0f, scrollValue(), 0.5f)
+        rule.onNodeWithText("panel.fine").assertIsDisplayed()
+        rule.onNodeWithText("panel.speed_normal").assertIsDisplayed()
+    }
+
+    private fun assertOpensAtTop(
+        panel: Panel,
+        state: PlayerUiState,
+        topText: String,
+        belowText: String,
+        height: Dp = 200.dp,
+    ) {
+        var open by mutableStateOf(true)
+        var resets by mutableIntStateOf(0)
+        rule.setContent {
+            PanelScrollHarness(panel = panel, state = state, resets = resets, open = open, height = height)
         }
         rule.waitForIdle()
         val max = scrollMax()
         assertTrue("список должен быть длиннее окна, иначе проверка прокрутки пустая: max=$max", max > 0f)
 
-        rule.runOnIdle { opens++ }
+        // Сброс на простое — тот, что бывает после закрытия. Уже нулевая прокрутка ничего не двигает.
+        rule.runOnIdle { resets++ }
         rule.waitForIdle()
         assertAtTop(topText, belowText)
 
@@ -95,7 +129,13 @@ class PanelScrollTest {
         val moved = scrollValue()
         assertTrue("после жеста список должен уехать от верха, было $moved", moved > 0f)
 
-        rule.runOnIdle { opens++ }
+        // Как после закрытия: панель за краем, сброс на следующем кадре, открытие снова сверху.
+        rule.runOnIdle {
+            open = false
+            resets++
+        }
+        rule.waitForIdle()
+        rule.runOnIdle { open = true }
         rule.waitForIdle()
         assertAtTop(topText, belowText)
     }
@@ -116,22 +156,27 @@ class PanelScrollTest {
 }
 
 @Composable
-private fun PanelScrollHarness(panel: Panel, state: PlayerUiState, opens: Int) {
-    val signal = remember { PanelOpenSignal() }
-    LaunchedEffect(opens) {
-        if (opens > 0) signal.prepare()
+private fun PanelScrollHarness(
+    panel: Panel,
+    state: PlayerUiState,
+    resets: Int,
+    open: Boolean,
+    height: Dp,
+) {
+    val signal = remember { PanelScrollReset() }
+    LaunchedEffect(resets) {
+        if (resets > 0) signal.request()
     }
     MaterialTheme {
-        // Окно короче списка: выбранная строка ниже сгиба, верхние переключатели должны остаться.
-        Box(Modifier.width(360.dp).height(200.dp)) {
+        Box(Modifier.width(360.dp).height(height)) {
             SidePanel(
                 panel = panel,
                 state = state,
                 settings = Settings(),
                 resizeMode = ResizeMode.FIT,
                 actions = idlePanelActions(),
-                openSignal = signal,
-                open = true,
+                scrollReset = signal,
+                open = open,
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -62,7 +62,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.text.style.Hyphens
 import tv.p2160.core.api.Chapter
@@ -133,29 +132,24 @@ class PanelActions(
 )
 
 /**
- * Сигнал «панель открыли». [PanelBody] на это не пересобирается:
- * открытие не входит в параметры строк. [prepare] не возвращается, пока список
- * не стоит вверху и этот кадр не нарисован — иначе выезд показывает чужую прокрутку.
+ * Прокрутка в ноль, пока панель уже за краем. [PanelBody] на это не пересобирается:
+ * открытие и закрытие этот сигнал не ждут и список не измеряют.
+ * Если смещение уже ноль, обработчик ничего не вызывает.
  */
-class PanelOpenSignal {
-    private val requests = Channel<CompletableDeferred<Unit>>(Channel.BUFFERED)
+class PanelScrollReset {
+    private val requests = Channel<Unit>(Channel.CONFLATED)
 
-    suspend fun prepare() {
-        val done = CompletableDeferred<Unit>()
-        requests.send(done)
-        done.await()
+    fun request() {
+        requests.trySend(Unit)
     }
 
     suspend fun collect(block: suspend () -> Unit) {
-        for (done in requests) {
-            try {
-                block()
-            } finally {
-                if (!done.isCompleted) done.complete(Unit)
-            }
-        }
+        for (ignored in requests) block()
     }
 }
+
+/** Живой флаг «панель на экране». Чтение в лямбде фокуса, не в параметрах строк. */
+internal class PanelChrome(var open: Boolean)
 
 /** Боковая панель справа. Хост держит фокус, доступность и прокрутку при открытии.
  *  [PanelBody] не знает, открыта панель или нет: повторное открытие не пересобирает строки.
@@ -169,7 +163,7 @@ fun SidePanel(
     settings: Settings,
     resizeMode: ResizeMode,
     actions: PanelActions,
-    openSignal: PanelOpenSignal,
+    scrollReset: PanelScrollReset,
     /** Панель на экране. Только хост: строки это не читают. */
     open: Boolean,
     modifier: Modifier = Modifier,
@@ -181,14 +175,16 @@ fun SidePanel(
     val bring = remember { BringIntoViewRequester() }
     val revealPlace = remember { intArrayOf(0, 0) }
     val revealNow = remember { PanelRevealNow(reveal, false) }
+    val chrome = remember { PanelChrome(open) }
     revealNow.index = reveal
-    // Собранная заранее панель помнит прошлую прокрутку. Перед выездом возвращаем
-    // её наверх, пока слой ещё за краем: переключатели и «Точно» видны.
-    LaunchedEffect(openSignal) {
-        openSignal.collect {
+    chrome.open = open
+    // Сброс только по сигналу простоя, когда панель уже за краем. Открытие его не ждёт.
+    LaunchedEffect(scrollReset) {
+        scrollReset.collect {
+            if (panelScrollAtTop(revealNow.lazy, listState, scrollState)) return@collect
+            withFrameNanos { }
+            if (chrome.open) return@collect
             resetPanelScroll(revealNow.lazy, listState, scrollState)
-            withFrameNanos { }
-            withFrameNanos { }
         }
     }
     Box(
@@ -461,6 +457,7 @@ private fun PanelSlots.populate(
                             onMinus = { actions.onSpeed(state.speed - 0.05f) },
                             onPlus = { actions.onSpeed(state.speed + 0.05f) },
                             onReset = { actions.onSpeed(1f) },
+                            compact = true,
                         )
                     }
                     items(SPEED_PRESETS, key = { "s$it" }, contentType = { "choice" }) { s ->
@@ -470,6 +467,7 @@ private fun PanelSlots.populate(
                             selected = selected,
                             onClick = { actions.onSpeed(s) },
                             modifier = if (selected) Modifier.focusRequester(focus) else Modifier,
+                            compact = true,
                         )
                     }
                 }
@@ -613,8 +611,42 @@ private fun Hint(text: String) {
 }
 
 @Composable
-private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, onReset: () -> Unit) {
+private fun Stepper(
+    label: String,
+    value: String,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    onReset: () -> Unit,
+    compact: Boolean = false,
+) {
     val colors = MaterialTheme.colorScheme
+    if (compact) {
+        // Одна строка: «Точно» забирает оставшуюся ширину, кнопки 40 dp. Иначе 1× ниже сгиба
+        // на альбомном экране высотой 1080 px.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                label,
+                color = colors.onSurface,
+                style = MaterialTheme.typography.bodyMedium.copy(hyphens = Hyphens.None),
+                maxLines = 1,
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
+            )
+            ControlButton(Icons.Default.Remove, tr("panel.less"), onMinus, size = 40.dp, tint = colors.onSurface, compact = true)
+            Text(
+                value,
+                color = colors.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.widthIn(min = 64.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            ControlButton(Icons.Default.Add, tr("panel.more"), onPlus, size = 40.dp, tint = colors.onSurface, compact = true)
+            ControlButton(Icons.Default.Restore, tr("panel.reset"), onReset, size = 40.dp, tint = colors.onSurfaceVariant, compact = true)
+        }
+    } else {
     // Подпись на всю ширину панели, кнопки строкой ниже. В одной строке колонка подписи
     // сжималась до ширины четырёх букв и рвала «Задержка», «Точно», «Размер» посреди слова.
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -641,6 +673,7 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
             ControlButton(Icons.Default.Add, tr("panel.more"), onPlus, size = 48.dp, tint = colors.onSurface)
             ControlButton(Icons.Default.Restore, tr("panel.reset"), onReset, size = 48.dp, tint = colors.onSurfaceVariant)
         }
+    }
     }
 }
 
@@ -693,15 +726,15 @@ internal fun scrollOffsetToReveal(itemOffset: Int, itemSize: Int, viewport: Int)
     return itemEnd - viewport
 }
 
-/** Перед выездом список в нуле. Не крутить к выбранной строке: у звука это прячет переключатели. */
+/** Уже в нуле: [scrollTo] даже без сдвига заново измеряет список. */
+private fun panelScrollAtTop(lazy: Boolean, listState: LazyListState, scrollState: ScrollState): Boolean =
+    if (lazy) listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+    else scrollState.value == 0
+
+/** Пока панель за краем. Не крутить к выбранной строке: у звука это прячет переключатели. */
 private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, scrollState: ScrollState) {
-    if (lazy) {
-        if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
-            listState.scrollToItem(0)
-        }
-    } else if (scrollState.value != 0) {
-        scrollState.scrollTo(0)
-    }
+    if (panelScrollAtTop(lazy, listState, scrollState)) return
+    if (lazy) listState.scrollToItem(0) else scrollState.scrollTo(0)
 }
 
 /** До скольких строк панель — обычная колонка, а не LazyColumn. */

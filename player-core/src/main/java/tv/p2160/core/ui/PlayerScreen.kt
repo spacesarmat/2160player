@@ -752,7 +752,7 @@ private fun BoxScope.ResumeHintInset(
 }
 
 /**
- * «Аудио» и «Скорость» собираются по одной на кадр простоя и остаются за краем экрана.
+ * «Аудио» и «Скорость» собираются после появления кнопок, по одной на кадр простоя, и остаются за краем.
  * Повторное открытие только анимирует `translationX`. Остальные панели живут, пока выезжают,
  * и снимаются после закрытия. Сдвиг не через offset и не через ширину.
  * [key] держит слоты на месте: прогрев звука не должен выбросить уже собранную скорость.
@@ -776,8 +776,9 @@ private fun BoxScope.PlayerPanels(
         if (open == Panel.SPEED) keepSpeed = true
     }
     LaunchedEffect(Unit) {
-        // Кадры старта плеера не занимаем. Дальше — одна панель на кадр.
-        withFrameNanos { }
+        // Не в кадры появления кнопок: на POCO это давало 27–31 мс через 0,4–0,5 с после показа.
+        // Одна панель на кадр простоя, один раз за экран.
+        delay(CONTROLS_SHOW_MS.toLong() + 70)
         withFrameNanos { }
         keepAudio = true
         withFrameNanos { }
@@ -842,18 +843,16 @@ private fun BoxScope.ParkedPanel(
 ) {
     // 0 — открыта, 1 — за правым краем. value в композиции не читается: это был бы кадр анимации.
     val slide = remember { Animatable(1f) }
-    val openSignal = remember { PanelOpenSignal() }
-    // Читается только в слое: после раскладки списка заставляем записать его до выезда.
-    val layerEpoch = remember { mutableIntStateOf(0) }
+    val scrollReset = remember { PanelScrollReset() }
     LaunchedEffect(open) {
         if (open) {
-            openSignal.prepare()
-            layerEpoch.intValue++
-            withFrameNanos { }
+            // Список уже в нуле с прошлого простоя. Выезд — следующий кадр, без сброса и без лишних кадров.
             slide.animateTo(0f, tween(200))
         } else if (slide.value != 1f) {
             slide.animateTo(1f, tween(200))
             onParked()
+            // Уже за краем. Сброс, если список уезжал, — отдельный кадр и только когда смещение не ноль.
+            scrollReset.request()
         } else {
             // Уже за краем (прогрев): не запускать tween, иначе слой 200 мс числится анимируемым.
             onParked()
@@ -871,20 +870,17 @@ private fun BoxScope.ParkedPanel(
             clip = true
             shape = panelShape
             compositingStrategy = CompositingStrategy.Auto
-            // Не пиксель: после prepare список уже разложен, и слой перезаписывается до выезда.
-            // Иначе первый кадр скорости — пустая полоса под заголовком.
-            val epoch = layerEpoch.intValue
-            if (epoch < 0) alpha = 1f
         }
     }
-    Box(Modifier.align(Alignment.TopEnd).zIndex(if (open) 1f else 0f)) {
+    // zIndex не зависит от open: смена 1→0 на закрытии заново измеряла весь кадр.
+    Box(Modifier.align(Alignment.TopEnd).zIndex(1f)) {
         SidePanel(
             panel = panel,
             state = state,
             settings = settings,
             resizeMode = resizeMode,
             actions = actions,
-            openSignal = openSignal,
+            scrollReset = scrollReset,
             open = open,
             modifier = layer,
         )
@@ -1008,6 +1004,12 @@ private fun Controls(
     }
 }
 
+/** Появление кнопок, мс. Прогрев панелей стартует после этого, не в те же кадры. */
+internal const val CONTROLS_SHOW_MS = 180
+
+/** Исчезновение кнопок, мс. */
+internal const val CONTROLS_HIDE_MS = 150
+
 /**
  * Появление управления. Цепочка одна и та же во всех состояниях: смена «пусто → слой → parked»
  * заново измеряла оверлей (скрытие на POCO: recompose 14–22 мс). Альфа читается в лямбде слоя,
@@ -1038,9 +1040,9 @@ internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Compos
     LaunchedEffect(visible) {
         if (visible) {
             shown.value = true
-            opacity.animateTo(1f, tween(180))
+            opacity.animateTo(1f, tween(CONTROLS_SHOW_MS))
         } else {
-            opacity.animateTo(0f, tween(150))
+            opacity.animateTo(0f, tween(CONTROLS_HIDE_MS))
             shown.value = false
         }
     }

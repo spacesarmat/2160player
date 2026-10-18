@@ -81,11 +81,13 @@ fun ControlButton(
     accent: Color = MaterialTheme.colorScheme.primary,
     tint: Color = Color.White,
     enabled: Boolean = true,
+    /** Панель скорости: кнопки меньше 48 dp, чтобы «Точно» и 1× влезли в альбомный экран. */
+    compact: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
-    val target = size.coerceAtLeast(48.dp)
+    val target = if (compact) size else size.coerceAtLeast(48.dp)
     val gate = LocalInteractionGate.current
     Box(
         modifier = modifier
@@ -246,6 +248,8 @@ fun PanelRow(
     leading: ImageVector? = null,
     /** Переключатель (ночной звук), а не пункт списка с одной галочкой. */
     switch: Boolean = false,
+    /** Пресет скорости: ниже обычной строки, чтобы 1× был виден вместе с «Точно». */
+    compact: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -278,8 +282,8 @@ fun PanelRow(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .heightIn(min = 48.dp)
+            .padding(horizontal = 8.dp, vertical = if (compact) 0.dp else 2.dp)
+            .heightIn(min = if (compact) 32.dp else 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(
                 when {
@@ -301,7 +305,7 @@ fun PanelRow(
                 }
             }
             .then(choice)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 12.dp),
     ) {
         androidx.compose.foundation.layout.Row(
             Modifier.fillMaxWidth(),
@@ -315,7 +319,7 @@ fun PanelRow(
                 androidx.compose.material3.Text(
                     text,
                     color = if (selected && !switched) colors.primary else colors.onSurface,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                 )
                 if (secondary != null) {
                     androidx.compose.material3.Text(

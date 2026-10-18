@@ -3,11 +3,8 @@ package tv.p2160.core.ui
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +58,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
@@ -142,8 +140,6 @@ fun PlayerScreen(
             if (panel == null) heldPanel = null
         }
     }
-    // isRunning и targetValue меняются только на старте и в конце, не на каждом кадре.
-    val panelSliding = panelSlide.isRunning || panelSlide.targetValue != 0f || (panel == null && heldPanel != null)
     var interaction by remember { mutableIntStateOf(0) }
     var resizeMode by remember { mutableStateOf(settings.resizeMode) }
     /** Подпись режима масштаба на пару секунд после переключения. */
@@ -426,10 +422,9 @@ fun PlayerScreen(
                 Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = if (controlsVisible) 88.dp else 16.dp),
             )
 
-            AnimatedVisibility(
-                visible = controlsVisible && !inPictureInPicture,
-                enter = fadeIn(), exit = fadeOut(),
-            ) {
+            // Не AnimatedVisibility: её fade держит слой на весь экран и читает анимацию в measure.
+            if (!inPictureInPicture) {
+            ControlsFade(visible = controlsVisible) {
                 Controls(
                     controller = controller,
                     state = state,
@@ -453,6 +448,7 @@ fun PlayerScreen(
                     onPreviousChapter = { controller.previousChapter(); poke() },
                     panelOpen = heldPanel != null,
                 )
+            }
             }
 
             if (!inPictureInPicture) {
@@ -604,12 +600,11 @@ fun PlayerScreen(
                 }
             }
 
-            // 0.2.10 сдвигал панель через slideInHorizontally: переход читает долю в measure
-            // и каждый кадр заново измеряет панель вместе с SurfaceView. Обёртка
-            // windowInsetsPadding(safeDrawing) подписывала тот же узел на инсеты.
-            // Отсюда рывки при открытии, прокрутке и закрытии (в 0.2.9 было около 1 %).
-            // Сдвиг — translationX внутри graphicsLayer, и только пока панель едет;
-            // сверху обычный padding (кнопки остаются нажимаемыми), без insets в measure.
+            // Прокрутка панели без своего RenderNode пачкала всё окно поверх SurfaceView:
+            // UI-поток заново записывал команды на весь кадр (gfxinfo: slow issue draw commands,
+            // на 120 Гц хвост 27–30 мс). Слой панели постоянный, пока она на экране: сдвиг —
+            // только translationX в лямбде, значение Animatable в композиции не читается.
+            // Сверху обычный padding, чтобы иконки оставались нажимаемыми.
             val currentPanel = heldPanel
             if (currentPanel != null) {
                 val density = LocalDensity.current
@@ -650,13 +645,12 @@ fun PlayerScreen(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = topPad)
-                        .then(
-                            if (panelSliding) {
-                                Modifier.graphicsLayer { translationX = size.width * panelSlide.value }
-                            } else {
-                                Modifier
-                            },
-                        ),
+                        .graphicsLayer {
+                            translationX = size.width * panelSlide.value
+                            clip = true
+                            shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
+                            compositingStrategy = CompositingStrategy.Offscreen
+                        },
                 )
             }
         }
@@ -737,8 +731,8 @@ private fun Controls(
                 ) { actionButtons() }
             }
 
-            // Панель стоит справа до низа. Полоса, время и центральные кнопки уезжают влево
-            // один раз при открытии — не на каждом кадре сдвига.
+            // Сдвиг полосы — один padding при открытии и закрытии, без анимации ширины:
+            // анимированный padding заново измерял бы полосу, кнопки и SurfaceView каждый кадр.
             val panelReserve = if (panelOpen) {
                 sidePanelWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()).dp
             } else {
@@ -778,6 +772,33 @@ private fun Controls(
             }
         }
     }
+}
+
+/**
+ * Появление управления. Слой только на время смены прозрачности: постоянный слой на весь
+ * экран заставлял перезаписывать команды рисования вместе с дыркой SurfaceView.
+ * Доля читается в graphicsLayer, не в композиции.
+ */
+@Composable
+private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
+    val alpha = remember { Animatable(if (visible) 1f else 0f) }
+    var shown by remember { mutableStateOf(visible) }
+    if (visible) shown = true
+    LaunchedEffect(visible) {
+        if (visible) alpha.animateTo(1f, tween(180))
+        else {
+            alpha.animateTo(0f, tween(150))
+            shown = false
+        }
+    }
+    if (!shown) return
+    // isRunning меняется дважды за появление, не каждый кадр.
+    val fading = alpha.isRunning || alpha.targetValue < 1f
+    Box(
+        Modifier.then(
+            if (fading) Modifier.graphicsLayer { this.alpha = alpha.value } else Modifier,
+        ),
+    ) { content() }
 }
 
 /** Полоса и время. Собирает только позицию: остальной экран от тика прогресса не пересобирается. */

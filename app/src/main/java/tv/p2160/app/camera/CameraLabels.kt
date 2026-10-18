@@ -9,8 +9,9 @@ import kotlin.math.round
  * Имена камер в ряду «Камера». Одна камера стороны — «Задняя» / «Фронтальная».
  * Несколько задних: ближайшая к 26 мм экв. — «Основная», шире — «Широкая» или «Сверхширокая»,
  * длиннее — «Телевик 3×». Вторая фронтальная называется по отличию фокусного
- * («Фронтальная широкая»), номер — только если отличить нельзя.
- * Логическая камера, чьи физические id уже есть в списке, в ряд не попадает.
+ * («Фронтальная широкая»). «Телевик» у фронтальной — только если фокусное ≥ 2×
+ * и сенсор другой. Кадрирование того же сенсора в ряд не попадает.
+ * Логическая камера, чьи физические id уже есть в списке, тоже.
  */
 object CameraLabels {
     /** Совпадают с [android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT] и соседними. */
@@ -25,12 +26,18 @@ object CameraLabels {
     const val KEY_WIDE = "camera.wide"
     const val KEY_ULTRA = "camera.ultra"
     const val KEY_TELE = "camera.back_tele"
+    const val KEY_CROP = "camera.crop"
 
     data class Lens(
         val id: String,
         val facing: Int,
         val focalLengthMm: Float,
         val sensorWidthMm: Float? = null,
+        val sensorHeightMm: Float? = null,
+        val pixelWidth: Int = 0,
+        val pixelHeight: Int = 0,
+        /** Физические id Camera2 (API 28+). Пусто, если их нет. */
+        val physicalIds: Set<String> = emptySet(),
         /** Логическая мульти-камера: физические объективы уже перечислены отдельно. */
         val logicalDuplicate: Boolean = false,
     )
@@ -45,6 +52,12 @@ object CameraLabels {
         val number: Int? = null,
     ) {
         fun text(translate: (String) -> String, locale: Locale = Locale.getDefault()): String {
+            if (key == KEY_CROP) {
+                val word = decapitalize(translate(key), locale)
+                val side = facingKey?.let { translate(it) }
+                val body = if (side != null) "$side ($word)" else word
+                return if (number != null && number > 1) "$body $number" else body
+            }
             val zoomText = zoom?.let { UiFormat.speed(displayZoom(it), locale) + "×" }
             val parts = ArrayList<String>(3)
             if (facingKey != null) parts += translate(facingKey)
@@ -80,8 +93,11 @@ object CameraLabels {
         return sorted[sorted.size / 2]
     }
 
+    /** Камеры, которые попадают в ряд: без логических дублей и без кадрирования того же сенсора. */
+    fun shown(lenses: List<Lens>): List<Lens> = dedupe(lenses.filter { !it.logicalDuplicate })
+
     fun names(lenses: List<Lens>): List<Name> {
-        val visible = lenses.filter { !it.logicalDuplicate }
+        val visible = shown(lenses)
         if (visible.isEmpty()) return emptyList()
         val preliminary = HashMap<String, Name>(visible.size)
         val facingOf = HashMap<String, Int>(visible.size)
@@ -151,6 +167,9 @@ object CameraLabels {
                 zoom < 0.8f -> KEY_ULTRA
                 zoom < 0.98f -> KEY_WIDE
                 zoom <= 1.02f -> if (facing == BACK) KEY_MAIN else facingKey(facing)
+                // Фронтальный «телевик» только у другого физического сенсора и при ≥ 2×.
+                // Иначе это кадрирование того же объектива (на S21 Ultra вторая «фронтальная»).
+                facing != BACK && (zoom < 2f || !distinctSensor(lens, reference)) -> KEY_CROP
                 else -> KEY_TELE
             }
             val showZoom = when (key) {
@@ -166,6 +185,54 @@ object CameraLabels {
                 facingKey = prefix,
             )
         }
+    }
+
+    /** Тот же физический сенсор: общие physical id или совпавшие ширина, высота и не больший кадр. */
+    private fun dedupe(lenses: List<Lens>): List<Lens> {
+        val drop = HashSet<String>()
+        for (a in lenses) {
+            for (b in lenses) {
+                if (a.id != b.id && a.facing == b.facing && samePhysicalSensor(a, b) && keepOver(a, b)) drop += b.id
+            }
+        }
+        return if (drop.isEmpty()) lenses else lenses.filter { it.id !in drop }
+    }
+
+    private fun samePhysicalSensor(a: Lens, b: Lens): Boolean {
+        if (a.physicalIds.isNotEmpty() && (b.id in a.physicalIds || a.id in b.physicalIds)) return true
+        if (a.physicalIds.isNotEmpty() && b.physicalIds.isNotEmpty() && a.physicalIds == b.physicalIds) return true
+        val aw = a.sensorWidthMm
+        val bw = b.sensorWidthMm
+        val ah = a.sensorHeightMm
+        val bh = b.sensorHeightMm
+        if (aw != null && bw != null && ah != null && bh != null && aw > 0f && bw > 0f && ah > 0f && bh > 0f) {
+            return close(aw, bw) && close(ah, bh)
+        }
+        return false
+    }
+
+    /** Другой сенсор, а не кроп: обе высоты известны и размер заметно отличается. */
+    private fun distinctSensor(lens: Lens, reference: Lens): Boolean {
+        val lw = lens.sensorWidthMm
+        val rw = reference.sensorWidthMm
+        val lh = lens.sensorHeightMm
+        val rh = reference.sensorHeightMm
+        if (lw == null || rw == null || lh == null || rh == null) return false
+        if (lw <= 0f || rw <= 0f || lh <= 0f || rh <= 0f) return false
+        return !close(lw, rw) || !close(lh, rh)
+    }
+
+    private fun close(a: Float, b: Float): Boolean = abs(a - b) / maxOf(a, b) <= 0.05f
+
+    /** Оставляем полный кадр: больше пикселей, иначе более короткое фокусное. */
+    private fun keepOver(keep: Lens, drop: Lens): Boolean {
+        val keepPx = keep.pixelWidth.toLong() * keep.pixelHeight
+        val dropPx = drop.pixelWidth.toLong() * drop.pixelHeight
+        if (keepPx != dropPx && keepPx > 0L && dropPx > 0L) return keepPx > dropPx
+        if (keep.focalLengthMm > 0f && drop.focalLengthMm > 0f && keep.focalLengthMm != drop.focalLengthMm) {
+            return keep.focalLengthMm < drop.focalLengthMm
+        }
+        return keep.id <= drop.id
     }
 
     private fun facingKey(facing: Int): String = when (facing) {

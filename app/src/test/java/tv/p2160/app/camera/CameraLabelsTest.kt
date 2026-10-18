@@ -113,11 +113,41 @@ class CameraLabelsTest {
                 Lens("2", CameraLabels.FRONT, 2.8f, 4.4f),
             ),
         )
+        // Тот же размер сенсора не доказан, 2× без другого сенсора — это кадрирование, не телевик.
         assertEquals(
-            listOf("Фронтальная", "Фронтальная телевик 2×"),
+            listOf("Фронтальная", "Фронтальная (кадрирование)"),
             labels(
                 Lens("1", CameraLabels.FRONT, 3.2f, 4.4f),
                 Lens("3", CameraLabels.FRONT, 6.4f, 4.4f),
+            ),
+        )
+    }
+
+    @Test
+    fun frontCropOfTheSameSensorIsHidden() {
+        assertEquals(
+            listOf("Фронтальная"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.5f, sensorHeightMm = 3.4f, pixelWidth = 4000, pixelHeight = 3000),
+                Lens("20", CameraLabels.FRONT, 6.4f, 4.5f, sensorHeightMm = 3.4f, pixelWidth = 1920, pixelHeight = 1080),
+            ),
+        )
+        assertEquals(
+            listOf("Фронтальная"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, physicalIds = setOf("1")),
+                Lens("20", CameraLabels.FRONT, 7f, physicalIds = setOf("1")),
+            ),
+        )
+    }
+
+    @Test
+    fun frontTeleNeedsAnotherSensorAndAtLeastTwoTimes() {
+        assertEquals(
+            listOf("Фронтальная", "Фронтальная телевик 3,7×"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.4f, sensorHeightMm = 3.3f),
+                Lens("2", CameraLabels.FRONT, 8f, 3.0f, sensorHeightMm = 2.2f),
             ),
         )
     }
@@ -144,6 +174,7 @@ class CameraLabelsTest {
         CameraLabels.KEY_WIDE -> "Широкая"
         CameraLabels.KEY_ULTRA -> "Сверхширокая"
         CameraLabels.KEY_TELE -> "Телевик"
+        CameraLabels.KEY_CROP -> "кадрирование"
         else -> key
     }
 }

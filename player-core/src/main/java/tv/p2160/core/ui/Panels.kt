@@ -31,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -126,7 +125,8 @@ fun SidePanel(
         Modifier
             .width(panelWidth)
             .fillMaxHeight()
-            .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
+            // Скругление делает слой панели снаружи (graphicsLayer.clip). Второй clip здесь
+            // поднимал ещё один offscreen-буфер на каждый кадр прокрутки.
             // Непрозрачная подложка: полупрозрачный слой поверх SurfaceView перерисовывался каждый кадр.
             .background(colors.surface)
             .padding(vertical = 16.dp),
@@ -137,6 +137,10 @@ fun SidePanel(
             color = colors.onSurface,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
+        // Сводка по файлу опрашивает кодеки. Считать её один раз на файл, не на каждый кадр прокрутки.
+        val infoReport = remember(panel, state.title, state.durationMs) {
+            if (panel == Panel.INFO) actions.report() else null
+        }
         LazyColumn(Modifier.fillMaxWidth()) {
             when (panel) {
                 Panel.AUDIO -> {
@@ -190,8 +194,8 @@ fun SidePanel(
                         )
                     }
                     item(key = "audio-delay-hint") { Hint(tr("panel.audio_delay_hint")) }
-                    if (state.audioTracks.isEmpty()) item { Hint(tr("panel.no_audio")) }
-                    items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }) { (i, t) ->
+                    if (state.audioTracks.isEmpty()) item(key = "no-audio", contentType = "hint") { Hint(tr("panel.no_audio")) }
+                    items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }, contentType = { "track" }) { (i, t) ->
                         PanelRow(
                             text = t.label,
                             secondary = if (!t.supported) tr("panel.unsupported_audio") else null,
@@ -208,7 +212,7 @@ fun SidePanel(
                         PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
                             modifier = if (!active) Modifier.focusRequester(focus) else Modifier)
                     }
-                    items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }) { minutes ->
+                    items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }, contentType = { "choice" }) { minutes ->
                         PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
                     }
                     item(key = "sleep-end") {
@@ -232,7 +236,7 @@ fun SidePanel(
                         )
                     }
                     val primaryTracks = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
-                    items(primaryTracks.withIndex().toList(), key = { "t${it.index}" }) { (_, t) ->
+                    items(primaryTracks.withIndex().toList(), key = { "t${it.index}" }, contentType = { "track" }) { (_, t) ->
                         PanelRow(
                             text = t.label,
                             selected = t.selected && !state.textDisabled,
@@ -246,7 +250,7 @@ fun SidePanel(
                             PanelRow(tr("panel.subs_off"), selected = state.secondaryTextId == null, onClick = { actions.onSecondarySubtitle(null) })
                         }
                         val candidates = state.textTracks.filter { !(it.selected && it.formatId != state.secondaryTextId) || state.textDisabled }
-                        items(candidates.withIndex().toList(), key = { "s${it.index}" }) { (_, t) ->
+                        items(candidates.withIndex().toList(), key = { "s${it.index}" }, contentType = { "track" }) { (_, t) ->
                             PanelRow(
                                 text = t.label,
                                 selected = t.formatId != null && t.formatId == state.secondaryTextId,
@@ -288,7 +292,7 @@ fun SidePanel(
                             onReset = { actions.onSpeed(1f) },
                         )
                     }
-                    items(SPEED_PRESETS, key = { "s$it" }) { s ->
+                    items(SPEED_PRESETS, key = { "s$it" }, contentType = { "choice" }) { s ->
                         val selected = kotlin.math.abs(state.speed - s) < 0.01f
                         PanelRow(
                             text = if (s == 1f) tr("panel.speed_normal") else "${formatSpeed(s)}×",
@@ -300,7 +304,7 @@ fun SidePanel(
                 }
 
                 Panel.INFO -> {
-                    val report = actions.report()
+                    val report = infoReport ?: actions.report()
                     item(key = "stats") {
                         PanelRow(
                             text = tr("panel.stats_overlay"),
@@ -322,7 +326,7 @@ fun SidePanel(
                     }
                     report.sections.forEachIndexed { si, section ->
                         item(key = "sec$si") { Hint(section.title) }
-                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }) { (ri, row) ->
+                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (ri, row) ->
                             InfoRow(row, modifier = Modifier.focusable())
                         }
                     }
@@ -332,7 +336,7 @@ fun SidePanel(
                     if (state.chapters.isEmpty()) {
                         item(key = "no-ch") { Hint(tr("panel.no_chapters")) }
                     }
-                    items(state.chapters.withIndex().toList(), key = { "ch${it.index}" }) { (i, ch) ->
+                    items(state.chapters.withIndex().toList(), key = { "ch${it.index}" }, contentType = { "chapter" }) { (i, ch) ->
                         val current = i == state.chapterIndex
                         PanelRow(
                             text = ch.title ?: tr("player.chapter_n", i + 1),
@@ -382,7 +386,7 @@ fun SidePanel(
 
                 Panel.VIDEO -> {
                     item(key = "resize-title") { Hint(tr("panel.scale")) }
-                    items(ResizeMode.entries, key = { "r${it.name}" }) { mode ->
+                    items(ResizeMode.entries, key = { "r${it.name}" }, contentType = { "choice" }) { mode ->
                         PanelRow(
                             text = resizeLabel(mode),
                             selected = resizeMode == mode,
@@ -395,7 +399,7 @@ fun SidePanel(
                         if (state.videoTracks.size > 1) {
                             item(key = "auto") { PanelRow(tr("panel.auto"), selected = false, onClick = actions.onAutoVideo) }
                         }
-                        items(state.videoTracks.withIndex().toList(), key = { "v${it.index}" }) { (_, t) ->
+                        items(state.videoTracks.withIndex().toList(), key = { "v${it.index}" }, contentType = { "track" }) { (_, t) ->
                             PanelRow(
                                 text = t.label,
                                 secondary = if (!t.supported) tr("panel.unsupported_video") else null,

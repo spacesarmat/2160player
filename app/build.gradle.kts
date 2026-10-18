@@ -32,8 +32,8 @@ android {
         applicationId = "tv.p2160.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 23
-        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.11"
+        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 24
+        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.12"
         buildConfigField("boolean", "NDI", (ndiSdkDir != null).toString())
         if (ndiSdkDir != null) {
             externalNativeBuild {

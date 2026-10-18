@@ -25,11 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
@@ -44,6 +44,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -54,6 +55,25 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.ObserverModifierNode
+import androidx.compose.ui.node.SemanticsModifierNode
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.invalidateSemantics
+import androidx.compose.ui.node.observeReads
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.Constraints
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.api.SkipSegment
 import androidx.compose.material.icons.filled.Check
@@ -81,11 +101,13 @@ fun ControlButton(
     accent: Color = MaterialTheme.colorScheme.primary,
     tint: Color = Color.White,
     enabled: Boolean = true,
+    /** Панель скорости: кнопки меньше 48 dp, чтобы «Точно» и 1× влезли в альбомный экран. */
+    compact: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
-    val target = size.coerceAtLeast(48.dp)
+    val target = if (compact) size else size.coerceAtLeast(48.dp)
     val gate = LocalInteractionGate.current
     Box(
         modifier = modifier
@@ -116,7 +138,38 @@ fun ControlButton(
 }
 
 /**
+ * Позиция и буфер полосы. Пишутся из коллектора, читаются только в отрисовке своего слоя:
+ * тик не пересобирает полосу и не измеряет её родителя.
+ */
+internal class TransportClock(positionMs: Long = 0L, bufferedMs: Long = 0L) {
+    val positionMs = mutableLongStateOf(positionMs)
+    val bufferedMs = mutableLongStateOf(bufferedMs)
+
+    /** Позиция под пальцем или стрелкой. null — на экране время воспроизведения. */
+    val scrubMs = mutableStateOf<Long?>(null)
+
+    fun publish(position: Long, buffered: Long) {
+        if (positionMs.longValue == position && bufferedMs.longValue == buffered) return
+        Snapshot.withMutableSnapshot {
+            positionMs.longValue = position
+            bufferedMs.longValue = buffered
+        }
+    }
+
+    /** Что рисовать. Читает состояние: вызывать из отрисовки, не из композиции. */
+    fun shownMs(): Long {
+        val scrub = scrubMs.value
+        return if (scrub != null) scrub else positionMs.longValue
+    }
+
+    fun preview(ms: Long?) {
+        if (scrubMs.value != ms) scrubMs.value = ms
+    }
+}
+
+/**
  * Полоса перемотки: тянется пальцем, на пульте — влево/вправо с шагом [stepMs].
+ * Позиция приходит параметром и попадает в [TransportClock] после композиции, без нового измерения.
  */
 @Composable
 fun SeekBar(
@@ -135,15 +188,45 @@ fun SeekBar(
     /** Позиция под пальцем во время перетаскивания (для превью), null — перетаскивание закончено. */
     onScrub: (Long?) -> Unit = {},
 ) {
+    val clock = remember { TransportClock(positionMs, bufferedMs) }
+    SideEffect { clock.publish(positionMs, bufferedMs) }
+    SeekBar(
+        clock = clock,
+        durationMs = durationMs,
+        stepMs = stepMs,
+        onSeek = onSeek,
+        onInteraction = onInteraction,
+        modifier = modifier,
+        accent = accent,
+        chapterStartsMs = chapterStartsMs,
+        segments = segments,
+        onScrub = onScrub,
+    )
+}
+
+/**
+ * Та же полоса, но позиция читается в слое прогресса, не в композиции.
+ * Подложка, главы и отрезки этот слой не перерисовывают.
+ */
+@Composable
+internal fun SeekBar(
+    clock: TransportClock,
+    durationMs: Long,
+    stepMs: Long,
+    onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = MaterialTheme.colorScheme.primary,
+    chapterStartsMs: List<Long> = emptyList(),
+    segments: List<SkipSegment> = emptyList(),
+    onScrub: (Long?) -> Unit = {},
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    var dragFraction by remember { mutableStateOf<Float?>(null) }
-    var keyTarget by remember { mutableStateOf<Long?>(null) }
+    val dragFraction = remember { mutableStateOf<Float?>(null) }
+    val keyTarget = remember { mutableStateOf<Long?>(null) }
     val gate = LocalInteractionGate.current
     val duration = durationMs.coerceAtLeast(1)
-    val fraction = dragFraction ?: keyTarget?.let { (it.toFloat() / duration).coerceIn(0f, 1f) }
-        ?: if (durationMs <= 0) 0f else (positionMs.toFloat() / duration).coerceIn(0f, 1f)
-    val buffered = (bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
 
     Box(
         modifier = modifier
@@ -154,9 +237,12 @@ fun SeekBar(
                 if (!gate.open || durationMs <= 0) return@onKeyEvent false
                 val arrow = e.key == Key.DirectionLeft || e.key == Key.DirectionRight
                 if (e.type == KeyEventType.KeyUp) {
-                    val target = keyTarget ?: return@onKeyEvent false
+                    val target = keyTarget.value ?: return@onKeyEvent false
                     if (!arrow) return@onKeyEvent false
-                    keyTarget = null
+                    Snapshot.withMutableSnapshot {
+                        keyTarget.value = null
+                        clock.preview(null)
+                    }
                     onScrub(null)
                     onSeek(target)
                     return@onKeyEvent true
@@ -171,8 +257,12 @@ fun SeekBar(
                 }
                 if (!arrow) return@onKeyEvent false
                 val delta = if (e.key == Key.DirectionLeft) -step else step
-                keyTarget = ((keyTarget ?: positionMs) + delta).coerceIn(0, durationMs)
-                onScrub(keyTarget)
+                val next = ((keyTarget.value ?: clock.shownMs()) + delta).coerceIn(0, durationMs)
+                Snapshot.withMutableSnapshot {
+                    keyTarget.value = next
+                    clock.preview(next)
+                }
+                onScrub(next)
                 onInteraction()
                 true
             }
@@ -187,33 +277,70 @@ fun SeekBar(
                 detectHorizontalDragGestures(
                     onDragStart = { o ->
                         if (gate.open) {
-                            dragFraction = (o.x / size.width).coerceIn(0f, 1f)
-                            onScrub((dragFraction!! * duration).toLong())
+                            val fraction = (o.x / size.width).coerceIn(0f, 1f)
+                            val ms = (fraction * duration).toLong()
+                            Snapshot.withMutableSnapshot {
+                                dragFraction.value = fraction
+                                clock.preview(ms)
+                            }
+                            onScrub(ms)
                             onInteraction()
                         }
                     },
                     onDragEnd = {
-                        if (gate.open) dragFraction?.let { onSeek((it * duration).toLong()) }
-                        dragFraction = null
+                        val fraction = dragFraction.value
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = null
+                            clock.preview(null)
+                        }
+                        onScrub(null)
+                        if (gate.open) fraction?.let { onSeek((it * duration).toLong()) }
+                    },
+                    onDragCancel = {
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = null
+                            clock.preview(null)
+                        }
                         onScrub(null)
                     },
-                    onDragCancel = { dragFraction = null; onScrub(null) },
                 ) { change, _ ->
                     if (gate.open) {
-                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                        onScrub((dragFraction!! * duration).toLong())
+                        val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val ms = (fraction * duration).toLong()
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = fraction
+                            clock.preview(ms)
+                        }
+                        onScrub(ms)
                         onInteraction()
                     }
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Подложка не читает позицию: тик её не записывает заново.
         Canvas(Modifier.fillMaxWidth().height(36.dp)) {
-            val active = focused || dragFraction != null
+            val active = focused || dragFraction.value != null || keyTarget.value != null
             val trackH = if (active) 8.dp.toPx() else 5.dp.toPx()
             val y = size.height / 2 - trackH / 2
             val r = CornerRadius(trackH / 2)
             drawRoundRect(Color.White.copy(alpha = 0.25f), Offset(0f, y), Size(size.width, trackH), r)
+        }
+        // Буфер, пройденное и ползунок — свой слой. Родительская полоса из-за тика не измеряется.
+        Canvas(Modifier.fillMaxWidth().height(36.dp).graphicsLayer {}) {
+            val active = focused || dragFraction.value != null || keyTarget.value != null
+            val trackH = if (active) 8.dp.toPx() else 5.dp.toPx()
+            val y = size.height / 2 - trackH / 2
+            val r = CornerRadius(trackH / 2)
+            val drag = dragFraction.value
+            val key = keyTarget.value
+            val fraction = when {
+                drag != null -> drag
+                key != null -> (key.toFloat() / duration).coerceIn(0f, 1f)
+                durationMs <= 0L -> 0f
+                else -> (clock.positionMs.longValue.toFloat() / duration).coerceIn(0f, 1f)
+            }
+            val buffered = (clock.bufferedMs.longValue.toFloat() / duration).coerceIn(0f, 1f)
             drawRoundRect(Color.White.copy(alpha = 0.45f), Offset(0f, y), Size(size.width * buffered, trackH), r)
             segments.forEach { s ->
                 val start = s.startMs.toFloat() / duration * size.width
@@ -221,7 +348,6 @@ fun SeekBar(
                 drawRect(Color(0xFF7DD3FC).copy(alpha = 0.55f), Offset(start, y), Size((end - start).coerceAtLeast(0f), trackH))
             }
             drawRoundRect(accent, Offset(0f, y), Size(size.width * fraction, trackH), r)
-            // Разрывы на границах глав.
             val gap = 3.dp.toPx()
             chapterStartsMs.forEach { ms ->
                 if (ms <= 0 || ms >= durationMs) return@forEach
@@ -232,6 +358,148 @@ fun SeekBar(
             drawCircle(accent, thumb, Offset(size.width * fraction, size.height / 2))
             if (focused) drawCircle(Color.White, thumb, Offset(size.width * fraction, size.height / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
         }
+    }
+}
+
+/** Самая широкая подпись времени: табличные цифры, ширина не пляшет на тике. */
+internal const val TIME_SAMPLE = "88:88:88"
+
+/** «−часы / длительность» той же ширины, что и худший случай. Минус — U+2212, как на экране. */
+internal const val REMAINING_SAMPLE = "−88:88:88 / 88:88:88"
+
+/**
+ * Ширина прошедшего времени под текущую длительность: `m:ss`, `mm:ss` или `h:mm:ss`.
+ * Считается при смене длительности, не на каждом тике. Цифры — «8»: с `tnum` все одной ширины.
+ */
+internal fun elapsedTimeSample(durationMs: Long): String {
+    if (durationMs <= 0L) return "8:88"
+    val totalSec = durationMs / 1000
+    val hours = totalSec / 3600
+    return when {
+        hours >= 1 -> "8".repeat(hours.toString().length) + ":88:88"
+        totalSec >= 600 -> "88:88"
+        else -> "8:88"
+    }
+}
+
+/** «−остаток / длительность» той же ширины, что [elapsedTimeSample] для этой длительности. */
+internal fun remainingTimeSample(durationMs: Long): String {
+    val body = elapsedTimeSample(durationMs)
+    return "−$body / $body"
+}
+
+/** Горизонталь глифа в коробке фиксированной ширины. Конец — у правого края, начало — у левого. */
+internal fun tickTextX(boxWidthPx: Float, textWidthPx: Float, alignEnd: Boolean): Float =
+    if (alignEnd) (boxWidthPx - textWidthPx).coerceAtLeast(0f) else 0f
+
+/**
+ * Подпись фиксированной ширины. Текст измеряется заранее по [sample] и рисуется в своём слое:
+ * смена [clock] не измеряет родителя и не перезаписывает полосу целиком.
+ */
+@Composable
+internal fun FixedTickText(
+    clock: TransportClock,
+    sample: String,
+    style: TextStyle,
+    color: Color,
+    textKey: Any,
+    label: (TransportClock) -> String,
+    modifier: Modifier = Modifier,
+    /** Остаток прижат к концу полосы. Прошедшее — к началу. */
+    alignEnd: Boolean = false,
+) {
+    val measurer = rememberTextMeasurer()
+    val resolved = remember(style, color) { style.merge(TextStyle(fontFeatureSettings = "tnum", color = color)) }
+    val density = LocalDensity.current
+    val sampleLayout = remember(measurer, resolved, sample, density) {
+        measurer.measure(sample, style = resolved, maxLines = 1, softWrap = false, constraints = TickConstraints)
+    }
+    Box(
+        modifier
+            .width(with(density) { sampleLayout.size.width.toDp() })
+            .height(with(density) { sampleLayout.size.height.toDp() })
+            .graphicsLayer {}
+            .then(TickDrawElement(clock, measurer, resolved, textKey, label, alignEnd)),
+    )
+}
+
+private val TickConstraints = Constraints(maxWidth = Constraints.Infinity)
+
+private class TickDrawElement(
+    val clock: TransportClock,
+    val measurer: TextMeasurer,
+    val style: TextStyle,
+    val textKey: Any,
+    val label: (TransportClock) -> String,
+    val alignEnd: Boolean,
+) : ModifierNodeElement<TickDrawNode>() {
+    override fun create(): TickDrawNode = TickDrawNode(clock, measurer, style, label, alignEnd)
+
+    override fun update(node: TickDrawNode) {
+        node.clock = clock
+        node.measurer = measurer
+        node.style = style
+        node.label = label
+        node.alignEnd = alignEnd
+        // Чтение позиции только внутри observeReads, иначе тик подпишет композицию.
+        node.observe()
+    }
+
+    override fun equals(other: Any?): Boolean = other is TickDrawElement &&
+        clock == other.clock && measurer == other.measurer && style == other.style &&
+        textKey == other.textKey && alignEnd == other.alignEnd
+
+    override fun hashCode(): Int {
+        var result = clock.hashCode()
+        result = 31 * result + measurer.hashCode()
+        result = 31 * result + style.hashCode()
+        result = 31 * result + textKey.hashCode()
+        result = 31 * result + alignEnd.hashCode()
+        return result
+    }
+}
+
+/**
+ * Рисует строку и обновляет описание для TalkBack без measure. Позиция читается в [observeReads],
+ * не в композиции: тик инвалидирует только этот узел.
+ */
+private class TickDrawNode(
+    var clock: TransportClock,
+    var measurer: TextMeasurer,
+    var style: TextStyle,
+    var label: (TransportClock) -> String,
+    var alignEnd: Boolean,
+) : Modifier.Node(), DrawModifierNode, SemanticsModifierNode, ObserverModifierNode {
+    private var description: String = ""
+    private var layout: TextLayoutResult? = null
+
+    override fun onAttach() {
+        observe()
+    }
+
+    override fun onObservedReadsChanged() {
+        observe()
+    }
+
+    fun observe() {
+        if (!isAttached) return
+        observeReads {
+            val next = label(clock)
+            if (next == description && layout != null) return@observeReads
+            description = next
+            layout = measurer.measure(next, style = style, maxLines = 1, softWrap = false, constraints = TickConstraints)
+            invalidateDraw()
+            invalidateSemantics()
+        }
+    }
+
+    override fun ContentDrawScope.draw() {
+        val text = layout ?: return
+        drawText(text, topLeft = Offset(tickTextX(size.width, text.size.width.toFloat(), alignEnd), 0f))
+    }
+
+    override fun SemanticsPropertyReceiver.applySemantics() {
+        contentDescription = description
     }
 }
 
@@ -246,6 +514,8 @@ fun PanelRow(
     leading: ImageVector? = null,
     /** Переключатель (ночной звук), а не пункт списка с одной галочкой. */
     switch: Boolean = false,
+    /** Пресет скорости: ниже обычной строки, чтобы 1× был виден вместе с «Точно». */
+    compact: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -278,8 +548,8 @@ fun PanelRow(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .heightIn(min = 48.dp)
+            .padding(horizontal = 8.dp, vertical = if (compact) 0.dp else 2.dp)
+            .heightIn(min = if (compact) 32.dp else 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(
                 when {
@@ -301,7 +571,7 @@ fun PanelRow(
                 }
             }
             .then(choice)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = if (compact) 4.dp else 12.dp),
     ) {
         androidx.compose.foundation.layout.Row(
             Modifier.fillMaxWidth(),
@@ -315,7 +585,7 @@ fun PanelRow(
                 androidx.compose.material3.Text(
                     text,
                     color = if (selected && !switched) colors.primary else colors.onSurface,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                 )
                 if (secondary != null) {
                     androidx.compose.material3.Text(

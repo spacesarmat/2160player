@@ -32,4 +32,22 @@ class PanelRevealTest {
         assertEquals(0, subtitleRevealIndex(disabled = true, primaryCount = 3, selectedInPrimary = 1))
         assertEquals(2, subtitleRevealIndex(disabled = false, primaryCount = 3, selectedInPrimary = 1))
     }
+
+    @Test
+    fun visibleRowIsNotScrolled() {
+        assertEquals(0, revealDelta(offset = 40, size = 80, viewportStart = 0, viewportEnd = 400))
+    }
+
+    @Test
+    fun clippedRowMovesOnlyByTheOverflow() {
+        assertEquals(30, revealDelta(offset = 350, size = 80, viewportStart = 0, viewportEnd = 400))
+        assertEquals(-20, revealDelta(offset = -20, size = 80, viewportStart = 0, viewportEnd = 400))
+    }
+
+    @Test
+    fun offscreenRowIsPulledBackToTheBottomEdge() {
+        // После scrollToItem строка у верхнего края окна 400 px высотой. Отмотка 320 px сажает её вниз.
+        assertEquals(320, revealPullBack(offset = 0, size = 80, viewportStart = 0, viewportEnd = 400))
+        assertEquals(0, revealPullBack(offset = 0, size = 500, viewportStart = 0, viewportEnd = 400))
+    }
 }

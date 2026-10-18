@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SubtitlesOff
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +40,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -129,12 +134,7 @@ fun SidePanel(
         if (index != null && index > 0) {
             val count = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
             if (index < count) {
-                val info = listState.layoutInfo
-                val item = info.visibleItemsInfo.find { it.index == index }
-                val fully = item != null &&
-                    item.offset >= info.viewportStartOffset &&
-                    item.offset + item.size <= info.viewportEndOffset
-                if (!fully) listState.scrollToItem(index)
+                revealItemMinimally(listState, index)
                 withFrameNanos { }
             }
         }
@@ -158,12 +158,17 @@ fun SidePanel(
             .background(colors.surface)
             .padding(top = 12.dp),
     ) {
-        Text(
-            tr(panel.titleKey),
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.onSurface,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        )
+        // Заголовок поверх списка и непрозрачный: иначе прокрутка заходит под «Аудиодорожка».
+        // Прямоугольный clip, не скруглённый: скругление уже на слое панели и второй offscreen не нужен.
+        Column(Modifier.fillMaxWidth().zIndex(1f).background(colors.surface)) {
+            Text(
+                tr(panel.titleKey),
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.onSurface,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            HorizontalDivider(color = colors.outlineVariant)
+        }
         // Сводка по файлу опрашивает кодеки. Считать её один раз на файл, не на каждый кадр прокрутки.
         val infoReport = remember(panel, state.title, state.durationMs) {
             if (panel == Panel.INFO) actions.report() else null
@@ -172,7 +177,8 @@ fun SidePanel(
         // оказывается под жестовой панелью, и список считает, что она уже видна.
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(bottom = listBottom),
+            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().padding(bottom = listBottom),
+            contentPadding = PaddingValues(top = 4.dp),
         ) {
             when (panel) {
                 Panel.AUDIO -> {
@@ -490,6 +496,46 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 }
 
 fun formatSpeed(s: Float): String = UiFormat.speed(s)
+
+/**
+ * На сколько пикселей прокрутить список, чтобы строка оказалась целиком в окне.
+ * Плюс — контент вверх. Уже видимую строку не двигает. Строка выше окна — только на величину обрезки.
+ */
+internal fun revealDelta(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int): Int {
+    if (size <= 0 || viewportEnd <= viewportStart) return 0
+    val itemEnd = offset + size
+    if (offset >= viewportStart && itemEnd <= viewportEnd) return 0
+    if (offset < viewportStart && itemEnd > viewportEnd) return 0
+    if (itemEnd > viewportEnd) return itemEnd - viewportEnd
+    return offset - viewportStart
+}
+
+/**
+ * После [androidx.compose.foundation.lazy.LazyListState.scrollToItem] строка стоит у верхнего края.
+ * Сколько пикселей отмотать назад, чтобы она села у нижнего края и верхние переключатели не уехали зря.
+ */
+internal fun revealPullBack(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int): Int {
+    val room = viewportEnd - viewportStart - size
+    if (room <= 0) return 0
+    return (room - (offset - viewportStart)).coerceAtLeast(0)
+}
+
+private suspend fun revealItemMinimally(listState: LazyListState, index: Int) {
+    val before = listState.layoutInfo
+    val visible = before.visibleItemsInfo.find { it.index == index }
+    if (visible != null) {
+        val delta = revealDelta(visible.offset, visible.size, before.viewportStartOffset, before.viewportEndOffset)
+        if (delta != 0) listState.scroll { scrollBy(delta.toFloat()) }
+        return
+    }
+    val below = index > (before.visibleItemsInfo.lastOrNull()?.index ?: -1)
+    listState.scrollToItem(index)
+    if (!below) return
+    val info = listState.layoutInfo
+    val placed = info.visibleItemsInfo.find { it.index == index } ?: return
+    val back = revealPullBack(placed.offset, placed.size, info.viewportStartOffset, info.viewportEndOffset)
+    if (back > 0) listState.scroll { scrollBy(-back.toFloat()) }
+}
 
 /**
  * Строка, которую надо показать при открытии панели. Индекс совпадает с порядком `item` в [SidePanel].

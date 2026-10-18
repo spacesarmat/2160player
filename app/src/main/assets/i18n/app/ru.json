@@ -40,7 +40,7 @@
   "settings.subtitle_color": "Цвет текста",
   "settings.subtitle_background": "Фон",
   "settings.subtitle_edge": "Обводка",
-  "settings.subtitle_override": "Игнорировать стили ASS/SSA",
+  "settings.subtitle_override": "Игнорировать стили ASS\u2060/\u2060SSA",
   "settings.subtitle_override_hint": "Всегда использовать размер и цвет, заданные выше",
   "settings.sub_lang": "Предпочитаемые языки субтитров",
   "settings.color_white": "Белый",

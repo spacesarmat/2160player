@@ -571,16 +571,36 @@ fun PlayerScreen(
 
             state.resumedFromMs?.let { from ->
                 if (!inPictureInPicture) {
-                    Row(
-                        Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(top = 72.dp)
-                            .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
-                            .padding(start = 20.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
+                    // иначе «С начала» оказывается под панелью и не нажимается.
+                    val resumeEnd = if (heldPanel != null) {
+                        sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp + sidePanelTransportGapDp.dp
+                    } else {
+                        0.dp
+                    }
+                    Box(
+                        Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
                     ) {
-                        Text(tr("player.resumed", formatTime(from)), color = theme.onSurface)
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = controller::restartFromBeginning) { Text(tr("player.start_over"), color = theme.accent) }
+                        Row(
+                            Modifier.align(Alignment.Center).widthIn(max = 560.dp)
+                                .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
+                                .padding(start = 20.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                tr("player.resumed", formatTime(from)),
+                                color = theme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = controller::restartFromBeginning) {
+                                Text(tr("player.start_over"), color = theme.accent, maxLines = 1)
+                            }
+                        }
                     }
                 }
             }

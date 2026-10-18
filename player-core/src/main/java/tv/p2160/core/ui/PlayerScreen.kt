@@ -6,6 +6,7 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,12 +56,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -137,7 +142,8 @@ fun PlayerScreen(
             panelSlide.animateTo(0f, tween(200))
         } else if (heldPanel != null) {
             panelSlide.animateTo(1f, tween(200))
-            if (panel == null) heldPanel = null
+            // Состав панели не выбрасываем: следующее открытие той же панели не собирает список заново.
+            // Offscreen-слой снимается, когда сдвиг закончился (см. panelParked).
         }
     }
     var interaction by remember { mutableIntStateOf(0) }
@@ -423,6 +429,8 @@ fun PlayerScreen(
             )
 
             // Не AnimatedVisibility: её fade держит слой на весь экран и читает анимацию в measure.
+            // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
+            // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
             ControlsFade(visible = controlsVisible) {
                 Controls(
@@ -447,6 +455,7 @@ fun PlayerScreen(
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
                     panelOpen = heldPanel != null,
+                    followPosition = controlsVisible,
                 )
             }
             }
@@ -631,11 +640,14 @@ fun PlayerScreen(
                 val narrowControls = LocalConfiguration.current.screenWidthDp < 600
                 val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
                     sidePanelTopClearanceDp(narrowControls).dp
+                // isRunning / targetValue меняются на старте и в конце сдвига, не каждый кадр.
+                val panelParked = panel == null && !panelSlide.isRunning && panelSlide.targetValue == 1f
                 SidePanel(
                     panel = currentPanel,
                     state = state,
                     settings = settings,
                     resizeMode = resizeMode,
+                    active = panel != null,
                     actions = PanelActions(
                         onSelectTrack = controller::select,
                         onDisableSubtitles = controller::disableSubtitles,
@@ -664,13 +676,20 @@ fun PlayerScreen(
                     ),
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = topPad)
-                        .graphicsLayer {
-                            translationX = size.width * panelSlide.value
-                            clip = true
-                            shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        },
+                        .then(
+                            if (panelParked) {
+                                // Слой offscreen не держим: это буфер на всю панель. Состав остаётся,
+                                // но узел нулевого размера и не размещён — нет draw, касаний, фокуса и TalkBack.
+                                Modifier.parkedChrome()
+                            } else {
+                                Modifier.padding(top = topPad).graphicsLayer {
+                                    translationX = size.width * panelSlide.value
+                                    clip = true
+                                    shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                }
+                            },
+                        ),
                 )
             }
         }
@@ -698,6 +717,7 @@ private fun Controls(
     onNextChapter: () -> Unit,
     onPreviousChapter: () -> Unit,
     panelOpen: Boolean,
+    followPosition: Boolean,
 ) {
     val hasChapters = state.chapters.size > 1
     val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
@@ -790,43 +810,93 @@ private fun Controls(
 
             Spacer(Modifier.weight(1f))
 
-            PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+            PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo, followPosition)
             }
         }
     }
 }
 
 /**
- * Появление управления. Слой только на время смены прозрачности: постоянный слой на весь
- * экран заставлял перезаписывать команды рисования вместе с дыркой SurfaceView.
- * Доля читается в graphicsLayer, не в композиции.
+ * Появление управления. Состав [content] не покидает композицию: после затухания узел паркуется
+ * (`alpha = 0`, без размещения), а не выбрасывается. Постоянный слой на весь экран в покое не держим —
+ * он заставлял перезаписывать команды вместе с дыркой SurfaceView. Доля читается в graphicsLayer, не в композиции.
  */
 @Composable
 private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
     val alpha = remember { Animatable(if (visible) 1f else 0f) }
-    var shown by remember { mutableStateOf(visible) }
-    if (visible) shown = true
+    var parked by remember { mutableStateOf(!visible) }
     LaunchedEffect(visible) {
-        if (visible) alpha.animateTo(1f, tween(180))
-        else {
+        if (visible) {
+            parked = false
+            alpha.animateTo(1f, tween(180))
+        } else {
             alpha.animateTo(0f, tween(150))
-            shown = false
+            parked = true
         }
     }
-    if (!shown) return
     // isRunning меняется дважды за появление, не каждый кадр.
-    val fading = alpha.isRunning || alpha.targetValue < 1f
+    val fading = !parked && (alpha.isRunning || alpha.targetValue < 1f)
     Box(
         Modifier.then(
-            if (fading) Modifier.graphicsLayer { this.alpha = alpha.value } else Modifier,
+            when {
+                parked -> Modifier.parkedChrome()
+                // Auto поднимает offscreen, пока альфа < 1: команды кнопок пишутся в слой один раз,
+                // а не в кадр вместе с дыркой SurfaceView на каждом кадре затухания.
+                fading -> Modifier.graphicsLayer { this.alpha = alpha.value }
+                else -> Modifier
+            },
         ),
     ) { content() }
 }
 
-/** Полоса и время. Собирает только позицию: остальной экран от тика прогресса не пересобирается. */
+/**
+ * Скрытый оверлей: альфа 0 и нулевой размер без размещения детей.
+ * Нет draw, hit-test, фокуса D-pad и узла TalkBack. Состав под ним остаётся.
+ */
+private fun Modifier.parkedChrome(): Modifier = this
+    .focusGroup()
+    .focusProperties { onEnter = { cancelFocusChange() } }
+    .semantics { hideFromAccessibility() }
+    .graphicsLayer {
+        alpha = 0f
+        compositingStrategy = CompositingStrategy.ModulateAlpha
+    }
+    .layout { measurable, constraints ->
+        measurable.measure(constraints)
+        layout(0, 0) {}
+    }
+
+/** Полоса и время. Позицию читает только пока кнопки видны: скрытые не подписываются на тик. */
 @Composable
 private fun PlaybackTransport(
     controller: PlayerController,
+    state: tv.p2160.core.engine.PlayerUiState,
+    theme: PlayerTheme,
+    stepMs: Long,
+    onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
+    onScrub: (Long?) -> Unit,
+    onGoTo: () -> Unit,
+    followPosition: Boolean,
+) {
+    val cache = remember { ProgressCache() }
+    if (followPosition) {
+        FollowingTransport(controller, cache, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+    } else {
+        TransportReadout(cache.positionMs, cache.bufferedMs, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+    }
+}
+
+/** Последняя показанная позиция. Не State: пока кнопки скрыты, запись сюда никого не пересобирает. */
+private class ProgressCache {
+    var positionMs: Long = 0L
+    var bufferedMs: Long = 0L
+}
+
+@Composable
+private fun FollowingTransport(
+    controller: PlayerController,
+    cache: ProgressCache,
     state: tv.p2160.core.engine.PlayerUiState,
     theme: PlayerTheme,
     stepMs: Long,
@@ -840,6 +910,23 @@ private fun PlaybackTransport(
         derivedStateOf(structuralEqualityPolicy()) { live.value.positionMs to live.value.bufferedMs }
     }
     val (positionMs, bufferedMs) = progress
+    cache.positionMs = positionMs
+    cache.bufferedMs = bufferedMs
+    TransportReadout(positionMs, bufferedMs, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+}
+
+@Composable
+private fun TransportReadout(
+    positionMs: Long,
+    bufferedMs: Long,
+    state: tv.p2160.core.engine.PlayerUiState,
+    theme: PlayerTheme,
+    stepMs: Long,
+    onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
+    onScrub: (Long?) -> Unit,
+    onGoTo: () -> Unit,
+) {
     val chapterMarks = remember(state.chapters) { state.chapters.map { it.startMs } }
     if (!state.isLive || (!state.liveTv && state.durationMs > 0)) {
         SeekBar(

@@ -1,7 +1,9 @@
 package tv.p2160.core.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.p2160.core.settings.ResizeMode
 
@@ -42,6 +44,21 @@ class PanelRevealTest {
     fun clippedRowMovesOnlyByTheOverflow() {
         assertEquals(30, revealDelta(offset = 350, size = 80, viewportStart = 0, viewportEnd = 400))
         assertEquals(-20, revealDelta(offset = -20, size = 80, viewportStart = 0, viewportEnd = 400))
+    }
+
+    @Test
+    fun shortPanelIsAColumnAndALongOneStaysLazy() {
+        assertFalse(panelUsesLazyList(12))
+        assertFalse(panelUsesLazyList(PANEL_EAGER_ROW_LIMIT))
+        assertTrue(panelUsesLazyList(PANEL_EAGER_ROW_LIMIT + 1))
+    }
+
+    @Test
+    fun columnRevealMatchesTheLazyOverflow() {
+        assertEquals(0f, panelBringIntoViewDistance(40f, 80f, 400f), 0.01f)
+        assertEquals(30f, panelBringIntoViewDistance(350f, 80f, 400f), 0.01f)
+        assertEquals(-20f, panelBringIntoViewDistance(-20f, 80f, 400f), 0.01f)
+        assertEquals(0f, panelBringIntoViewDistance(-10f, 500f, 400f), 0.01f)
     }
 
     @Test

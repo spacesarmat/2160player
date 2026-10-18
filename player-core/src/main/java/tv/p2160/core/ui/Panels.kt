@@ -1,11 +1,17 @@
 package tv.p2160.core.ui
 
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,8 +24,10 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -34,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -114,7 +123,10 @@ class PanelActions(
     val onStatsOverlay: (Boolean) -> Unit = {},
 )
 
-/** Боковая панель справа: на ТВ удобна для D-pad, на телефоне не перекрывает всё видео. */
+/** Боковая панель справа: на ТВ удобна для D-pad, на телефоне не перекрывает всё видео.
+ *  [active] — панель на экране (не припаркована после закрытия). Состав остаётся и после ухода,
+ *  чтобы следующее открытие той же панели не собирало строки заново. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SidePanel(
     panel: Panel,
@@ -122,19 +134,38 @@ fun SidePanel(
     settings: Settings,
     resizeMode: ResizeMode,
     actions: PanelActions,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
-    val listState = rememberLazyListState()
     val reveal = panelRevealIndex(panel, state, settings, resizeMode)
+    val slots = PanelSlots()
+    // Сводка по файлу опрашивает кодеки. Считать её один раз на файл, не на каждый кадр прокрутки.
+    val infoReport = remember(panel, state.title, state.durationMs) {
+        if (panel == Panel.INFO) actions.report() else null
+    }
+    slots.populate(panel, state, settings, resizeMode, actions, focus, infoReport)
+    // Короткая панель — обычная колонка. LazyColumn (и раньше BoxWithConstraints) поднимает
+    // вложенные subcomposition внутри measure: первый кадр аудио на POCO занимал 23–48 мс там.
+    val lazy = panelUsesLazyList(slots.list.size)
+    val listState = remember(panel) { LazyListState(0, 0) }
+    val scrollState = remember(panel) { ScrollState(0) }
+    val bring = remember { BringIntoViewRequester() }
     // Выбранная строка ниже первого экрана (скорость 1× в ландшафте) в список ещё не попала,
-    // и FocusRequester на ней нет. Сначала докручиваем, потом фокус.
-    LaunchedEffect(panel) {
+    // и FocusRequester на ней нет. Сначала докручиваем, потом фокус. Пока панель припаркована,
+    // фокус не забираем — иначе пульт упирается в невидимые строки.
+    LaunchedEffect(panel, active) {
+        if (!active) return@LaunchedEffect
         val index = reveal
         if (index != null && index > 0) {
-            val count = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
-            if (index < count) {
-                revealItemMinimally(listState, index)
+            if (lazy) {
+                val count = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+                if (index < count) {
+                    revealItemMinimally(listState, index)
+                    withFrameNanos { }
+                }
+            } else {
+                runCatching { bring.bringIntoView() }
                 withFrameNanos { }
             }
         }
@@ -142,14 +173,11 @@ fun SidePanel(
     }
     val colors = MaterialTheme.colorScheme
     val listBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() + 12.dp
-
-    // 42 % экрана, но не уже 300 и не шире 420 dp. Раньше widthIn стоял снаружи fillMaxWidth(0.42)
-    // и 42 % считались уже от потолка 420 dp, а минимум 300 dp побеждал — панель всегда была 300 dp,
-    // и подписи («Задержка звука») рвались посреди слова.
-    BoxWithConstraints(modifier) {
-    val panelWidth = sidePanelWidthDp(maxWidth.value).dp
+    // Ширина от ширины окна, не от BoxWithConstraints: тот считал 42 % уже в measure и
+    // вкладывал сборку панели в проход измерения.
+    val panelWidth = sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp
     Column(
-        Modifier
+        modifier
             .width(panelWidth)
             .fillMaxHeight()
             // Скругление делает слой панели снаружи (graphicsLayer.clip). Второй clip здесь
@@ -169,17 +197,46 @@ fun SidePanel(
             )
             HorizontalDivider(color = colors.outlineVariant)
         }
-        // Сводка по файлу опрашивает кодеки. Считать её один раз на файл, не на каждый кадр прокрутки.
-        val infoReport = remember(panel, state.title, state.durationMs) {
-            if (panel == Panel.INFO) actions.report() else null
+        val listMod = Modifier.weight(1f).fillMaxWidth().padding(bottom = listBottom).clipToBounds()
+        if (lazy) {
+            LazyColumn(
+                state = listState,
+                modifier = listMod,
+                contentPadding = PaddingValues(top = 4.dp),
+            ) {
+                slots.list.forEach { slot ->
+                    item(key = slot.key, contentType = slot.contentType) { slot.content() }
+                }
+            }
+        } else {
+            // На ТВ штатный bring-into-view сажает строку к «оси», а не к краю. Здесь — только
+            // недостающие пиксели, как revealDelta у длинного списка.
+            CompositionLocalProvider(LocalBringIntoViewSpec provides panelBringIntoViewSpec) {
+                Column(listMod.verticalScroll(scrollState).padding(top = 4.dp)) {
+                    for (index in slots.list.indices) {
+                        val slot = slots.list[index]
+                        if (reveal != null && index == reveal && reveal > 0) {
+                            Box(Modifier.bringIntoViewRequester(bring)) { slot.content() }
+                        } else {
+                            slot.content()
+                        }
+                    }
+                }
+            }
         }
-        // Нижний safeDrawing внутри окна списка, а не под ним: иначе последняя подсказка
-        // оказывается под жестовой панелью, и список считает, что она уже видна.
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().padding(bottom = listBottom),
-            contentPadding = PaddingValues(top = 4.dp),
-        ) {
+    }
+}
+
+@Composable
+private fun PanelSlots.populate(
+    panel: Panel,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    focus: FocusRequester,
+    infoReport: MediaReport?,
+) {
             when (panel) {
                 Panel.AUDIO -> {
                     item(key = "night") {
@@ -448,8 +505,24 @@ fun SidePanel(
                     }
                 }
             }
-        }
+}
+
+private class PanelSlot(val key: Any, val contentType: Any, val content: @Composable () -> Unit)
+
+private class PanelSlots {
+    val list = mutableListOf<PanelSlot>()
+
+    fun item(key: Any, contentType: Any = "row", content: @Composable () -> Unit) {
+        list += PanelSlot(key, contentType, content)
     }
+
+    fun <T> items(
+        items: List<T>,
+        key: (T) -> Any,
+        contentType: (T) -> Any = { "row" },
+        content: @Composable (T) -> Unit,
+    ) {
+        items.forEach { value -> item(key(value), contentType(value)) { content(value) } }
     }
 }
 
@@ -535,6 +608,28 @@ private suspend fun revealItemMinimally(listState: LazyListState, index: Int) {
     val placed = info.visibleItemsInfo.find { it.index == index } ?: return
     val back = revealPullBack(placed.offset, placed.size, info.viewportStartOffset, info.viewportEndOffset)
     if (back > 0) listState.scroll { scrollBy(-back.toFloat()) }
+}
+
+/** До скольких строк панель — обычная колонка, а не LazyColumn. */
+internal const val PANEL_EAGER_ROW_LIMIT = 16
+
+/** Длинный список (главы, много дорожек) остаётся ленивым. Короткая панель собирается сразу. */
+internal fun panelUsesLazyList(rowCount: Int): Boolean = rowCount > PANEL_EAGER_ROW_LIMIT
+
+/**
+ * Сдвиг bring-into-view для короткой панели: 0, если строка уже целиком в окне,
+ * иначе только обрезанный край. Совпадает с [revealDelta].
+ */
+internal fun panelBringIntoViewDistance(offset: Float, size: Float, containerSize: Float): Float {
+    if (containerSize <= 0f) return 0f
+    return revealDelta(offset.toInt(), size.toInt(), 0, containerSize.toInt()).toFloat()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+private val panelBringIntoViewSpec = object : BringIntoViewSpec {
+    override val scrollAnimationSpec: AnimationSpec<Float> = snap()
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        panelBringIntoViewDistance(offset, size, containerSize)
 }
 
 /**

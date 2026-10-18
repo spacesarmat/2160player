@@ -82,8 +82,11 @@ fun NetworkScreen(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
@@ -91,6 +94,7 @@ fun NetworkScreen(
             Text(tr("net.title"), style = MaterialTheme.typography.headlineSmall, color = colors.onBackground)
         }
         LazyColumn(
+            Modifier.readableColumn(),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -103,7 +107,7 @@ fun NetworkScreen(
                     onLongClick = { editing = server },
                     modifier = if (server == list.first()) Modifier.focusRequester(firstFocus) else Modifier,
                     trailing = {
-                        FocusCard(onClick = { editing = server }, modifier = Modifier.size(40.dp), background = Color.Transparent) {
+                        FocusCard(onClick = { editing = server }, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                             Icon(Icons.Default.Edit, tr("net.edit"), tint = colors.onSurfaceVariant, modifier = Modifier.align(Alignment.Center))
                         }
                     },
@@ -333,8 +337,11 @@ private fun rememberDiscoveredHosts(): List<DiscoveredHost> {
                     nsd.resolveService(info, object : NsdManager.ResolveListener {
                         override fun onServiceResolved(resolved: NsdServiceInfo) {
                             val host = if (Build.VERSION.SDK_INT >= 34) {
-                                (resolved.hostAddresses.firstOrNull { it is java.net.Inet4Address } ?: resolved.hostAddresses.firstOrNull())?.hostAddress
-                            } else resolved.host?.hostAddress
+                                SmbDiscovery.preferredHost(resolved.hostAddresses.map(SmbDiscovery::candidate), resolved.serviceName)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                resolved.host?.let { SmbDiscovery.preferredHost(listOf(SmbDiscovery.candidate(it)), resolved.serviceName) }
+                            }
                             host ?: return
                             main.post {
                                 val item = DiscoveredHost(resolved.serviceName, host)

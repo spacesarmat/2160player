@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package tv.p2160.app.camera
 
 import android.Manifest
@@ -11,7 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -21,11 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -59,8 +60,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import tv.p2160.app.FocusCard
 import tv.p2160.app.SectionTitle
+import tv.p2160.app.readableColumn
 import tv.p2160.app.share.ShareApp
 import tv.p2160.core.i18n.tr
+import tv.p2160.core.ui.UiFormat
 
 /** «Трансляция камеры»: предпросмотр, выбор камеры и качества, адрес и QR-код для OBS/VLC/2160 Player. */
 @Composable
@@ -111,23 +114,31 @@ fun CameraStreamScreen(onBack: () -> Unit) {
         runCatching { screenCapture.launch(mpm.createScreenCaptureIntent()) }
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
             Spacer(Modifier.size(12.dp))
-            Text(tr("camera.title"), style = MaterialTheme.typography.headlineSmall, color = colors.onBackground, modifier = Modifier.weight(1f))
+            Text(
+                tr(if (screen) "camera.title_screen" else "camera.title"),
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onBackground,
+                modifier = Modifier.weight(1f),
+            )
             if (streaming != null) LiveBadge()
         }
         LazyColumn(
-            Modifier.fillMaxWidth().widthIn(max = 900.dp).align(Alignment.CenterHorizontally),
+            Modifier.readableColumn(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (wide) 32.dp else 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "source") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(StreamSource.entries, key = { it.name }) { src ->
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StreamSource.entries.forEach { src ->
                         Choice(tr("camera.source_" + src.name.lowercase()), config.source == src, enabled = streaming == null) {
                             CameraStream.update(context) { it.copy(source = src) }
                         }
@@ -170,14 +181,21 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    background = if (streaming != null) colors.errorContainer else colors.primaryContainer,
+                    background = if (streaming != null) colors.error else colors.primary,
+                    contentDescription = label,
                 ) {
                     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if (streaming != null) Icons.Default.Stop else Icons.Default.FiberManualRecord, null,
-                            tint = if (streaming != null) colors.onErrorContainer else Color(0xFFE53935))
+                        Icon(
+                            if (streaming != null) Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                            contentDescription = null,
+                            tint = if (streaming != null) colors.onError else colors.onPrimary,
+                        )
                         Spacer(Modifier.size(12.dp))
-                        Text(label, style = MaterialTheme.typography.titleMedium,
-                            color = if (streaming != null) colors.onErrorContainer else colors.onPrimaryContainer)
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (streaming != null) colors.onError else colors.onPrimary,
+                        )
                     }
                 }
             }
@@ -190,11 +208,17 @@ fun CameraStreamScreen(onBack: () -> Unit) {
 
             item(key = "dest-title") { SectionTitle(tr("camera.destination")) }
             item(key = "dest") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(StreamProtocol.entries.filter { it != StreamProtocol.NDI || Ndi.available(context) }, key = { it.name }) { p ->
-                        Choice(tr("camera.dest_" + p.name.lowercase()), config.protocol == p, enabled = streaming == null) {
-                            CameraStream.update(context) { it.copy(protocol = p) }
+                val protocols = StreamProtocol.entries.filter { it != StreamProtocol.NDI || Ndi.available(context) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        protocols.forEach { p ->
+                            Choice(tr("camera.dest_" + p.name.lowercase()), config.protocol == p, enabled = streaming == null) {
+                                CameraStream.update(context) { it.copy(protocol = p) }
+                            }
                         }
+                    }
+                    if (protocols.any { it == StreamProtocol.NDI }) {
+                        Text(tr("camera.ndi_no_auth"), color = colors.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -203,8 +227,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
 
             if (!screen) item(key = "cam-title") { SectionTitle(tr("camera.camera")) }
             if (!screen) item(key = "cams") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(cameras, key = { it.id }) { cam ->
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    cameras.forEach { cam ->
                         val selected = (config.cameraId ?: cameras.firstOrNull()?.id) == cam.id
                         Choice(tr(cam.labelKey), selected) {
                             // Новая камера может не уметь текущее качество — берём лучшее из того, что она умеет.
@@ -221,6 +245,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 FocusCard(
                     onClick = { CameraStream.update(context) { it.copy(lowLatency = !it.lowLatency) } },
                     modifier = Modifier.fillMaxWidth(),
+                    checked = config.lowLatency,
+                    mergeDescendants = true,
                 ) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -233,9 +259,9 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             }
             item(key = "q-title") { SectionTitle(tr("camera.quality")) }
             item(key = "quality") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Режимы из возможностей устройства: камера × кодировщик.
-                    items(if (screen) screenModes else currentCam?.modes ?: listOf(StreamMode.DEFAULT), key = { it.label }) { q ->
+                val modes = if (screen) screenModes else currentCam?.modes ?: listOf(StreamMode.DEFAULT)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    modes.forEach { q ->
                         Choice(q.label, config.quality == q, enabled = streaming == null) {
                             CameraStream.update(context) { it.copy(quality = q) }
                         }
@@ -243,7 +269,12 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 }
             }
             if (!screen && currentCam?.hasFlash == true) item(key = "torch") {
-                FocusCard(onClick = { CameraStream.setTorch(!torch) }, modifier = Modifier.fillMaxWidth()) {
+                FocusCard(
+                    onClick = { CameraStream.setTorch(!torch) },
+                    modifier = Modifier.fillMaxWidth(),
+                    checked = torch,
+                    mergeDescendants = true,
+                ) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (torch) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, null, tint = colors.primary)
                         Spacer(Modifier.size(12.dp))
@@ -256,6 +287,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                 FocusCard(
                     onClick = { if (streaming == null) CameraStream.update(context) { it.copy(audio = !it.audio) } },
                     modifier = Modifier.fillMaxWidth(),
+                    checked = config.audio,
+                    mergeDescendants = true,
                 ) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -268,8 +301,8 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             }
             // Звук экрана: микрофон, звук телефона или оба (звук телефона — Android 10+).
             if (screen && config.audio && android.os.Build.VERSION.SDK_INT >= 29) item(key = "screen-audio") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ScreenAudio.entries, key = { it.name }) { a ->
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ScreenAudio.entries.forEach { a ->
                         Choice(tr("camera.screen_audio_" + a.name.lowercase()), config.screenAudio == a, enabled = streaming == null) {
                             CameraStream.update(context) { it.copy(screenAudio = a) }
                         }
@@ -346,7 +379,7 @@ private fun ZoomAndFocus() {
             Text(tr("camera.zoom_none"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.size(8.dp))
-        Text("%.1f×".format(zoom), color = colors.onSurface, fontFamily = FontFamily.Monospace)
+        Text("${UiFormat.zoom(zoom)}×", color = colors.onSurface, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.size(8.dp))
         FocusCard(onClick = CameraStream::autoFocus, background = colors.surfaceVariant) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -368,9 +401,9 @@ private fun MicControls(config: CameraStreamConfig, streaming: Boolean) {
     val level by CameraStream.gainMeter.level.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (mics.size > 1) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item(key = "auto") { Choice(tr("camera.mic_auto"), config.micId == null) { CameraStream.update(context) { it.copy(micId = null) } } }
-                items(mics, key = { it.id }) { m ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Choice(tr("camera.mic_auto"), config.micId == null) { CameraStream.update(context) { it.copy(micId = null) } }
+                mics.forEach { m ->
                     Choice(tr(m.labelKey), config.micId == m.id) { CameraStream.update(context) { it.copy(micId = m.id) } }
                 }
             }
@@ -385,7 +418,7 @@ private fun MicControls(config: CameraStreamConfig, streaming: Boolean) {
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(8.dp))
-            Text("%.1f×".format(config.micGain), color = colors.onSurface, fontFamily = FontFamily.Monospace)
+            Text("${UiFormat.zoom(config.micGain)}×", color = colors.onSurface, fontFamily = FontFamily.Monospace)
         }
         if (streaming) {
             androidx.compose.material3.LinearProgressIndicator(
@@ -419,8 +452,8 @@ private fun DestinationFields(config: CameraStreamConfig, enabled: Boolean) {
                 Text(tr("camera.srt_hint"), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             StreamProtocol.RTMP -> {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(RTMP_PRESETS, key = { it.first }) { (name, url) ->
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RTMP_PRESETS.forEach { (name, url) ->
                         Choice(name, config.rtmpUrl == url, enabled = enabled) { CameraStream.update(context) { it.copy(rtmpUrl = url) } }
                     }
                 }
@@ -529,6 +562,9 @@ private fun Choice(text: String, selected: Boolean, enabled: Boolean = true, onC
     val colors = MaterialTheme.colorScheme
     FocusCard(
         onClick = { if (enabled) onClick() },
+        selected = selected,
+        mergeDescendants = true,
+        modifier = Modifier.heightIn(min = 48.dp),
         background = if (selected) colors.primaryContainer else colors.surfaceVariant,
     ) {
         Text(

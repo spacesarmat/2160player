@@ -302,7 +302,7 @@ fun HomeScreen(
 
 @Composable
 private fun ActionTile(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FocusCard(onClick = onClick, modifier = modifier.height(76.dp)) {
+    FocusCard(onClick = onClick, modifier = modifier.height(76.dp), contentDescription = label, mergeDescendants = true) {
         Column(
             Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -330,7 +330,14 @@ private fun ContinueCard(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier.width(if (cover != null) 290.dp else 240.dp),
 ) {
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = modifier.height(116.dp)) {
+    val description = (entry.title ?: entry.uri) + ", " + tr("app.remaining", formatTime((entry.durationMs - entry.positionMs).coerceAtLeast(0)))
+    FocusCard(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = modifier.height(116.dp),
+        contentDescription = description,
+        mergeDescendants = true,
+    ) {
         Row(Modifier.fillMaxSize()) {
         // Обложка слева (постер 2:3 — по высоте карточки), если у файла она есть.
         if (cover != null) CoverImage(cover, Modifier.fillMaxHeight().width(78.dp))
@@ -426,7 +433,18 @@ private fun CoverImage(file: java.io.File, modifier: Modifier = Modifier) {
 @Composable
 private fun HistoryRow(entry: ResumeEntry, cover: java.io.File?, onClick: () -> Unit, onLongClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.fillMaxWidth()) {
+    val description = (entry.title ?: entry.uri) + ". " + when {
+        entry.finished -> tr("app.watched")
+        entry.durationMs > 0 -> "${formatTime(entry.positionMs)} / ${formatTime(entry.durationMs)}"
+        else -> entry.uri
+    }
+    FocusCard(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentDescription = description,
+        mergeDescendants = true,
+    ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (cover != null) {
                 CoverImage(cover, Modifier.size(width = 40.dp, height = 56.dp).clip(RoundedCornerShape(8.dp)))

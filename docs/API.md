@@ -281,7 +281,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.8")
+    implementation("tv.p2160:player-core:0.2.9")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) — Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -528,6 +528,11 @@ PiP и паузу при уходе в фон он **не** трогает — �
 Жесты `PlayerScreen`: тап — показать/скрыть управление, двойной тап по краям — перемотка, удержание — 2×,
 горизонтальный свайп — перемотка, щипок — масштаб. Свайп, начатый в зоне системного жеста у края экрана
 (`WindowInsets.systemGestures`, при жестовой навигации), перемоткой не считается — это системный «Назад».
+
+Тик прогресса (примерно два раза в секунду) обновляет `PlayerUiState.positionMs` и `bufferedMs`, но не
+пересобирает боковую панель и кнопки: их читает снимок состояния без позиции. Полоса перемотки и часы
+подписаны на позицию отдельно. `formatSpeed` (и `UiFormat`) с 0.2.9 форматируют число локалью интерфейса:
+в русской локали `1,25`, раньше всегда была точка (`Locale.US`). Поле `PlayerUiState` не менялось.
 
 ### 6.1. `PlayerController`
 
@@ -2133,7 +2138,8 @@ Basic-авторизация RTSP идёт открытым текстом — �
 
 - `tv.p2160.core.ui`: `ControlButton`, `SeekBar`, `PanelRow`, `SidePanel`, `Panel`, `PanelActions`,
   `SPEED_PRESETS`, `TapSeekLayer`, `ScrubPreview`, `SpeedBoostBadge`, `DigitEntryOverlay`,
-  `SkipButton`, `NextEpisodeCard`, `GoToTimeDialog`, `formatTime`, `formatSpeed`, `formatDelta`;
+  `SkipButton`, `NextEpisodeCard`, `GoToTimeDialog`, `formatTime`, `formatSpeed`, `formatDelta`,
+  `UiFormat`, `sidePanelWidthDp`;
 - `tv.p2160.core.engine`: `SecondarySubtitles`, `MediaReporter`, `ActiveDecoders`;
 - `tv.p2160.core.intro`: `IntroAnalyzer`, `IntroMatcher`, `Fingerprinter`, `Fingerprint`, `IntroStore`,
   `MediaCodecPcmDecoder`, `PcmSource`;

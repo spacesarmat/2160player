@@ -21,9 +21,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -82,15 +82,23 @@ fun SettingsScreen(
     onImportTranslation: () -> Unit,
     onExportTemplate: () -> Unit,
     onClearHistory: () -> Unit,
+    /** Живёт в Activity: возврат из справки не должен сбрасывать прокрутку. */
+    listState: LazyListState,
 ) {
     val s by settingsStore.state.collectAsStateWithLifecycle()
     val strings = LocalStrings.current
     val colors = MaterialTheme.colorScheme
     var choice by remember { mutableStateOf<ChoiceRequest?>(null) }
     var textInput by remember { mutableStateOf<TextRequest?>(null) }
+    var langPick by remember { mutableStateOf<LangPick?>(null) }
     val packs = remember(strings) { i18n.available() }
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    // Фокус на первую строку только с начала списка. Иначе возврат из справки уезжает наверх.
+    LaunchedEffect(Unit) {
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+            runCatching { firstFocus.requestFocus() }
+        }
+    }
 
     fun <T> ask(title: String, options: List<Choice<T>>, selected: T, onSelect: (T) -> Unit) {
         @Suppress("UNCHECKED_CAST")
@@ -127,8 +135,11 @@ fun SettingsScreen(
     val sizes = listOf(0.6f, 0.75f, 0.9f, 1f, 1.15f, 1.3f, 1.5f, 1.75f, 2f).map { Choice("${(it * 100).toInt()}%", it) }
     val steps = listOf(5, 10, 15, 20, 30, 60).map { Choice(strings.format("settings.seconds", it), it) }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
@@ -137,7 +148,8 @@ fun SettingsScreen(
         }
 
         LazyColumn(
-            Modifier.fillMaxWidth().widthIn(max = 900.dp),
+            Modifier.readableColumn(),
+            state = listState,
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -194,9 +206,9 @@ fun SettingsScreen(
                 }
             }
             item {
-                SettingRow(tr("settings.sub_lang"), value = s.preferredSubtitleLanguages.joinToString(", ")) {
-                    textInput = TextRequest(strings["settings.sub_lang"], strings["settings.langs_hint"], s.preferredSubtitleLanguages.joinToString(", ")) { v ->
-                        update { it.copy(preferredSubtitleLanguages = parseLangs(v)) }
+                SettingRow(tr("settings.sub_lang"), value = languageValue(s.preferredSubtitleLanguages)) {
+                    langPick = LangPick(strings["settings.sub_lang"], s.preferredSubtitleLanguages) { v ->
+                        update { it.copy(preferredSubtitleLanguages = v) }
                     }
                 }
             }
@@ -259,9 +271,9 @@ fun SettingsScreen(
                 }
             }
             item {
-                SettingRow(tr("settings.audio_lang"), value = s.preferredAudioLanguages.joinToString(", ")) {
-                    textInput = TextRequest(strings["settings.audio_lang"], strings["settings.langs_hint"], s.preferredAudioLanguages.joinToString(", ")) { v ->
-                        update { it.copy(preferredAudioLanguages = parseLangs(v)) }
+                SettingRow(tr("settings.audio_lang"), value = languageValue(s.preferredAudioLanguages)) {
+                    langPick = LangPick(strings["settings.audio_lang"], s.preferredAudioLanguages) { v ->
+                        update { it.copy(preferredAudioLanguages = v) }
                     }
                 }
             }
@@ -394,7 +406,8 @@ fun SettingsScreen(
                             title = { Text("NDI®") },
                             text = {
                                 androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                                    Text(tr("settings.ndi_hint"))
+                                    Text(tr("camera.ndi_trademark"), style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(8.dp))
                                     Text(text, style = MaterialTheme.typography.bodySmall)
                                 }
                             },
@@ -450,10 +463,20 @@ fun SettingsScreen(
     textInput?.let { req ->
         TextDialog(req, onDismiss = { textInput = null })
     }
+    langPick?.let { req ->
+        LanguagePickerDialog(
+            title = req.title,
+            selected = req.selected,
+            onDismiss = { langPick = null },
+            onConfirm = req.onConfirm,
+        )
+    }
 }
 
-private fun parseLangs(raw: String): List<String> =
-    raw.split(',', ' ', ';').map { it.trim().lowercase() }.filter { it.length in 2..8 }.distinct()
+private class LangPick(val title: String, val selected: List<String>, val onConfirm: (List<String>) -> Unit)
+
+private fun languageValue(codes: List<String>): String =
+    codes.joinToString(", ") { LanguageCodes.displayName(it) }.ifBlank { "—" }
 
 @Composable
 private fun SettingRow(
@@ -466,7 +489,7 @@ private fun SettingRow(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), mergeDescendants = true) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(icon, null, tint = colors.primary)
@@ -490,7 +513,12 @@ private fun SettingRow(
 @Composable
 private fun ToggleRow(title: String, hint: String?, checked: Boolean, onToggle: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = { onToggle(!checked) }, modifier = Modifier.fillMaxWidth()) {
+    FocusCard(
+        onClick = { onToggle(!checked) },
+        modifier = Modifier.fillMaxWidth(),
+        checked = checked,
+        mergeDescendants = true,
+    ) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
@@ -515,6 +543,8 @@ private fun ChoiceDialog(req: ChoiceRequest, onDismiss: () -> Unit) {
                     val selected = option.value == req.selected
                     FocusCard(
                         onClick = { req.onSelect(option.value); onDismiss() },
+                        selected = selected,
+                        mergeDescendants = true,
                         modifier = Modifier.fillMaxWidth().then(
                             if (selected || req.options.none { it.value == req.selected } && option == req.options.first()) Modifier.focusRequester(focus) else Modifier
                         ),

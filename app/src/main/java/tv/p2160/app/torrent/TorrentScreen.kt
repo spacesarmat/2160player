@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import tv.p2160.app.readableColumn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -205,7 +206,7 @@ fun TorrentScreen(
 @Composable
 private fun Header(title: String, onBack: () -> Unit, actions: @Composable () -> Unit = {}) {
     val colors = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
         }
@@ -248,9 +249,13 @@ private fun TorrentList(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Header(tr("torrent.title"), onBack) { IconAction(Icons.Default.Settings, tr("torrent.settings"), onSettings) }
         LazyColumn(
+            Modifier.readableColumn(),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -570,13 +575,17 @@ private fun TorrentDetails(
     }
     LaunchedEffect(files != null) { if (files != null) runCatching { firstFocus.requestFocus() } }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Header(item?.name ?: id, onBack) {
             if (item != null) StartStopAction(item.running, { scope.launch { if (item.running) engine.stop(id) else engine.start(id) } })
             IconAction(Icons.Default.Delete, tr("torrent.remove"), { removing = true })
         }
         val list = files
         LazyColumn(
+            Modifier.readableColumn(),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -821,14 +830,19 @@ private fun TorrentSettingsDialog(engine: TorrentEngine, onDismiss: () -> Unit) 
 @Composable
 private fun SettingRow(title: String, value: String, hint: String? = null, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), background = colors.surfaceVariant) {
+    // Длинный заголовок или значение в одной строке сжимают друг друга («Загрузка по мобильному интернету»).
+    val inline = title.length <= 16 && value.length <= 12
+    FocusCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), background = colors.surfaceVariant, mergeDescendants = true) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
+                if (!inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
                 hint?.let { Text(it, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
             }
-            Spacer(Modifier.width(12.dp))
-            Text(value, color = colors.primary, style = MaterialTheme.typography.bodyLarge)
+            if (inline) {
+                Spacer(Modifier.width(12.dp))
+                Text(value, color = colors.primary, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            }
         }
     }
 }

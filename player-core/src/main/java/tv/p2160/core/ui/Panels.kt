@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.Hyphens
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.MediaReport
@@ -47,7 +50,6 @@ import tv.p2160.core.i18n.tr
 import tv.p2160.core.engine.TrackOption
 import tv.p2160.core.settings.ResizeMode
 import tv.p2160.core.settings.Settings
-import java.util.Locale
 
 /** Название режима масштаба для панели и подсказки. */
 @Composable
@@ -115,13 +117,18 @@ fun SidePanel(
     LaunchedEffect(panel) { runCatching { focus.requestFocus() } }
     val colors = MaterialTheme.colorScheme
 
+    // 42 % экрана, но не уже 300 и не шире 420 dp. Раньше widthIn стоял снаружи fillMaxWidth(0.42)
+    // и 42 % считались уже от потолка 420 dp, а минимум 300 dp побеждал — панель всегда была 300 dp,
+    // и подписи («Задержка звука») рвались посреди слова.
+    BoxWithConstraints(modifier) {
+    val panelWidth = sidePanelWidthDp(maxWidth.value).dp
     Column(
-        modifier
+        Modifier
+            .width(panelWidth)
             .fillMaxHeight()
-            .widthIn(min = 300.dp, max = 420.dp)
-            .fillMaxWidth(0.42f)
             .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
-            .background(colors.surface.copy(alpha = 0.96f))
+            // Непрозрачная подложка: полупрозрачный слой поверх SurfaceView перерисовывался каждый кадр.
+            .background(colors.surface)
             .padding(vertical = 16.dp),
     ) {
         Text(
@@ -140,6 +147,7 @@ fun SidePanel(
                             selected = state.nightMode,
                             onClick = { actions.onNightMode(!state.nightMode) },
                             leading = Icons.Default.NightsStay,
+                            switch = true,
                         )
                     }
                     item(key = "night-auto") {
@@ -149,6 +157,7 @@ fun SidePanel(
                             selected = settings.nightAuto,
                             onClick = { actions.onNightSchedule(!settings.nightAuto, settings.nightStartMinute, settings.nightEndMinute) },
                             leading = Icons.Default.Schedule,
+                            switch = true,
                         )
                     }
                     if (settings.nightAuto) {
@@ -273,7 +282,7 @@ fun SidePanel(
                     item(key = "fine") {
                         Stepper(
                             label = tr("panel.fine"),
-                            value = "%.2f×".format(Locale.US, state.speed),
+                            value = "${UiFormat.speedFine(state.speed)}×",
                             onMinus = { actions.onSpeed(state.speed - 0.05f) },
                             onPlus = { actions.onSpeed(state.speed + 0.05f) },
                             onReset = { actions.onSpeed(1f) },
@@ -299,6 +308,7 @@ fun SidePanel(
                             selected = settings.statsOverlay,
                             onClick = { actions.onStatsOverlay(!settings.statsOverlay) },
                             modifier = Modifier.focusRequester(focus),
+                            switch = true,
                         )
                     }
                     if (report.warnings.isNotEmpty()) {
@@ -398,6 +408,7 @@ fun SidePanel(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -413,22 +424,36 @@ private fun Hint(text: String) {
 @Composable
 private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, onReset: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(label, color = colors.onSurfaceVariant, modifier = Modifier.weight(1f).padding(start = 8.dp))
-        ControlButton(Icons.Default.Remove, tr("panel.less"), onMinus, size = 40.dp, tint = colors.onSurface)
-        Text(value, color = colors.onSurface, style = MaterialTheme.typography.titleMedium, modifier = Modifier.widthIn(min = 72.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        ControlButton(Icons.Default.Add, tr("panel.more"), onPlus, size = 40.dp, tint = colors.onSurface)
-        ControlButton(Icons.Default.Restore, tr("panel.reset"), onReset, size = 40.dp, tint = colors.onSurfaceVariant)
-        Spacer(Modifier.size(4.dp))
+    // Подпись на всю ширину панели, кнопки строкой ниже. В одной строке колонка подписи
+    // сжималась до ширины четырёх букв и рвала «Задержка», «Точно», «Размер» посреди слова.
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            label,
+            color = colors.onSurface,
+            style = MaterialTheme.typography.bodyLarge.copy(hyphens = Hyphens.None),
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Spacer(Modifier.weight(1f))
+            ControlButton(Icons.Default.Remove, tr("panel.less"), onMinus, size = 48.dp, tint = colors.onSurface)
+            Text(
+                value,
+                color = colors.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.widthIn(min = 72.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            ControlButton(Icons.Default.Add, tr("panel.more"), onPlus, size = 48.dp, tint = colors.onSurface)
+            ControlButton(Icons.Default.Restore, tr("panel.reset"), onReset, size = 48.dp, tint = colors.onSurfaceVariant)
+        }
     }
 }
 
-fun formatSpeed(s: Float): String =
-    if (s % 1f == 0f) s.toInt().toString() else "%.2f".format(Locale.US, s).trimEnd('0').trimEnd('.')
+fun formatSpeed(s: Float): String = UiFormat.speed(s)
 
 private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 1440 + 1440) % 1440
 

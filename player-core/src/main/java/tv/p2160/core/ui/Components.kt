@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,10 +41,15 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
+import tv.p2160.core.i18n.tr
 import tv.p2160.core.api.SkipSegment
 import androidx.compose.material.icons.filled.Check
 
@@ -63,14 +70,18 @@ fun ControlButton(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
+    val target = size.coerceAtLeast(48.dp)
     Box(
         modifier = modifier
-            .size(size)
+            .size(target)
             .scale(scale)
             .clip(CircleShape)
             .background(if (focused) accent else Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
-            .semantics { this.contentDescription = contentDescription },
+            .semantics(mergeDescendants = true) {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -81,7 +92,7 @@ fun ControlButton(
                 focused -> MaterialTheme.colorScheme.onPrimary
                 else -> tint
             },
-            modifier = Modifier.size(size * 0.58f),
+            modifier = Modifier.size(target * 0.58f),
         )
     }
 }
@@ -118,7 +129,7 @@ fun SeekBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(36.dp)
+            .height(48.dp)
             .focusable(interactionSource = interaction)
             .onKeyEvent { e ->
                 if (durationMs <= 0) return@onKeyEvent false
@@ -209,14 +220,40 @@ fun PanelRow(
     modifier: Modifier = Modifier,
     secondary: String? = null,
     leading: ImageVector? = null,
+    /** Переключатель (ночной звук), а не пункт списка с одной галочкой. */
+    switch: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
+    val stateText = when {
+        switch && selected -> tr("a11y.on")
+        switch -> tr("a11y.off")
+        selected -> tr("a11y.selected")
+        else -> tr("a11y.unselected")
+    }
+    val choice = if (switch) {
+        Modifier.toggleable(
+            value = selected,
+            interactionSource = interaction,
+            indication = null,
+            role = Role.Switch,
+            onValueChange = { onClick() },
+        )
+    } else {
+        Modifier.selectable(
+            selected = selected,
+            interactionSource = interaction,
+            indication = null,
+            role = Role.RadioButton,
+            onClick = onClick,
+        )
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(
                 when {
@@ -226,7 +263,8 @@ fun PanelRow(
                 }
             )
             .then(if (focused) Modifier.border(2.dp, colors.primary, RoundedCornerShape(12.dp)) else Modifier)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .then(choice)
+            .semantics(mergeDescendants = true) { stateDescription = stateText }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {

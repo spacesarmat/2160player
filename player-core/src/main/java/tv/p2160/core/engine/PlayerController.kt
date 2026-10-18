@@ -1093,7 +1093,7 @@ class PlayerController(
             var ticks = 0
             while (isActive) {
                 delay(500)
-                refresh()
+                refresh(includeTracks = false)
                 maybeAutoSkip()
                 keepLiveEdge()
                 tickSleepTimer()
@@ -1138,41 +1138,53 @@ class PlayerController(
         skip(segment)
     }
 
-    private fun refresh() {
+    /**
+     * @param includeTracks собирать списки дорожек. Тик прогресса (два раза в секунду) этого не делает:
+     * списки не меняются, а разбор дорожек и новая композиция боковой панели давали пропуски кадров,
+     * пока меню плеера было открыто. Смена дорожек приходит отдельным событием и вызывает полный refresh.
+     */
+    private fun refresh(includeTracks: Boolean = true) {
         val p = player
         val tracks = p.currentTracks
         val duration = p.duration.takeIf { it != C.TIME_UNSET } ?: 0L
         val video = p.videoSize
         val position = p.currentPosition.coerceAtLeast(0)
-        val segments = if (duration > 0) currentSegments(duration) else emptyList()
+        val builtSegments = if (duration > 0) currentSegments(duration) else emptyList()
         val skipMode = settings.current.skipMode
-        _state.update {
-            it.copy(
+        _state.update { prev ->
+            val segments = if (prev.segments == builtSegments) prev.segments else builtSegments
+            val audio = if (!includeTracks) prev.audioTracks else TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current).let { if (it == prev.audioTracks) prev.audioTracks else it }
+            val text = if (!includeTracks) prev.textTracks else TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).let { if (it == prev.textTracks) prev.textTracks else it }
+            val videoTracks = if (!includeTracks) prev.videoTracks else TrackLabels.collect(tracks, C.TRACK_TYPE_VIDEO, i18n.current).let { if (it == prev.videoTracks) prev.videoTracks else it }
+            val next = prev.copy(
                 isPlaying = p.isPlaying,
                 isBuffering = p.playbackState == Player.STATE_BUFFERING,
                 ended = p.playbackState == Player.STATE_ENDED,
-                positionMs = p.currentPosition.coerceAtLeast(0),
+                positionMs = position,
                 durationMs = duration,
                 bufferedMs = p.bufferedPosition,
                 speed = p.playbackParameters.speed,
-                audioTracks = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current),
-                textTracks = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current),
-                videoTracks = TrackLabels.collect(tracks, C.TRACK_TYPE_VIDEO, i18n.current),
-                textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT),
-                subtitleDelayMs = p.subtitleDelayMilliseconds,
-                hasVideo = tracks.isEmpty || tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, true),
-                videoAspect = if (video.height > 0) video.width * video.pixelWidthHeightRatio / video.height else 0f,
+                audioTracks = audio,
+                textTracks = text,
+                videoTracks = videoTracks,
+                textDisabled = if (includeTracks) p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) else prev.textDisabled,
+                subtitleDelayMs = if (includeTracks) p.subtitleDelayMilliseconds else prev.subtitleDelayMs,
+                hasVideo = if (includeTracks) tracks.isEmpty || tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, true) else prev.hasVideo,
+                videoAspect = if (includeTracks) {
+                    if (video.height > 0) video.width * video.pixelWidthHeightRatio / video.height else 0f
+                } else prev.videoAspect,
                 hasNext = if (request.liveTv) p.mediaItemCount > 1 else p.hasNextMediaItem(),
                 hasPrevious = if (request.liveTv) p.mediaItemCount > 1 else p.hasPreviousMediaItem(),
                 isLive = p.isCurrentMediaItemLive || (request.liveTv && duration <= 0),
                 playlistIndex = p.currentMediaItemIndex,
-                title = titleAt(p.currentMediaItemIndex),
+                title = if (includeTracks) titleAt(p.currentMediaItemIndex) else prev.title,
                 chapters = chapters,
                 chapterIndex = chapters.indexOfLast { ch -> ch.startMs <= position },
                 segments = segments,
                 activeSegment = if (skipMode == SkipMode.OFF) null else segments.firstOrNull { s -> s.contains(position, duration) },
-                videoFrameRate = p.videoFormat?.frameRate?.takeIf { f -> f > 0f } ?: detectedFrameRate,
+                videoFrameRate = if (includeTracks) p.videoFormat?.frameRate?.takeIf { f -> f > 0f } ?: detectedFrameRate else prev.videoFrameRate,
             )
+            if (next == prev) prev else next
         }
     }
 

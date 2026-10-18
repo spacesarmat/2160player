@@ -76,7 +76,7 @@ fun DlnaServersSection(
                 onLongClick = if (known.manual) ({ registry.removeManual(s.udn) }) else null,
                 trailing = if (known.manual) {
                     {
-                        FocusCard(onClick = { registry.removeManual(s.udn) }, modifier = Modifier.size(40.dp), background = Color.Transparent) {
+                        FocusCard(onClick = { registry.removeManual(s.udn) }, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                             Icon(Icons.Default.Delete, tr("dlna.remove"), tint = colors.onSurfaceVariant, modifier = Modifier.align(Alignment.Center))
                         }
                     }

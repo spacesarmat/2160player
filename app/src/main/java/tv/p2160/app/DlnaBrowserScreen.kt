@@ -102,6 +102,8 @@ fun DlnaBrowserScreen(
     val currentId = path[path.size - 2]
     val titles = path.filterIndexed { i, _ -> i % 2 == 1 }
     val cache = remember(server.udn) { HashMap<String, List<DlnaObject>>() }
+    // Папки, где сервер вернул объекты, но ни один плеер открыть не может (картинки и т.п.).
+    val unplayable = remember(server.udn) { HashSet<String>() }
     var objects by remember { mutableStateOf<List<DlnaObject>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
@@ -122,6 +124,7 @@ fun DlnaBrowserScreen(
                 o is DlnaContainer || o is DlnaItem && (o.kind == DlnaMediaKind.VIDEO || o.kind == DlnaMediaKind.AUDIO) && o.bestResource != null
             }
             cache[currentId] = visible
+            if (list.isNotEmpty() && visible.isEmpty()) unplayable += currentId else unplayable -= currentId
             objects = visible
         }.onFailure { error = it.message ?: it.javaClass.simpleName }
     }
@@ -131,18 +134,25 @@ fun DlnaBrowserScreen(
     }
     BackHandler(onBack = ::goUp)
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             FocusCard(onClick = ::goUp, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(titles.last(), style = MaterialTheme.typography.titleLarge, color = colors.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    titles.joinToString(" › "),
-                    style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+                // На корне путь совпадает с заголовком (имя сервера) — вторую строку не дублируем.
+                val crumb = titles.dropLast(1)
+                if (crumb.isNotEmpty()) {
+                    Text(
+                        crumb.joinToString(" › "),
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
@@ -155,7 +165,11 @@ fun DlnaBrowserScreen(
                 TextButton(onClick = { reload++ }, modifier = Modifier.focusRequester(retry)) { Text(tr("player.retry")) }
             }
             list == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            list.isEmpty() -> Text(tr("dlna.empty"), color = colors.onSurfaceVariant, modifier = Modifier.padding(32.dp))
+            list.isEmpty() -> Text(
+                tr(if (currentId in unplayable) "dlna.unplayable" else "dlna.empty"),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(32.dp).readableColumn(),
+            )
             else -> {
                 val focusId = lastFocus[currentId]
                 val focusTarget = list.firstOrNull { it.id == focusId } ?: list.first()
@@ -164,6 +178,7 @@ fun DlnaBrowserScreen(
                 val listState = rememberLazyListState(initialFirstVisibleItemIndex = list.indexOf(focusTarget).coerceAtLeast(0))
 
                 LazyColumn(
+                    Modifier.readableColumn(),
                     state = listState,
                     contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -175,7 +190,8 @@ fun DlnaBrowserScreen(
                                 icon = Icons.Default.Folder,
                                 imageUrl = obj.albumArtUrl,
                                 title = obj.title,
-                                subtitle = obj.childCount?.let { strings.format("dlna.items", it) },
+                                // 0 у MiniDLNA — «число неизвестно», а не пустая папка. Такое не показываем.
+                                subtitle = obj.childCount?.takeIf { it > 0 }?.let { strings.format("dlna.items", it) },
                                 modifier = modifier,
                                 onClick = {
                                     lastFocus[currentId] = obj.id

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -141,9 +142,13 @@ private fun PlaylistsPage(store: IptvStore, playlists: List<IptvPlaylist>, onBac
         }
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Header(title = tr("iptv.title"), onBack = onBack)
         LazyColumn(
+            Modifier.readableColumn(),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -383,9 +388,12 @@ private fun ChannelsPage(store: IptvStore, playlist: IptvPlaylist, onBack: () ->
         onPlay(store.playbackRequest(id, visible, index))
     }
 
-    Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         // Шапка: назад, название, поиск, обновить.
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
@@ -495,6 +503,7 @@ private fun ChannelList(
     val logoPx = with(LocalDensity.current) { 64.dp.roundToPx() }
 
     LazyColumn(
+        Modifier.readableColumn(),
         state = state,
         contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -597,7 +606,13 @@ private fun ChannelRow(
 @Composable
 private fun GroupChip(text: String, selected: Boolean, icon: ImageVector? = null, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = onClick, background = if (selected) colors.primaryContainer else colors.surface) {
+    FocusCard(
+        onClick = onClick,
+        selected = selected,
+        mergeDescendants = true,
+        modifier = Modifier.heightIn(min = 48.dp),
+        background = if (selected) colors.primaryContainer else colors.surface,
+    ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             icon?.let {
                 Icon(it, null, tint = if (selected) colors.onPrimaryContainer else colors.primary, modifier = Modifier.size(16.dp))
@@ -619,7 +634,7 @@ private fun GroupChip(text: String, selected: Boolean, icon: ImageVector? = null
 @Composable
 private fun Header(title: String, onBack: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
         }
@@ -630,7 +645,7 @@ private fun Header(title: String, onBack: () -> Unit) {
 
 @Composable
 private fun IconCard(icon: ImageVector, description: String, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant, onClick: () -> Unit) {
-    FocusCard(onClick = onClick, modifier = Modifier.size(44.dp), background = Color.Transparent) {
+    FocusCard(onClick = onClick, modifier = Modifier.size(48.dp), background = Color.Transparent) {
         Icon(icon, description, tint = tint, modifier = Modifier.align(Alignment.Center))
     }
 }

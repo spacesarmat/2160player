@@ -146,5 +146,9 @@
   "stats.tunneling": "tunneled",
   "stats.hardware": "hardware",
   "stats.software": "software",
-  "player.tunneling_off": "Tunneled playback does not work on this device — turned off."
+  "player.tunneling_off": "Tunneled playback does not work on this device — turned off.",
+  "a11y.on": "On",
+  "a11y.off": "Off",
+  "a11y.selected": "Selected",
+  "a11y.unselected": "Not selected"
 }

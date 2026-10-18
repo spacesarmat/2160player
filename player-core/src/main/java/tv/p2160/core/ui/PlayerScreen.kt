@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.horizontalScroll
@@ -46,11 +47,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,7 +110,15 @@ fun PlayerScreen(
     onPickSubtitle: () -> Unit,
     inPictureInPicture: Boolean = false,
 ) {
-    val state by controller.state.collectAsStateWithLifecycle()
+    // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель читает снимок без них.
+    // У derivedStateOf без политики любое новое значение — изменение, поэтому сравнение по полям
+    // (structuralEqualityPolicy): пока равны остальные, экран не пересобирается. Иначе меню дёргалось два раза в секунду.
+    val upstream = controller.state.collectAsStateWithLifecycle()
+    val state by remember {
+        derivedStateOf(structuralEqualityPolicy()) {
+            upstream.value.copy(positionMs = 0L, bufferedMs = 0L, sleepRemainingMs = null)
+        }
+    }
     val settings by settingsStore.state.collectAsStateWithLifecycle()
     val strings by I18n.get(LocalContext.current).strings.collectAsStateWithLifecycle()
     val theme = PlayerThemes.byId(settings.themeId)
@@ -209,11 +220,12 @@ fun PlayerScreen(
     }
 
     fun keyScrub(delta: Long) {
+        val live = controller.state.value
         if (!keyScrubbing) {
             keyScrubbing = true
-            scrubBase = state.positionMs
+            scrubBase = live.positionMs
         }
-        val max = state.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val max = live.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE
         scrubTarget = ((scrubTarget ?: scrubBase) + delta).coerceIn(0, max)
     }
 
@@ -234,8 +246,13 @@ fun PlayerScreen(
         flashTick++
     }
 
-    // Отрезок, для которого показываем кнопку «Пропустить» (титры с переходом к следующей серии — отдельно).
-    val nearEnd = !state.isLive && !state.liveTv && state.hasNext && state.durationMs > 60_000 && state.durationMs - state.positionMs in 1..15_000
+    // «Почти конец» меняется один раз за ролик, а не на каждом тике позиции.
+    val nearEnd by remember {
+        derivedStateOf(structuralEqualityPolicy()) {
+            val s = upstream.value
+            !s.isLive && !s.liveTv && s.hasNext && s.durationMs > 60_000L && s.durationMs - s.positionMs in 1L..15_000L
+        }
+    }
     val creditsWithNext = !state.liveTv && state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
     val showNextCard = creditsWithNext && nextDismissedFor != state.playlistIndex && !inPictureInPicture && settings.autoPlayNext
     val skippable = state.activeSegment?.takeIf { !creditsWithNext }
@@ -337,13 +354,20 @@ fun PlayerScreen(
                     },
                     onCenterDoubleTap = controller::playPause,
                     onSeek = { delta -> controller.seekBy(delta); if (controlsVisible) poke() },
-                    onScrubStart = { if (!state.liveTv) { scrubBase = state.positionMs; scrubTarget = state.positionMs } },
+                    onScrubStart = {
+                        if (!state.liveTv) {
+                            val pos = controller.state.value.positionMs
+                            scrubBase = pos
+                            scrubTarget = pos
+                        }
+                    },
                     onScrub = scrub@{ fraction ->
                         // Эфир телеканала свайпом не перематываем.
                         if (state.liveTv) return@scrub
+                        val duration = controller.state.value.durationMs
                         // Ширина экрана = 20 % длительности, но не меньше 90 с и не больше 10 мин.
-                        val range = (state.durationMs / 5).coerceIn(90_000, 600_000)
-                        scrubTarget = (scrubBase + (fraction * range).toLong()).coerceIn(0, state.durationMs.coerceAtLeast(0))
+                        val range = (duration / 5).coerceIn(90_000, 600_000)
+                        scrubTarget = (scrubBase + (fraction * range).toLong()).coerceIn(0, duration.coerceAtLeast(0))
                     },
                     onScrubEnd = { scrubTarget?.let(controller::seekTo); scrubTarget = null },
                     onSpeedBoost = controller::setSpeedBoost,
@@ -378,16 +402,18 @@ fun PlayerScreen(
             // Статистика поверх видео (и обложки звука): собирается, только пока слой включён и виден.
             val showStats = settings.statsOverlay && !inPictureInPicture
             LaunchedEffect(showStats) { controller.setStatsEnabled(showStats) }
-            val stats by controller.stats.collectAsStateWithLifecycle()
-            stats?.takeIf { showStats }?.let {
-                StatsOverlay(it, Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = if (controlsVisible) 88.dp else 16.dp))
-            }
+            StatsLayer(
+                controller,
+                showStats,
+                Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = if (controlsVisible) 88.dp else 16.dp),
+            )
 
             AnimatedVisibility(
                 visible = controlsVisible && !inPictureInPicture,
                 enter = fadeIn(), exit = fadeOut(),
             ) {
                 Controls(
+                    controller = controller,
                     state = state,
                     theme = theme,
                     stepMs = stepMs,
@@ -400,7 +426,10 @@ fun PlayerScreen(
                     onPrevious = controller::previous,
                     onPanel = { panel = it },
                     onInteraction = ::poke,
-                    onScrub = { target -> if (target != null && scrubTarget == null) scrubBase = state.positionMs; scrubTarget = target },
+                    onScrub = { target ->
+                        if (target != null && scrubTarget == null) scrubBase = controller.state.value.positionMs
+                        scrubTarget = target
+                    },
                     onGoTo = { goToDialog = true },
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
@@ -516,16 +545,12 @@ fun PlayerScreen(
                 }
             }
 
-            // Таймер сна идёт — небольшая подпись сверху (в PiP не показываем).
-            if ((state.sleepRemainingMs != null || state.sleepAtEnd) && !inPictureInPicture) {
-                Text(
-                    state.sleepRemainingMs?.let { tr("player.sleep_in", formatTime(it)) } ?: tr("player.sleep_at_end"),
-                    color = theme.onSurface.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(top = if (controlsVisible) 76.dp else 16.dp, end = 24.dp)
-                        .clip(RoundedCornerShape(12.dp)).background(theme.surface.copy(alpha = 0.7f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+            if (!inPictureInPicture) {
+                SleepClock(
+                    controller,
+                    theme,
+                    Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = if (controlsVisible) 76.dp else 16.dp, end = 24.dp),
                 )
             }
 
@@ -608,6 +633,7 @@ fun PlayerScreen(
 
 @Composable
 private fun Controls(
+    controller: PlayerController,
     state: tv.p2160.core.engine.PlayerUiState,
     theme: PlayerTheme,
     stepMs: Long,
@@ -626,12 +652,12 @@ private fun Controls(
     onPreviousChapter: () -> Unit,
 ) {
     val hasChapters = state.chapters.size > 1
+    val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
+    val bottomScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(Color.Transparent, theme.scrim)) }
     Box(Modifier.fillMaxSize()) {
         // Градиенты сверху и снизу, чтобы текст читался на светлом видео.
-        Box(Modifier.fillMaxWidth().size(height = 140.dp, width = 0.dp).align(Alignment.TopCenter)
-            .background(Brush.verticalGradient(listOf(theme.scrim, Color.Transparent))))
-        Box(Modifier.fillMaxWidth().size(height = 200.dp, width = 0.dp).align(Alignment.BottomCenter)
-            .background(Brush.verticalGradient(listOf(Color.Transparent, theme.scrim))))
+        Box(Modifier.fillMaxWidth().size(height = 140.dp, width = 0.dp).align(Alignment.TopCenter).background(topScrim))
+        Box(Modifier.fillMaxWidth().size(height = 200.dp, width = 0.dp).align(Alignment.BottomCenter).background(bottomScrim))
 
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -706,53 +732,100 @@ private fun Controls(
 
             Spacer(Modifier.weight(1f))
 
-            // Эфир без окна перемотки (или телеканал) — без полосы, только «Эфир».
-            if (!state.isLive || (!state.liveTv && state.durationMs > 0)) SeekBar(
-                positionMs = state.positionMs,
-                durationMs = state.durationMs,
-                bufferedMs = state.bufferedMs,
-                stepMs = stepMs,
-                onSeek = onSeek,
-                onInteraction = onInteraction,
-                accent = theme.accent,
-                chapterStartsMs = state.chapters.map { it.startMs },
-                segments = state.segments,
-                onScrub = onScrub,
-            )
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Нажатие на время — «Перейти ко времени».
-                Text(
-                    formatTime(state.positionMs),
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onGoTo).padding(horizontal = 4.dp, vertical = 2.dp),
-                )
-                state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
-                    Text(
-                        "  ·  " + (ch.title ?: tr("player.chapter_n", state.chapterIndex + 1)),
-                        color = Color.White.copy(alpha = 0.75f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                if (state.speed != 1f) {
-                    Text("${formatSpeed(state.speed)}×  ", color = theme.accent, style = MaterialTheme.typography.bodyMedium)
-                }
-                if (state.isLive) {
-                    LiveBadge()
-                } else {
-                    Text(
-                        if (state.durationMs > 0) "−${formatTime(state.durationMs - state.positionMs)} / ${formatTime(state.durationMs)}" else if (state.isBuffering) "" else tr("player.live"),
-                        color = Color.White.copy(alpha = 0.85f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+            PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
         }
     }
+}
+
+/** Полоса и время. Собирает только позицию: остальной экран от тика прогресса не пересобирается. */
+@Composable
+private fun PlaybackTransport(
+    controller: PlayerController,
+    state: tv.p2160.core.engine.PlayerUiState,
+    theme: PlayerTheme,
+    stepMs: Long,
+    onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
+    onScrub: (Long?) -> Unit,
+    onGoTo: () -> Unit,
+) {
+    val live = controller.state.collectAsStateWithLifecycle()
+    val progress by remember {
+        derivedStateOf(structuralEqualityPolicy()) { live.value.positionMs to live.value.bufferedMs }
+    }
+    val (positionMs, bufferedMs) = progress
+    val chapterMarks = remember(state.chapters) { state.chapters.map { it.startMs } }
+    if (!state.isLive || (!state.liveTv && state.durationMs > 0)) {
+        SeekBar(
+            positionMs = positionMs,
+            durationMs = state.durationMs,
+            bufferedMs = bufferedMs,
+            stepMs = stepMs,
+            onSeek = onSeek,
+            onInteraction = onInteraction,
+            accent = theme.accent,
+            chapterStartsMs = chapterMarks,
+            segments = state.segments,
+            onScrub = onScrub,
+        )
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            formatTime(positionMs),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onGoTo).padding(horizontal = 4.dp, vertical = 12.dp),
+        )
+        state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
+            Text(
+                "  ·  " + (ch.title ?: tr("player.chapter_n", state.chapterIndex + 1)),
+                color = Color.White.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        if (state.speed != 1f) {
+            Text("${formatSpeed(state.speed)}×  ", color = theme.accent, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (state.isLive) {
+            LiveBadge()
+        } else {
+            Text(
+                if (state.durationMs > 0) "−${formatTime(state.durationMs - positionMs)} / ${formatTime(state.durationMs)}" else if (state.isBuffering) "" else tr("player.live"),
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+/** Подпись таймера сна. Остаток меняется раз в секунду и не должен пересобирать меню. */
+@Composable
+private fun SleepClock(controller: PlayerController, theme: PlayerTheme, modifier: Modifier = Modifier) {
+    val live = controller.state.collectAsStateWithLifecycle()
+    val sleep by remember {
+        derivedStateOf(structuralEqualityPolicy()) { live.value.sleepRemainingMs to live.value.sleepAtEnd }
+    }
+    val (left, atEnd) = sleep
+    if (left == null && !atEnd) return
+    Text(
+        left?.let { tr("player.sleep_in", formatTime(it)) } ?: tr("player.sleep_at_end"),
+        color = theme.onSurface.copy(alpha = 0.85f),
+        style = MaterialTheme.typography.labelLarge,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp)).background(theme.surface.copy(alpha = 0.7f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+/** Статистика обновляется чаще кадра интерфейса — только этот слой, не вся сцена. */
+@Composable
+private fun StatsLayer(controller: PlayerController, show: Boolean, modifier: Modifier = Modifier) {
+    val stats by controller.stats.collectAsStateWithLifecycle()
+    if (show) stats?.let { StatsOverlay(it, modifier) }
 }
 
 /** Красная плашка «Эфир». */

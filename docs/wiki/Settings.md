@@ -40,7 +40,7 @@ PlayerSettings.get(context).update { it.copy(keepScreenOn = false) }
 | Язык | `language` | язык системы |
 | Тема | `themeId` | `cinema` |
 | Размер, цвет, фон, обводка субтитров, игнор стилей ASS | `subtitleStyle` | размер 1, белый текст, контур |
-| Языки субтитров | `preferredSubtitleLanguages` | `ru` |
+| Языки субтитров | `preferredSubtitleLanguages` | `ru`. Выбор из списка языков, порядок нажатий — порядок предпочтения; свой код по-прежнему можно дописать |
 | Не выключать экран | `keepScreenOn` | `true` |
 | Продолжать с места остановки | `autoResume` | `true` |
 | Запоминать выбор дорожек | `smartTracks` | `true` |
@@ -48,7 +48,7 @@ PlayerSettings.get(context).update { it.copy(keepScreenOn = false) }
 | Ночной звук / по расписанию | `nightMode`, `nightAuto`, `nightStartMinute`, `nightEndMinute` | выкл, 23:00–10:00 |
 | Вступления и титры | `skipMode` | кнопка |
 | Скорость, шаг перемотки | `defaultSpeed`, `seekStepSeconds` | 1×, 10 с |
-| Языки озвучки | `preferredAudioLanguages` | `ru` |
+| Языки озвучки | `preferredAudioLanguages` | `ru`. Тот же список, что у субтитров |
 | Декодер | `decoder` | авто |
 | Частота экрана под видео | `frameRateMatching` | выкл |
 | Туннельный режим | `tunneling` | выкл |
@@ -66,5 +66,7 @@ PlayerSettings.get(context).update { it.copy(keepScreenOn = false) }
 `p2160_smb` и `p2160_camera`, а также каталог `files/iptv`, не попадают в резервную копию.
 Пароли SMB и ключ RTMP при старте переписываются шифротекстом Android Keystore (`enc1:`).
 См. [HTTP API](Http-API.md).
+
+На широком экране и ТВ колонка настроек не шире 720 dp и стоит по центру: значение не уезжает к дальнему краю панели. Прокрутка живёт в `MainActivity`, поэтому возврат из справки открывает то же место списка.
 
 Полные таблицы и момент применения каждого поля — [API.md §9](../API.md#9-настройки-и-темы).

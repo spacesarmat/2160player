@@ -63,7 +63,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
@@ -817,36 +822,72 @@ private fun Controls(
 }
 
 /**
- * Появление управления. Состав [content] не покидает композицию: после затухания узел паркуется
- * (`alpha = 0`, без размещения), а не выбрасывается. Постоянный слой на весь экран в покое не держим —
- * он заставлял перезаписывать команды вместе с дыркой SurfaceView. Доля читается в graphicsLayer, не в композиции.
+ * Появление управления. Цепочка одна и та же во всех состояниях: смена «пусто → слой → parked»
+ * заново измеряла оверлей (скрытие на POCO: recompose 14–22 мс). Альфа читается в лямбде слоя,
+ * размер и место не меняются. `isRunning` / `targetValue` в композиции не читаются.
+ * Альфа 0 сама не отключает касания, пульт и TalkBack — это свойства постоянных узлов.
+ * Пока кнопки скрыты, слой сдвинут на свою ширину: попадание идёт через обратную матрицу
+ * и не съедает двойной тап по центру. `CompositingStrategy.Auto`, не ModulateAlpha:
+ * градиенты под кнопками при модуляции альфы выглядят иначе.
  */
 @Composable
 private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
-    val alpha = remember { Animatable(if (visible) 1f else 0f) }
-    var parked by remember { mutableStateOf(!visible) }
+    val opacity = remember { Animatable(if (visible) 1f else 0f) }
+    // Не читается в композиции: смена двигает только параметры слоя.
+    val shown = remember { mutableStateOf(visible) }
+    val gate = remember { InteractionGate(visible) }
+    gate.open = visible
     LaunchedEffect(visible) {
         if (visible) {
-            parked = false
-            alpha.animateTo(1f, tween(180))
+            shown.value = true
+            opacity.animateTo(1f, tween(180))
         } else {
-            alpha.animateTo(0f, tween(150))
-            parked = true
+            opacity.animateTo(0f, tween(150))
+            shown.value = false
         }
     }
-    // isRunning меняется дважды за появление, не каждый кадр.
-    val fading = !parked && (alpha.isRunning || alpha.targetValue < 1f)
-    Box(
-        Modifier.then(
-            when {
-                parked -> Modifier.parkedChrome()
-                // Auto поднимает offscreen, пока альфа < 1: команды кнопок пишутся в слой один раз,
-                // а не в кадр вместе с дыркой SurfaceView на каждом кадре затухания.
-                fading -> Modifier.graphicsLayer { this.alpha = alpha.value }
-                else -> Modifier
-            },
-        ),
-    ) { content() }
+    val layer = remember {
+        Modifier.graphicsLayer {
+            alpha = opacity.value
+            translationX = if (shown.value) 0f else size.width
+            compositingStrategy = CompositingStrategy.Auto
+        }
+    }
+    // Свойства, не состав: тот же focusGroup и semantics, другое значение при скрытии.
+    val chrome = remember(visible) {
+        Modifier
+            .focusGroup()
+            .focusProperties {
+                canFocus = visible
+                onEnter = { if (!visible) cancelFocusChange() }
+            }
+            .semantics { if (!visible) hideFromAccessibility() }
+    }
+    val passThrough = remember { PassThroughWhenClosedElement(gate) }
+    CompositionLocalProvider(LocalInteractionGate provides gate) {
+        Box(layer.then(chrome).then(passThrough)) { content() }
+    }
+}
+
+/**
+ * Скрытый оверлей делится попаданием с жестами под ним. Кнопки при этом не срабатывают:
+ * их действия читают [InteractionGate]. Узел постоянный, флаг читается в момент касания.
+ */
+private class PassThroughWhenClosedElement(
+    val gate: InteractionGate,
+) : ModifierNodeElement<PassThroughWhenClosedNode>() {
+    override fun create() = PassThroughWhenClosedNode(gate)
+    override fun update(node: PassThroughWhenClosedNode) { node.gate = gate }
+    override fun equals(other: Any?) = other is PassThroughWhenClosedElement && other.gate === gate
+    override fun hashCode() = System.identityHashCode(gate)
+}
+
+private class PassThroughWhenClosedNode(
+    var gate: InteractionGate,
+) : Modifier.Node(), PointerInputModifierNode {
+    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) = Unit
+    override fun onCancelPointerInput() = Unit
+    override fun sharePointerInputWithSiblings(): Boolean = !gate.open
 }
 
 /**
@@ -928,6 +969,7 @@ private fun TransportReadout(
     onGoTo: () -> Unit,
 ) {
     val chapterMarks = remember(state.chapters) { state.chapters.map { it.startMs } }
+    val gate = LocalInteractionGate.current
     if (!state.isLive || (!state.liveTv && state.durationMs > 0)) {
         SeekBar(
             positionMs = positionMs,
@@ -947,7 +989,9 @@ private fun TransportReadout(
             formatTime(positionMs),
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onGoTo).padding(horizontal = 4.dp, vertical = 12.dp),
+            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable {
+                if (gate.open) onGoTo()
+            }.padding(horizontal = 4.dp, vertical = 12.dp),
         )
         state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
             Text(

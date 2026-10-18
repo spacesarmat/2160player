@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +59,16 @@ import tv.p2160.core.api.SkipSegment
 import androidx.compose.material.icons.filled.Check
 
 /**
+ * Ворота нажатий скрытого оверлея. Один объект на всё затухание: чтение в лямбде клика,
+ * не в композиции, чтобы показ и скрытие не пересобирали кнопки.
+ */
+internal class InteractionGate(var open: Boolean = true)
+
+private val AlwaysInteractive = InteractionGate(true)
+
+internal val LocalInteractionGate = staticCompositionLocalOf { AlwaysInteractive }
+
+/**
  * Кнопка, одинаково удобная для пальца и пульта: заметная подсветка фокуса, лёгкое увеличение.
  */
 @Composable
@@ -75,13 +86,16 @@ fun ControlButton(
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
     val target = size.coerceAtLeast(48.dp)
+    val gate = LocalInteractionGate.current
     Box(
         modifier = modifier
             .size(target)
             .scale(scale)
             .clip(CircleShape)
             .background(if (focused) accent else Color.Transparent)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = {
+                if (gate.open) onClick()
+            })
             .semantics(mergeDescendants = true) {
                 this.contentDescription = contentDescription
                 role = Role.Button
@@ -125,6 +139,7 @@ fun SeekBar(
     val focused by interaction.collectIsFocusedAsState()
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var keyTarget by remember { mutableStateOf<Long?>(null) }
+    val gate = LocalInteractionGate.current
     val duration = durationMs.coerceAtLeast(1)
     val fraction = dragFraction ?: keyTarget?.let { (it.toFloat() / duration).coerceIn(0f, 1f) }
         ?: if (durationMs <= 0) 0f else (positionMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -136,7 +151,7 @@ fun SeekBar(
             .height(48.dp)
             .focusable(interactionSource = interaction)
             .onKeyEvent { e ->
-                if (durationMs <= 0) return@onKeyEvent false
+                if (!gate.open || durationMs <= 0) return@onKeyEvent false
                 val arrow = e.key == Key.DirectionLeft || e.key == Key.DirectionRight
                 if (e.type == KeyEventType.KeyUp) {
                     val target = keyTarget ?: return@onKeyEvent false
@@ -163,6 +178,7 @@ fun SeekBar(
             }
             .pointerInput(durationMs) {
                 detectTapGestures { o ->
+                    if (!gate.open) return@detectTapGestures
                     onSeek((o.x / size.width * duration).toLong())
                     onInteraction()
                 }
@@ -170,20 +186,24 @@ fun SeekBar(
             .pointerInput(durationMs) {
                 detectHorizontalDragGestures(
                     onDragStart = { o ->
-                        dragFraction = (o.x / size.width).coerceIn(0f, 1f)
-                        onScrub((dragFraction!! * duration).toLong())
-                        onInteraction()
+                        if (gate.open) {
+                            dragFraction = (o.x / size.width).coerceIn(0f, 1f)
+                            onScrub((dragFraction!! * duration).toLong())
+                            onInteraction()
+                        }
                     },
                     onDragEnd = {
-                        dragFraction?.let { onSeek((it * duration).toLong()) }
+                        if (gate.open) dragFraction?.let { onSeek((it * duration).toLong()) }
                         dragFraction = null
                         onScrub(null)
                     },
                     onDragCancel = { dragFraction = null; onScrub(null) },
                 ) { change, _ ->
-                    dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                    onScrub((dragFraction!! * duration).toLong())
-                    onInteraction()
+                    if (gate.open) {
+                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        onScrub((dragFraction!! * duration).toLong())
+                        onInteraction()
+                    }
                 }
             },
         contentAlignment = Alignment.Center,

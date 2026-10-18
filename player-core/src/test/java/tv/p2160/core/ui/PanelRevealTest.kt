@@ -57,6 +57,8 @@ class PanelRevealTest {
     fun keptPanelDoesNotReserveTransportSpace() {
         assertFalse(panelReservesSpace(open = false))
         assertTrue(panelReservesSpace(open = true))
+        assertEquals(0f, transportEndInsetDp(open = false, screenWidthDp = 1000f), 0.01f)
+        assertEquals(432f, transportEndInsetDp(open = true, screenWidthDp = 1000f), 0.01f)
     }
 
     @Test

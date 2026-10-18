@@ -28,6 +28,7 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 
     publishing {
@@ -73,8 +74,11 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
     // XmlPullParser для JVM-тестов разбора XMLTV (на устройстве — android.util.Xml)
     testImplementation(libs.kxml2)
 }

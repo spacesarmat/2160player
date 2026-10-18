@@ -660,6 +660,10 @@ private class PanelRevealNow(var index: Int?, var lazy: Boolean)
  */
 internal fun panelReservesSpace(open: Boolean): Boolean = open
 
+/** Правый отступ полосы и подсказки, dp. Ноль, пока панель закрыта; ширина панели плюс зазор, когда открыта. */
+internal fun transportEndInsetDp(open: Boolean, screenWidthDp: Float): Float =
+    if (panelReservesSpace(open)) sidePanelWidthDp(screenWidthDp) + sidePanelTransportGapDp else 0f
+
 /**
  * Прокрутка при открытии, в пикселях от верха содержимого.
  * Строка, которая влезает в первый экран, оставляет список наверху.

@@ -64,11 +64,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.PointerEvent
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.node.ModifierNodeElement
-import androidx.compose.ui.node.PointerInputModifierNode
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
@@ -472,7 +467,7 @@ fun PlayerScreen(
             // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
             // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
-            ControlsFade(visible = controlsVisible) {
+            ControlsFade(visible = controlsVisible, panelOpen = panelReservesSpace(panel != null)) {
                 Controls(
                     controller = controller,
                     state = state,
@@ -622,11 +617,10 @@ fun PlayerScreen(
                 if (!inPictureInPicture) {
                     // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
                     // иначе «С начала» оказывается под панелью и не нажимается.
-                    val resumeEnd = if (panelReservesSpace(panel != null)) {
-                        sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp + sidePanelTransportGapDp.dp
-                    } else {
-                        0.dp
-                    }
+                    val resumeEnd = transportEndInsetDp(
+                        panel != null,
+                        LocalConfiguration.current.screenWidthDp.toFloat(),
+                    ).dp
                     Box(
                         Modifier.align(Alignment.TopCenter).fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -779,14 +773,12 @@ private fun Controls(
                 ) { actionButtons() }
             }
 
-            // Сдвиг полосы — один padding при открытии и закрытии, без анимации ширины:
+            // Сдвиг полосы — один padding в том же кадре, что и старт выезда, без анимации ширины:
             // анимированный padding заново измерял бы полосу, кнопки и SurfaceView каждый кадр.
-            val panelReserve = if (panelOpen) {
-                sidePanelWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()).dp +
-                    sidePanelTransportGapDp.dp
-            } else {
-                0.dp
-            }
+            val panelReserve = transportEndInsetDp(
+                panelOpen,
+                androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat(),
+            ).dp
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = panelReserve)) {
             Spacer(Modifier.weight(1f))
 
@@ -828,17 +820,25 @@ private fun Controls(
  * заново измеряла оверлей (скрытие на POCO: recompose 14–22 мс). Альфа читается в лямбде слоя,
  * размер и место не меняются. `isRunning` / `targetValue` в композиции не читаются.
  * Альфа 0 сама не отключает касания, пульт и TalkBack — это свойства постоянных узлов.
- * Пока кнопки скрыты, слой сдвинут на свою ширину: попадание идёт через обратную матрицу
- * и не съедает двойной тап по центру. `CompositingStrategy.Auto`, не ModulateAlpha:
- * градиенты под кнопками при модуляции альфы выглядят иначе.
+ * Слой на весь экран не ловит касания: иначе под ним не работают тап, закрытие панели и
+ * двойной тап. Попадание только у кнопок и полосы. Пока кнопки скрыты, слой ещё и сдвинут
+ * на свою ширину, а их действия читают [InteractionGate].
+ * [panelOpen] — параметр, не только захват лямбды: у лямбды стабильная ссылка, и без этого
+ * аргумента затухание пропускалось бы, а полоса сужалась лишь на следующей пересборке.
+ * `CompositingStrategy.Auto`, не ModulateAlpha: градиенты под кнопками при модуляции альфы выглядят иначе.
  */
 @Composable
-private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
+internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
     val opacity = remember { Animatable(if (visible) 1f else 0f) }
     // Не читается в композиции: смена двигает только параметры слоя.
     val shown = remember { mutableStateOf(visible) }
     val gate = remember { InteractionGate(visible) }
     gate.open = visible
+    // Чтение panelOpen оставляет его в маске $changed. Иначе компилятор выбрасывает
+    // неиспользуемый аргумент, стабильная лямбда пропускает функцию, и полоса
+    // сужается только на следующей пересборке.
+    val reserve = remember { mutableStateOf(panelOpen) }
+    reserve.value = panelOpen
     LaunchedEffect(visible) {
         if (visible) {
             shown.value = true
@@ -853,6 +853,9 @@ private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
             alpha = opacity.value
             translationX = if (shown.value) 0f else size.width
             compositingStrategy = CompositingStrategy.Auto
+            // Подписка слоя на отступ: display list полосы обновляется в том же кадре,
+            // в котором панель начинает выезжать. На пиксели не влияет.
+            shadowElevation = if (reserve.value) 0f else 0f
         }
     }
     // Свойства, не состав: тот же focusGroup и semantics, другое значение при скрытии.
@@ -865,31 +868,9 @@ private fun ControlsFade(visible: Boolean, content: @Composable () -> Unit) {
             }
             .semantics { if (!visible) hideFromAccessibility() }
     }
-    val passThrough = remember { PassThroughWhenClosedElement(gate) }
     CompositionLocalProvider(LocalInteractionGate provides gate) {
-        Box(layer.then(chrome).then(passThrough)) { content() }
+        Box(layer.then(chrome)) { content() }
     }
-}
-
-/**
- * Скрытый оверлей делится попаданием с жестами под ним. Кнопки при этом не срабатывают:
- * их действия читают [InteractionGate]. Узел постоянный, флаг читается в момент касания.
- */
-private class PassThroughWhenClosedElement(
-    val gate: InteractionGate,
-) : ModifierNodeElement<PassThroughWhenClosedNode>() {
-    override fun create() = PassThroughWhenClosedNode(gate)
-    override fun update(node: PassThroughWhenClosedNode) { node.gate = gate }
-    override fun equals(other: Any?) = other is PassThroughWhenClosedElement && other.gate === gate
-    override fun hashCode() = System.identityHashCode(gate)
-}
-
-private class PassThroughWhenClosedNode(
-    var gate: InteractionGate,
-) : Modifier.Node(), PointerInputModifierNode {
-    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) = Unit
-    override fun onCancelPointerInput() = Unit
-    override fun sharePointerInputWithSiblings(): Boolean = !gate.open
 }
 
 /** Полоса и время. Один вызов [TransportReadout]: показ и скрытие не пересоздают полосу.

@@ -4,10 +4,10 @@ import android.graphics.Color as AndroidColor
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,13 +16,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
@@ -64,6 +61,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -72,6 +70,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -130,6 +129,21 @@ fun PlayerScreen(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<Panel?>(null) }
+    // Пока панель уезжает, состав остаётся на экране — иначе она исчезнет до конца сдвига.
+    var heldPanel by remember { mutableStateOf<Panel?>(null) }
+    if (panel != null) heldPanel = panel
+    // 0 — открыта, 1 — за правым краем. value нельзя читать в композиции: это пересборка каждый кадр.
+    val panelSlide = remember { Animatable(1f) }
+    LaunchedEffect(panel != null) {
+        if (panel != null) {
+            panelSlide.animateTo(0f, tween(200))
+        } else if (heldPanel != null) {
+            panelSlide.animateTo(1f, tween(200))
+            if (panel == null) heldPanel = null
+        }
+    }
+    // isRunning и targetValue меняются только на старте и в конце, не на каждом кадре.
+    val panelSliding = panelSlide.isRunning || panelSlide.targetValue != 0f || (panel == null && heldPanel != null)
     var interaction by remember { mutableIntStateOf(0) }
     var resizeMode by remember { mutableStateOf(settings.resizeMode) }
     /** Подпись режима масштаба на пару секунд после переключения. */
@@ -437,6 +451,7 @@ fun PlayerScreen(
                     onGoTo = { goToDialog = true },
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
+                    panelOpen = heldPanel != null,
                 )
             }
 
@@ -589,57 +604,60 @@ fun PlayerScreen(
                 }
             }
 
-            // Панель на всю высоту накрывала верхние иконки (кроме «Продолжить на другом устройстве»).
-            // Она начинается под полосой кнопок: их можно нажать и с пульта, другая иконка меняет панель.
-            val narrowControls = LocalConfiguration.current.screenWidthDp < 600
-            Box(
-                Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                    .padding(top = sidePanelTopClearanceDp(narrowControls).dp),
-            ) {
-            AnimatedVisibility(
-                visible = panel != null,
-                enter = slideInHorizontally { it } + fadeIn(),
-                exit = slideOutHorizontally { it } + fadeOut(),
-                modifier = Modifier.align(Alignment.CenterEnd),
-            ) {
-                panel?.let { current ->
-                    SidePanel(
-                        panel = current,
-                        state = state,
-                        settings = settings,
-                        resizeMode = resizeMode,
-                        actions = PanelActions(
-                            onSelectTrack = controller::select,
-                            onDisableSubtitles = controller::disableSubtitles,
-                            onAddSubtitle = { panel = null; onPickSubtitle() },
-                            onSubtitleDelay = controller::setSubtitleDelay,
-                            onSecondarySubtitle = controller::setSecondarySubtitle,
-                            onNightMode = controller::setNightMode,
-                            report = controller::report,
-                            onNightSchedule = { auto, start, end ->
-                                settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
-                                controller.onNightScheduleChanged()
+            // 0.2.10 сдвигал панель через slideInHorizontally: переход читает долю в measure
+            // и каждый кадр заново измеряет панель вместе с SurfaceView. Обёртка
+            // windowInsetsPadding(safeDrawing) подписывала тот же узел на инсеты.
+            // Отсюда рывки при открытии, прокрутке и закрытии (в 0.2.9 было около 1 %).
+            // Сдвиг — translationX внутри graphicsLayer, и только пока панель едет;
+            // сверху обычный padding (кнопки остаются нажимаемыми), без insets в measure.
+            val currentPanel = heldPanel
+            if (currentPanel != null) {
+                val density = LocalDensity.current
+                val narrowControls = LocalConfiguration.current.screenWidthDp < 600
+                val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
+                    sidePanelTopClearanceDp(narrowControls).dp
+                SidePanel(
+                    panel = currentPanel,
+                    state = state,
+                    settings = settings,
+                    resizeMode = resizeMode,
+                    actions = PanelActions(
+                        onSelectTrack = controller::select,
+                        onDisableSubtitles = controller::disableSubtitles,
+                        onAddSubtitle = { panel = null; onPickSubtitle() },
+                        onSubtitleDelay = controller::setSubtitleDelay,
+                        onSecondarySubtitle = controller::setSecondarySubtitle,
+                        onNightMode = controller::setNightMode,
+                        report = controller::report,
+                        onNightSchedule = { auto, start, end ->
+                            settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
+                            controller.onNightScheduleChanged()
+                        },
+                        onAudioDelay = controller::setAudioDelay,
+                        onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
+                        onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
+                        onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
+                        onSpeed = controller::setSpeed,
+                        onAutoVideo = controller::autoVideo,
+                        onResize = ::changeResize,
+                        onChapter = { controller.seekToChapter(it); panel = null },
+                        onMarkIntroStart = controller::markIntroStart,
+                        onMarkIntroEnd = controller::markIntroEnd,
+                        onMarkCredits = controller::markCreditsStart,
+                        onClearMarks = controller::clearMarks,
+                        onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = topPad)
+                        .then(
+                            if (panelSliding) {
+                                Modifier.graphicsLayer { translationX = size.width * panelSlide.value }
+                            } else {
+                                Modifier
                             },
-                            onAudioDelay = controller::setAudioDelay,
-                            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
-                            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
-                            onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
-                            onSpeed = controller::setSpeed,
-                            onAutoVideo = controller::autoVideo,
-                            onResize = ::changeResize,
-                            onChapter = { controller.seekToChapter(it); panel = null },
-                            onMarkIntroStart = controller::markIntroStart,
-                            onMarkIntroEnd = controller::markIntroEnd,
-                            onMarkCredits = controller::markCreditsStart,
-                            onClearMarks = controller::clearMarks,
-                            onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
                         ),
-                    )
-                }
-            }
+                )
             }
         }
     }
@@ -665,6 +683,7 @@ private fun Controls(
     onGoTo: () -> Unit,
     onNextChapter: () -> Unit,
     onPreviousChapter: () -> Unit,
+    panelOpen: Boolean,
 ) {
     val hasChapters = state.chapters.size > 1
     val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
@@ -718,6 +737,14 @@ private fun Controls(
                 ) { actionButtons() }
             }
 
+            // Панель стоит справа до низа. Полоса, время и центральные кнопки уезжают влево
+            // один раз при открытии — не на каждом кадре сдвига.
+            val panelReserve = if (panelOpen) {
+                sidePanelWidthDp(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat()).dp
+            } else {
+                0.dp
+            }
+            Column(Modifier.weight(1f).fillMaxWidth().padding(end = panelReserve)) {
             Spacer(Modifier.weight(1f))
 
             Row(
@@ -748,6 +775,7 @@ private fun Controls(
             Spacer(Modifier.weight(1f))
 
             PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+            }
         }
     }
 }

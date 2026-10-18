@@ -254,6 +254,7 @@
   "camera.audio": "Microphone audio",
   "camera.audio_hint": "Can be changed only while streaming is stopped",
   "camera.back_main": "Back",
+  "camera.main": "Main",
   "camera.back_wide": "Ultra-wide",
   "camera.back_tele": "Telephoto",
   "camera.front": "Front",

@@ -44,8 +44,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.heightIn
@@ -226,15 +229,17 @@ fun PanelRow(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
+    val switched = switch
+    val on = selected
     val stateText = when {
-        switch && selected -> tr("a11y.on")
-        switch -> tr("a11y.off")
-        selected -> tr("a11y.selected")
+        switched && on -> tr("a11y.on")
+        switched -> tr("a11y.off")
+        on -> tr("a11y.selected")
         else -> tr("a11y.unselected")
     }
-    val choice = if (switch) {
+    val choice = if (switched) {
         Modifier.toggleable(
-            value = selected,
+            value = on,
             interactionSource = interaction,
             indication = null,
             role = Role.Switch,
@@ -242,7 +247,7 @@ fun PanelRow(
         )
     } else {
         Modifier.selectable(
-            selected = selected,
+            selected = on,
             interactionSource = interaction,
             indication = null,
             role = Role.RadioButton,
@@ -263,8 +268,18 @@ fun PanelRow(
                 }
             )
             .then(if (focused) Modifier.border(2.dp, colors.primary, RoundedCornerShape(12.dp)) else Modifier)
+            // Роль на внешнем узле, который склеивает текст. Иначе TalkBack читает строку без состояния.
+            .semantics(mergeDescendants = true) {
+                stateDescription = stateText
+                if (switched) {
+                    role = Role.Switch
+                    toggleableState = if (on) ToggleableState.On else ToggleableState.Off
+                } else {
+                    role = Role.RadioButton
+                    this.selected = on
+                }
+            }
             .then(choice)
-            .semantics(mergeDescendants = true) { stateDescription = stateText }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {

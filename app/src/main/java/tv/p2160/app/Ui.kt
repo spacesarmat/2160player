@@ -17,8 +17,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import tv.p2160.core.i18n.tr
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -87,16 +91,18 @@ fun FocusCard(
         selected == false -> tr("a11y.unselected")
         else -> null
     }
+    val switchOn = checked
+    val radioOn = selected
     val activate = when {
-        checked != null -> Modifier.toggleable(
-            value = checked,
+        switchOn != null -> Modifier.toggleable(
+            value = switchOn,
             interactionSource = interaction,
             indication = null,
             role = Role.Switch,
             onValueChange = { onClick() },
         )
-        selected != null -> Modifier.selectable(
-            selected = selected,
+        radioOn != null -> Modifier.selectable(
+            selected = radioOn,
             interactionSource = interaction,
             indication = null,
             role = Role.RadioButton,
@@ -109,7 +115,7 @@ fun FocusCard(
             onLongClick = onLongClick,
         )
     }
-    val merge = mergeDescendants || checked != null || selected != null || contentDescription != null
+    val merge = mergeDescendants || switchOn != null || radioOn != null || contentDescription != null
     Box(
         modifier
             .heightIn(min = 48.dp)
@@ -117,11 +123,24 @@ fun FocusCard(
             .clip(shape)
             .background(background)
             .border(if (focused) 3.dp else 0.dp, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
-            .then(activate)
+            // semantics снаружи toggleable. Иначе mergeDescendants оказывается внутренним узлом
+            // с текстом, а Role.Switch остаётся на родителе без текста — TalkBack видит checkable=false
+            // (так было у «Минимальная задержка»: у строки нет дочернего Switch, в отличие от настроек).
             .semantics(mergeDescendants = merge) {
                 if (contentDescription != null) this.contentDescription = contentDescription
                 if (stateText != null) stateDescription = stateText
-            },
+                when {
+                    switchOn != null -> {
+                        role = Role.Switch
+                        toggleableState = if (switchOn) ToggleableState.On else ToggleableState.Off
+                    }
+                    radioOn != null -> {
+                        role = Role.RadioButton
+                        this.selected = radioOn
+                    }
+                }
+            }
+            .then(activate),
         content = content,
     )
 }

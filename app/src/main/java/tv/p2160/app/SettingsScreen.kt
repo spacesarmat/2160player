@@ -496,9 +496,9 @@ private fun SettingRow(
                 Spacer(Modifier.size(16.dp))
             }
             // Длинное значение справа сжимает заголовок и подсказку — тогда показываем его под заголовком.
+            // Короткое — у правого края карточки (колонка забирает ширину), как до сужения колонки в 0.2.10.
             val inline = value != null && value.length <= 14
-            // fill = false: короткое значение стоит сразу за названием, а не у дальнего края широкой строки.
-            Column(Modifier.weight(1f, fill = !inline)) {
+            Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (value != null && !inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

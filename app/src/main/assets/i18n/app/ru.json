@@ -254,6 +254,7 @@
   "camera.audio": "Звук с микрофона",
   "camera.audio_hint": "Меняется, только пока трансляция остановлена",
   "camera.back_main": "Задняя",
+  "camera.main": "Основная",
   "camera.back_wide": "Широкоугольная",
   "camera.back_tele": "Телевик",
   "camera.front": "Фронтальная",

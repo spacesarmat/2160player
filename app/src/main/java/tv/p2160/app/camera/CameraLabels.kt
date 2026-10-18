@@ -6,9 +6,11 @@ import kotlin.math.abs
 import kotlin.math.round
 
 /**
- * Имена камер в ряду «Камера». Сторона объектива и фокусное расстояние относительно основной
- * камеры той же стороны: «Широкая», «Сверхширокая», «3×». Если имя всё ещё повторяется —
- * «Фронтальная 2». Логическая камера, чьи физические id уже есть в списке, в ряд не попадает.
+ * Имена камер в ряду «Камера». Одна камера стороны — «Задняя» / «Фронтальная».
+ * Несколько задних: ближайшая к 26 мм экв. — «Основная», шире — «Широкая» или «Сверхширокая»,
+ * длиннее — «Телевик 3×». Вторая фронтальная называется по отличию фокусного
+ * («Фронтальная широкая»), номер — только если отличить нельзя.
+ * Логическая камера, чьи физические id уже есть в списке, в ряд не попадает.
  */
 object CameraLabels {
     /** Совпадают с [android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT] и соседними. */
@@ -19,6 +21,7 @@ object CameraLabels {
     const val KEY_BACK = "camera.back_main"
     const val KEY_FRONT = "camera.front"
     const val KEY_EXTERNAL = "camera.external"
+    const val KEY_MAIN = "camera.main"
     const val KEY_WIDE = "camera.wide"
     const val KEY_ULTRA = "camera.ultra"
     const val KEY_TELE = "camera.back_tele"
@@ -36,9 +39,7 @@ object CameraLabels {
         val key: String,
         /** Множитель относительно основной камеры этой стороны. null — в подпись не входит. */
         val zoom: Float? = null,
-        /** Подпись — только множитель («3×»), без слова «Телевик». */
-        val zoomOnly: Boolean = false,
-        /** Сторона, если без неё имя совпадает с камерой другой стороны. */
+        /** Сторона, если без неё имя совпадает с камерой другой стороны или это не основная фронтальная. */
         val facingKey: String? = null,
         /** 2 и дальше, если имя всё ещё повторяется. Первая остаётся без номера. */
         val number: Int? = null,
@@ -47,11 +48,10 @@ object CameraLabels {
             val zoomText = zoom?.let { UiFormat.speed(displayZoom(it), locale) + "×" }
             val parts = ArrayList<String>(3)
             if (facingKey != null) parts += translate(facingKey)
-            if (zoomOnly && zoomText != null) parts += zoomText
-            else {
-                parts += translate(key)
-                if (zoomText != null) parts += zoomText
-            }
+            val role = translate(key)
+            // «Фронтальная широкая», не «Фронтальная Широкая»: второе слово — уточнение.
+            parts += if (facingKey != null && key != facingKey) decapitalize(role, locale) else role
+            if (zoomText != null) parts += zoomText
             val body = parts.joinToString(" ")
             return if (number != null && number > 1) "$body $number" else body
         }
@@ -108,8 +108,12 @@ object CameraLabels {
             val facing = facingOf.getValue(id)
             val collide = (countBySig[s] ?: 1) > 1
             val mixed = (facingsBySig[s]?.size ?: 1) > 1
-            val prefix = if (collide && mixed && name.key != facingKey(facing)) facingKey(facing) else null
-            val bucket = s to prefix
+            val prefix = if (collide && mixed && name.key != facingKey(facing) && name.facingKey == null) {
+                facingKey(facing)
+            } else {
+                null
+            }
+            val bucket = s to (prefix ?: name.facingKey)
             bucketSize[bucket] = (bucketSize[bucket] ?: 0) + 1
             bucket to prefix
         }
@@ -118,8 +122,9 @@ object CameraLabels {
             val n = (seen[bucket] ?: 0) + 1
             seen[bucket] = n
             val total = bucketSize[bucket] ?: 1
-            preliminary.getValue(id).copy(
-                facingKey = prefix,
+            val existing = preliminary.getValue(id)
+            existing.copy(
+                facingKey = prefix ?: existing.facingKey,
                 number = if (total > 1 && n > 1) n else null,
             )
         }
@@ -140,17 +145,25 @@ object CameraLabels {
         }
         val ultraCount = zooms.count { it < 0.8f }
         return group.zip(zooms).map { (lens, zoom) ->
+            val isRef = lens.id == reference.id
             val key = when {
+                isRef -> if (facing == BACK) KEY_MAIN else facingKey(facing)
                 zoom < 0.8f -> KEY_ULTRA
-                zoom <= 1.35f -> if (facing == BACK) KEY_WIDE else facingKey(facing)
+                zoom < 0.98f -> KEY_WIDE
+                zoom <= 1.02f -> if (facing == BACK) KEY_MAIN else facingKey(facing)
                 else -> KEY_TELE
             }
-            val teleZoom = key == KEY_TELE && zoom.isFinite() && zoom > 0f
-            val ultraZoom = key == KEY_ULTRA && ultraCount > 1 && zoom.isFinite() && zoom > 0f
+            val showZoom = when (key) {
+                KEY_TELE -> zoom.isFinite() && zoom > 0f && displayZoom(zoom) != 1f
+                KEY_ULTRA -> ultraCount > 1 && zoom.isFinite() && zoom > 0f
+                else -> false
+            }
+            // Не основная фронтальная (и внешняя) всегда говорит, чем отличается, а не только «Широкая».
+            val prefix = if (!isRef && facing != BACK && key != facingKey(facing)) facingKey(facing) else null
             lens to Name(
                 key = key,
-                zoom = if (teleZoom || ultraZoom) zoom else null,
-                zoomOnly = teleZoom,
+                zoom = if (showZoom) zoom else null,
+                facingKey = prefix,
             )
         }
     }
@@ -163,6 +176,9 @@ object CameraLabels {
 
     private fun sig(name: Name): String {
         val zoom = name.zoom?.let { displayZoom(it) }
-        return if (name.zoomOnly) "zoom@$zoom" else "${name.key}@$zoom"
+        return "${name.facingKey.orEmpty()}|${name.key}@$zoom"
     }
 }
+
+private fun decapitalize(text: String, locale: Locale): String =
+    if (text.isEmpty()) text else text.substring(0, 1).lowercase(locale) + text.substring(1)

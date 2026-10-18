@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
@@ -65,7 +66,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.unit.IntSize
@@ -143,13 +143,15 @@ fun PlayerScreen(
     if (panel != null) heldPanel = panel
     // 0 — открыта, 1 — за правым краем. value нельзя читать в композиции: это пересборка каждый кадр.
     val panelSlide = remember { Animatable(1f) }
-    LaunchedEffect(panel != null) {
+    val panelOpenSignal = remember { PanelOpenSignal() }
+    // Ключ — сама панель, не «открыта ли»: смена аудио → скорость тоже докручивает новый список.
+    // value анимации в композиции не читается.
+    LaunchedEffect(panel) {
         if (panel != null) {
+            panelOpenSignal.request()
             panelSlide.animateTo(0f, tween(200))
         } else if (heldPanel != null) {
             panelSlide.animateTo(1f, tween(200))
-            // Состав панели не выбрасываем: следующее открытие той же панели не собирает список заново.
-            // Offscreen-слой снимается, когда сдвиг закончился (см. panelParked).
         }
     }
     var interaction by remember { mutableIntStateOf(0) }
@@ -160,6 +162,38 @@ fun PlayerScreen(
         resizeMode = mode
         resizeHint = mode
         settingsStore.update { it.copy(resizeMode = mode) }
+    }
+    // PanelActions нестабилен, а strong skipping сравнивает такие параметры по ссылке.
+    // Один экземпляр на сеанс; меняющиеся лямбды — через rememberUpdatedState.
+    val pickSubtitle = rememberUpdatedState(onPickSubtitle)
+    val resizeAction = rememberUpdatedState<(ResizeMode) -> Unit> { changeResize(it) }
+    val panelActions = remember(controller, settingsStore) {
+        PanelActions(
+            onSelectTrack = controller::select,
+            onDisableSubtitles = controller::disableSubtitles,
+            onAddSubtitle = { panel = null; pickSubtitle.value() },
+            onSubtitleDelay = controller::setSubtitleDelay,
+            onSecondarySubtitle = controller::setSecondarySubtitle,
+            onNightMode = controller::setNightMode,
+            report = controller::report,
+            onNightSchedule = { auto, start, end ->
+                settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
+                controller.onNightScheduleChanged()
+            },
+            onAudioDelay = controller::setAudioDelay,
+            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
+            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
+            onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
+            onSpeed = controller::setSpeed,
+            onAutoVideo = controller::autoVideo,
+            onResize = { resizeAction.value(it) },
+            onChapter = { controller.seekToChapter(it); panel = null },
+            onMarkIntroStart = controller::markIntroStart,
+            onMarkIntroEnd = controller::markIntroEnd,
+            onMarkCredits = controller::markCreditsStart,
+            onClearMarks = controller::clearMarks,
+            onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
+        )
     }
     // Накопленная перемотка с пульта (показывается по центру: «+1:30»).
     var flashTotal by remember { mutableLongStateOf(0L) }
@@ -460,7 +494,7 @@ fun PlayerScreen(
                     onGoTo = { goToDialog = true },
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
-                    panelOpen = heldPanel != null,
+                    panelOpen = panelReservesSpace(panel != null),
                     followPosition = controlsVisible,
                 )
             }
@@ -588,7 +622,7 @@ fun PlayerScreen(
                 if (!inPictureInPicture) {
                     // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
                     // иначе «С начала» оказывается под панелью и не нажимается.
-                    val resumeEnd = if (heldPanel != null) {
+                    val resumeEnd = if (panelReservesSpace(panel != null)) {
                         sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp + sidePanelTransportGapDp.dp
                     } else {
                         0.dp
@@ -635,67 +669,34 @@ fun PlayerScreen(
                 }
             }
 
-            // Прокрутка панели без своего RenderNode пачкала всё окно поверх SurfaceView:
-            // UI-поток заново записывал команды на весь кадр (gfxinfo: slow issue draw commands,
-            // на 120 Гц хвост 27–30 мс). Слой панели постоянный, пока она на экране: сдвиг —
-            // только translationX в лямбде, значение Animatable в композиции не читается.
-            // Сверху обычный padding, чтобы иконки оставались нажимаемыми.
+            // Повторное открытие не должно менять цепочку: смена слоя на parked заново измеряла
+            // панель (в трейсе Record View#draw — это отложенный measureAndLayout). Сдвиг — только
+            // translationX в лямбде. Панель остаётся измеренной; закрытая уезжает за край.
+            // Offscreen не форсируем: Auto. Сверху обычный padding, чтобы иконки оставались нажимаемыми.
             val currentPanel = heldPanel
             if (currentPanel != null) {
                 val density = LocalDensity.current
                 val narrowControls = LocalConfiguration.current.screenWidthDp < 600
                 val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
                     sidePanelTopClearanceDp(narrowControls).dp
-                // isRunning / targetValue меняются на старте и в конце сдвига, не каждый кадр.
-                val panelParked = panel == null && !panelSlide.isRunning && panelSlide.targetValue == 1f
+                val panelShape = remember { RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp) }
+                val panelLayer = remember(topPad, panelShape) {
+                    Modifier.padding(top = topPad).graphicsLayer {
+                        translationX = size.width * panelSlide.value
+                        clip = true
+                        shape = panelShape
+                        compositingStrategy = CompositingStrategy.Auto
+                    }
+                }
                 SidePanel(
                     panel = currentPanel,
                     state = state,
                     settings = settings,
                     resizeMode = resizeMode,
-                    active = panel != null,
-                    actions = PanelActions(
-                        onSelectTrack = controller::select,
-                        onDisableSubtitles = controller::disableSubtitles,
-                        onAddSubtitle = { panel = null; onPickSubtitle() },
-                        onSubtitleDelay = controller::setSubtitleDelay,
-                        onSecondarySubtitle = controller::setSecondarySubtitle,
-                        onNightMode = controller::setNightMode,
-                        report = controller::report,
-                        onNightSchedule = { auto, start, end ->
-                            settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
-                            controller.onNightScheduleChanged()
-                        },
-                        onAudioDelay = controller::setAudioDelay,
-                        onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
-                        onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
-                        onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
-                        onSpeed = controller::setSpeed,
-                        onAutoVideo = controller::autoVideo,
-                        onResize = ::changeResize,
-                        onChapter = { controller.seekToChapter(it); panel = null },
-                        onMarkIntroStart = controller::markIntroStart,
-                        onMarkIntroEnd = controller::markIntroEnd,
-                        onMarkCredits = controller::markCreditsStart,
-                        onClearMarks = controller::clearMarks,
-                        onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .then(
-                            if (panelParked) {
-                                // Слой offscreen не держим: это буфер на всю панель. Состав остаётся,
-                                // но узел нулевого размера и не размещён — нет draw, касаний, фокуса и TalkBack.
-                                Modifier.parkedChrome()
-                            } else {
-                                Modifier.padding(top = topPad).graphicsLayer {
-                                    translationX = size.width * panelSlide.value
-                                    clip = true
-                                    shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
-                                    compositingStrategy = CompositingStrategy.Offscreen
-                                }
-                            },
-                        ),
+                    actions = panelActions,
+                    openSignal = panelOpenSignal,
+                    open = panel != null,
+                    modifier = Modifier.align(Alignment.TopEnd).then(panelLayer),
                 )
             }
         }
@@ -890,23 +891,6 @@ private class PassThroughWhenClosedNode(
     override fun onCancelPointerInput() = Unit
     override fun sharePointerInputWithSiblings(): Boolean = !gate.open
 }
-
-/**
- * Скрытый оверлей: альфа 0 и нулевой размер без размещения детей.
- * Нет draw, hit-test, фокуса D-pad и узла TalkBack. Состав под ним остаётся.
- */
-private fun Modifier.parkedChrome(): Modifier = this
-    .focusGroup()
-    .focusProperties { onEnter = { cancelFocusChange() } }
-    .semantics { hideFromAccessibility() }
-    .graphicsLayer {
-        alpha = 0f
-        compositingStrategy = CompositingStrategy.ModulateAlpha
-    }
-    .layout { measurable, constraints ->
-        measurable.measure(constraints)
-        layout(0, 0) {}
-    }
 
 /** Полоса и время. Один вызов [TransportReadout]: показ и скрытие не пересоздают полосу.
  *  Тик пишется в состояние, только пока кнопки видны; скрытые держат последнее значение. */

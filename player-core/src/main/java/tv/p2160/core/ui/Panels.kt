@@ -49,11 +49,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import androidx.compose.ui.text.style.Hyphens
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
@@ -123,9 +132,28 @@ class PanelActions(
     val onStatsOverlay: (Boolean) -> Unit = {},
 )
 
-/** Боковая панель справа: на ТВ удобна для D-pad, на телефоне не перекрывает всё видео.
- *  [active] — панель на экране (не припаркована после закрытия). Состав остаётся и после ухода,
- *  чтобы следующее открытие той же панели не собирало строки заново. */
+/**
+ * Сигнал «панель открыли». [PanelBody] на это не пересобирается:
+ * открытие не входит в параметры строк, только в прокрутку и фокус, и только если позиция не та.
+ */
+class PanelOpenSignal {
+    private val events = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    fun request() {
+        events.tryEmit(Unit)
+    }
+
+    suspend fun collect(block: suspend () -> Unit) {
+        events.collect { block() }
+    }
+}
+
+/** Боковая панель справа. Хост держит фокус, доступность и прокрутку при открытии.
+ *  [PanelBody] не знает, открыта панель или нет: повторное открытие не пересобирает строки.
+ *  Состав последней панели остаётся. Несколько панелей сразу не держим — сначала замер памяти. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SidePanel(
@@ -134,60 +162,88 @@ fun SidePanel(
     settings: Settings,
     resizeMode: ResizeMode,
     actions: PanelActions,
-    active: Boolean,
+    openSignal: PanelOpenSignal,
+    /** Панель на экране. Только хост: строки это не читают. */
+    open: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
     val reveal = panelRevealIndex(panel, state, settings, resizeMode)
+    val listState = remember(panel) { LazyListState(0, 0) }
+    val scrollState = remember(panel) { ScrollState(0) }
+    val bring = remember { BringIntoViewRequester() }
+    val revealPlace = remember { intArrayOf(0, 0) }
+    val revealNow = remember { PanelRevealNow(reveal, false) }
+    revealNow.index = reveal
+    // Не LaunchedEffect(panel, active): тот на каждое открытие заново крутил список и фокус
+    // и инвалидировал сохранённый состав. Здесь — только если прокрутка не совпала с целью.
+    LaunchedEffect(openSignal) {
+        openSignal.collect {
+            val moved = alignPanelToReveal(revealNow, listState, scrollState, revealPlace, bring)
+            if (moved) withFrameNanos { }
+            runCatching { focus.requestFocus() }
+        }
+    }
+    Box(
+        modifier
+            .focusGroup()
+            .focusProperties {
+                canFocus = open
+                onEnter = { if (!open) cancelFocusChange() }
+            }
+            .semantics { if (!open) hideFromAccessibility() },
+    ) {
+        PanelBody(
+            panel = panel,
+            state = state,
+            settings = settings,
+            resizeMode = resizeMode,
+            actions = actions,
+            focus = focus,
+            listState = listState,
+            scrollState = scrollState,
+            bring = bring,
+            reveal = reveal,
+            revealPlace = revealPlace,
+            revealNow = revealNow,
+        )
+    }
+}
+
+/** Строки панели. Параметры не включают открытость: смена open не должна переизмерять список. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PanelBody(
+    panel: Panel,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    focus: FocusRequester,
+    listState: LazyListState,
+    scrollState: ScrollState,
+    bring: BringIntoViewRequester,
+    reveal: Int?,
+    revealPlace: IntArray,
+    revealNow: PanelRevealNow,
+) {
     val slots = PanelSlots()
-    // Сводка по файлу опрашивает кодеки. Считать её один раз на файл, не на каждый кадр прокрутки.
     val infoReport = remember(panel, state.title, state.durationMs) {
         if (panel == Panel.INFO) actions.report() else null
     }
     slots.populate(panel, state, settings, resizeMode, actions, focus, infoReport)
-    // Короткая панель — обычная колонка. LazyColumn (и раньше BoxWithConstraints) поднимает
-    // вложенные subcomposition внутри measure: первый кадр аудио на POCO занимал 23–48 мс там.
     val lazy = panelUsesLazyList(slots.list.size)
-    val listState = remember(panel) { LazyListState(0, 0) }
-    val scrollState = remember(panel) { ScrollState(0) }
-    val bring = remember { BringIntoViewRequester() }
-    // Выбранная строка ниже первого экрана (скорость 1× в ландшафте) в список ещё не попала,
-    // и FocusRequester на ней нет. Сначала докручиваем, потом фокус. Пока панель припаркована,
-    // фокус не забираем — иначе пульт упирается в невидимые строки.
-    LaunchedEffect(panel, active) {
-        if (!active) return@LaunchedEffect
-        val index = reveal
-        if (index != null && index > 0) {
-            if (lazy) {
-                val count = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
-                if (index < count) {
-                    revealItemMinimally(listState, index)
-                    withFrameNanos { }
-                }
-            } else {
-                runCatching { bring.bringIntoView() }
-                withFrameNanos { }
-            }
-        }
-        runCatching { focus.requestFocus() }
-    }
+    revealNow.lazy = lazy
     val colors = MaterialTheme.colorScheme
     val listBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() + 12.dp
-    // Ширина от ширины окна, не от BoxWithConstraints: тот считал 42 % уже в measure и
-    // вкладывал сборку панели в проход измерения.
     val panelWidth = sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp
     Column(
-        modifier
+        Modifier
             .width(panelWidth)
             .fillMaxHeight()
-            // Скругление делает слой панели снаружи (graphicsLayer.clip). Второй clip здесь
-            // поднимал ещё один offscreen-буфер на каждый кадр прокрутки.
-            // Непрозрачная подложка: полупрозрачный слой поверх SurfaceView перерисовывался каждый кадр.
             .background(colors.surface)
             .padding(top = 12.dp),
     ) {
-        // Заголовок поверх списка и непрозрачный: иначе прокрутка заходит под «Аудиодорожка».
-        // Прямоугольный clip, не скруглённый: скругление уже на слое панели и второй offscreen не нужен.
         Column(Modifier.fillMaxWidth().zIndex(1f).background(colors.surface)) {
             Text(
                 tr(panel.titleKey),
@@ -209,14 +265,17 @@ fun SidePanel(
                 }
             }
         } else {
-            // На ТВ штатный bring-into-view сажает строку к «оси», а не к краю. Здесь — только
-            // недостающие пиксели, как revealDelta у длинного списка.
             CompositionLocalProvider(LocalBringIntoViewSpec provides panelBringIntoViewSpec) {
                 Column(listMod.verticalScroll(scrollState).padding(top = 4.dp)) {
                     for (index in slots.list.indices) {
                         val slot = slots.list[index]
                         if (reveal != null && index == reveal && reveal > 0) {
-                            Box(Modifier.bringIntoViewRequester(bring)) { slot.content() }
+                            Box(
+                                Modifier.bringIntoViewRequester(bring).onGloballyPositioned { coords ->
+                                    revealPlace[0] = coords.positionInParent().y.roundToInt()
+                                    revealPlace[1] = coords.size.height
+                                },
+                            ) { slot.content() }
                         } else {
                             slot.content()
                         }
@@ -591,6 +650,77 @@ internal fun revealPullBack(offset: Int, size: Int, viewportStart: Int, viewport
     val room = viewportEnd - viewportStart - size
     if (room <= 0) return 0
     return (room - (offset - viewportStart)).coerceAtLeast(0)
+}
+
+private class PanelRevealNow(var index: Int?, var lazy: Boolean)
+
+/**
+ * Занимает ли панель место у полосы и подсказки.
+ * Состав может оставаться после закрытия — это не повод держать отступ. Решает только открытость.
+ */
+internal fun panelReservesSpace(open: Boolean): Boolean = open
+
+/**
+ * Прокрутка при открытии, в пикселях от верха содержимого.
+ * Строка, которая влезает в первый экран, оставляет список наверху.
+ * Иначе сдвиг минимальный: низ строки у нижнего края окна.
+ */
+internal fun scrollOffsetToReveal(itemOffset: Int, itemSize: Int, viewport: Int): Int {
+    if (itemSize <= 0 || viewport <= 0 || itemOffset <= 0) return 0
+    val itemEnd = itemOffset + itemSize
+    if (itemEnd <= viewport) return 0
+    if (itemSize >= viewport) return itemOffset
+    return itemEnd - viewport
+}
+
+/** @return true, если список реально сдвинулся. */
+private suspend fun alignPanelToReveal(
+    revealNow: PanelRevealNow,
+    listState: LazyListState,
+    scrollState: ScrollState,
+    revealPlace: IntArray,
+    bring: BringIntoViewRequester,
+): Boolean {
+    val index = revealNow.index
+    if (revealNow.lazy) {
+        if (listState.layoutInfo.totalItemsCount == 0) {
+            snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+        }
+        val count = listState.layoutInfo.totalItemsCount
+        if (index == null || index <= 0 || index >= count) {
+            return scrollLazyToTop(listState)
+        }
+        val atTop = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        if (!atTop) listState.scrollToItem(0)
+        val info = listState.layoutInfo
+        val visible = info.visibleItemsInfo.find { it.index == index }
+        val fits = visible != null &&
+            revealDelta(visible.offset, visible.size, info.viewportStartOffset, info.viewportEndOffset) == 0
+        if (fits) return !atTop
+        revealItemMinimally(listState, index)
+        return true
+    }
+    if ((revealPlace[1] <= 0 || scrollState.viewportSize <= 0) && index != null && index > 0) {
+        withFrameNanos { }
+    }
+    val target = if (index == null || index <= 0) {
+        0
+    } else {
+        scrollOffsetToReveal(revealPlace[0], revealPlace[1], scrollState.viewportSize)
+    }
+    if (revealPlace[1] <= 0 && index != null && index > 0) {
+        runCatching { bring.bringIntoView() }
+        return true
+    }
+    if (scrollState.value == target) return false
+    scrollState.scrollTo(target)
+    return true
+}
+
+private suspend fun scrollLazyToTop(listState: LazyListState): Boolean {
+    if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) return false
+    listState.scrollToItem(0)
+    return true
 }
 
 private suspend fun revealItemMinimally(listState: LazyListState, index: Int) {

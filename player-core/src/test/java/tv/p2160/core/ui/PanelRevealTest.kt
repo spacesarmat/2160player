@@ -54,6 +54,24 @@ class PanelRevealTest {
     }
 
     @Test
+    fun keptPanelDoesNotReserveTransportSpace() {
+        assertFalse(panelReservesSpace(open = false))
+        assertTrue(panelReservesSpace(open = true))
+    }
+
+    @Test
+    fun openScrollStaysAtTopWhenTheRowFits() {
+        assertEquals(0, scrollOffsetToReveal(itemOffset = 40, itemSize = 80, viewport = 400))
+        assertEquals(0, scrollOffsetToReveal(itemOffset = 0, itemSize = 500, viewport = 400))
+    }
+
+    @Test
+    fun openScrollMovesOnlyTheOverflowPastTheFirstScreen() {
+        assertEquals(30, scrollOffsetToReveal(itemOffset = 350, itemSize = 80, viewport = 400))
+        assertEquals(100, scrollOffsetToReveal(itemOffset = 100, itemSize = 500, viewport = 400))
+    }
+
+    @Test
     fun columnRevealMatchesTheLazyOverflow() {
         assertEquals(0f, panelBringIntoViewDistance(40f, 80f, 400f), 0.01f)
         assertEquals(30f, panelBringIntoViewDistance(350f, 80f, 400f), 0.01f)

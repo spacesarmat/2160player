@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -379,12 +380,13 @@ fun SettingsScreen(
                 }
             }
             item {
+                val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 val updateState by Updater.state.collectAsStateWithLifecycle()
                 SettingRow(
                     tr("settings.update_check"),
                     value = if (updateState == UpdateState.Checking) tr("settings.update_checking") else Updater.currentVersion,
-                ) { scope.launch { Updater.check() } }
+                ) { scope.launch { Updater.check(context) } }
             }
 
             item { SectionTitle(tr("settings.section_about")) }
@@ -496,9 +498,9 @@ private fun SettingRow(
                 Spacer(Modifier.size(16.dp))
             }
             // Длинное значение справа сжимает заголовок и подсказку — тогда показываем его под заголовком.
+            // Короткое — у правого края карточки (колонка забирает ширину), как до сужения колонки в 0.2.10.
             val inline = value != null && value.length <= 14
-            // fill = false: короткое значение стоит сразу за названием, а не у дальнего края широкой строки.
-            Column(Modifier.weight(1f, fill = !inline)) {
+            Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (value != null && !inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -520,13 +522,17 @@ private fun ToggleRow(title: String, hint: String?, checked: Boolean, onToggle: 
         checked = checked,
         mergeDescendants = true,
     ) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             // Переключатель только показывает состояние: нажатие обрабатывает вся строка (удобно с пульта).
-            Switch(checked = checked, onCheckedChange = null)
+            Switch(
+                checked = checked,
+                onCheckedChange = null,
+                modifier = Modifier.focusProperties { canFocus = false },
+            )
         }
     }
 }

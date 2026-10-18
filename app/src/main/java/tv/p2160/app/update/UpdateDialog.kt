@@ -86,7 +86,14 @@ fun UpdateDialog() {
         )
         UpdateState.UpToDate, is UpdateState.Failed -> AlertDialog(
             onDismissRequest = Updater::dismiss,
-            text = { Text(if (s is UpdateState.Failed) tr("update.failed", s.message) else tr("update.up_to_date", Updater.currentVersion)) },
+            text = {
+                val message = when {
+                    s is UpdateState.Failed && s.retryMinutes != null -> tr("update.rate_limited", s.retryMinutes)
+                    s is UpdateState.Failed -> tr("update.failed", s.message)
+                    else -> tr("update.up_to_date", Updater.currentVersion)
+                }
+                Text(message)
+            },
             confirmButton = { TextButton(onClick = Updater::dismiss) { Text(tr("update.close")) } },
         )
         else -> Unit

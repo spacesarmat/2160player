@@ -122,17 +122,28 @@ APK «Поделиться приложением». Без кода: это с�
 
 ## GitHub Releases (исходящие)
 
-База: `https://api.github.com/repos/spacesarmat/2160player`.
+База API: `https://api.github.com/repos/spacesarmat/2160player`.
 Заголовок `Accept: application/vnd.github+json`, `User-Agent: 2160Player/<версия>`.
-Тайм-ауты: соединение 15 с, чтение 30 с. Код вне 200–299 — ошибка `HTTP <код>`, соединение закрывается.
+Тайм-ауты: соединение 15 с, чтение 30 с. Успешный ответ запоминается вместе с `ETag`
+(SharedPreferences `p2160_update`). Следующий запрос шлёт `If-None-Match`; `304` квоту не тратит,
+тело берётся из памяти настроек.
+
+Неавторизованная квота — 60 запросов в час на IP. `403` или `429` (`X-RateLimit-Remaining: 0`
+или `Retry-After`) не показывается как `HTTP 403`. Вместо API читается
+`https://github.com/spacesarmat/2160player/releases/latest` без следования редиректу: тег — из
+`Location` (`…/releases/tag/vX.Y.Z`). Файл —
+`https://github.com/spacesarmat/2160player/releases/download/vX.Y.Z/2160player-X.Y.Z-<arm|abi|universal>-release.apk`,
+первый существующий подтверждается `HEAD`. Если и это не удалось, текст:
+«GitHub временно ограничил проверки обновлений, попробуйте через N мин» (N из `X-RateLimit-Reset`,
+иначе час). Прочие коды вне 200–299 — ошибка `HTTP <код>`, соединение закрывается.
 
 | Запрос | Кто вызывает | Успех | Ошибка |
 |---|---|---|---|
-| `GET /releases/latest` | проверка обновления | релиз новее установленного: версия из `tag_name` без `v`, текст `body`, URL и размер APK | нет более новой версии — «у вас последняя»; нет подходящего APK — `no APK in release` |
-| `GET /releases/tags/v<version>` | «Поделиться», если стоит APK одной архитектуры | asset с `-arm-` в имени, иначе `universal` | `no shared APK` |
+| `GET /releases/latest` | проверка обновления | релиз новее установленного: версия из `tag_name` без `v`, текст `body`, URL и размер APK. `304` — тот же разбор сохранённого JSON | нет более новой версии — «у вас последняя»; нет подходящего APK — `no APK in release`; `403`/`429` — страница релиза и `HEAD`, иначе сообщение про лимит |
+| `GET /releases/tags/v<version>` | «Поделиться», если стоит APK одной архитектуры | asset с `-arm-` в имени, иначе `universal`. Тот же `ETag` и тот же запасной `HEAD` | `no shared APK`; при лимите — прямые ссылки `-arm-`, затем `universal` |
 
 Выбор APK: на ARM сначала имя с `-arm-`, иначе `-<abi>-` по `Build.SUPPORTED_ABIS`, иначе `universal`.
-Скачивание — `GET` по `browser_download_url` в `cacheDir/update`. Отладочный пакет
-(`tv.p2160.player.debug`) APK не ставит: открывается `html_url` релиза в браузере.
+Скачивание — `GET` по `browser_download_url` (или по собранной ссылке `releases/download`) в `cacheDir/update`.
+Отладочный пакет (`tv.p2160.player.debug`) APK не ставит: открывается страница релиза в браузере.
 
 Состояния `Updater.state`: `Idle`, `Checking`, `UpToDate`, `Available`, `Downloading`, `Installing`, `Failed(message)`.

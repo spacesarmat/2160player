@@ -3,26 +3,22 @@ package tv.p2160.core.ui
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
@@ -50,21 +46,32 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -72,8 +79,10 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,8 +92,11 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.api.PlayerExtensions
+import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.engine.TimeInput
 import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
@@ -99,6 +111,7 @@ import tv.p2160.core.i18n.LocalStrings
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.settings.PlayerSettings
 import tv.p2160.core.settings.ResizeMode
+import tv.p2160.core.settings.Settings
 import tv.p2160.core.settings.SubtitleEdge
 import tv.p2160.core.settings.SubtitleStyle
 
@@ -129,7 +142,9 @@ fun PlayerScreen(
     val stepMs = settings.seekStepSeconds * 1000L
 
     var controlsVisible by remember { mutableStateOf(true) }
-    var panel by remember { mutableStateOf<Panel?>(null) }
+    // value в теле PlayerScreen не читать. Иначе открытие пересобирает весь экран:
+    // на POCO повторное открытие было 17–23 мс recompose. Читают дочерние узлы.
+    val panelState = remember { mutableStateOf<Panel?>(null) }
     var interaction by remember { mutableIntStateOf(0) }
     var resizeMode by remember { mutableStateOf(settings.resizeMode) }
     /** Подпись режима масштаба на пару секунд после переключения. */
@@ -138,6 +153,38 @@ fun PlayerScreen(
         resizeMode = mode
         resizeHint = mode
         settingsStore.update { it.copy(resizeMode = mode) }
+    }
+    // PanelActions нестабилен, а strong skipping сравнивает такие параметры по ссылке.
+    // Один экземпляр на сеанс; меняющиеся лямбды — через rememberUpdatedState.
+    val pickSubtitle = rememberUpdatedState(onPickSubtitle)
+    val resizeAction = rememberUpdatedState<(ResizeMode) -> Unit> { changeResize(it) }
+    val panelActions = remember(controller, settingsStore) {
+        PanelActions(
+            onSelectTrack = controller::select,
+            onDisableSubtitles = controller::disableSubtitles,
+            onAddSubtitle = { panelState.value = null; pickSubtitle.value() },
+            onSubtitleDelay = controller::setSubtitleDelay,
+            onSecondarySubtitle = controller::setSecondarySubtitle,
+            onNightMode = controller::setNightMode,
+            report = controller::report,
+            onNightSchedule = { auto, start, end ->
+                settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
+                controller.onNightScheduleChanged()
+            },
+            onAudioDelay = controller::setAudioDelay,
+            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panelState.value = null },
+            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panelState.value = null },
+            onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
+            onSpeed = controller::setSpeed,
+            onAutoVideo = controller::autoVideo,
+            onResize = { resizeAction.value(it) },
+            onChapter = { controller.seekToChapter(it); panelState.value = null },
+            onMarkIntroStart = controller::markIntroStart,
+            onMarkIntroEnd = controller::markIntroEnd,
+            onMarkCredits = controller::markCreditsStart,
+            onClearMarks = controller::clearMarks,
+            onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
+        )
     }
     // Накопленная перемотка с пульта (показывается по центру: «+1:30»).
     var flashTotal by remember { mutableLongStateOf(0L) }
@@ -163,17 +210,16 @@ fun PlayerScreen(
     fun poke() { interaction++ }
     fun show() { controlsVisible = true; poke() }
 
-    // Автоскрытие элементов управления во время воспроизведения.
-    LaunchedEffect(controlsVisible, interaction, state.isPlaying, panel) {
-        if (controlsVisible && state.isPlaying && panel == null) {
-            delay(4_000)
-            controlsVisible = false
-        }
-    }
-    LaunchedEffect(controlsVisible, panel) {
-        if (controlsVisible && panel == null) runCatching { playFocus.requestFocus() }
-        else if (!controlsVisible && panel == null) runCatching { rootFocus.requestFocus() }
-    }
+    // Автоскрытие и фокус. Панель читается здесь, не в PlayerScreen.
+    ControlsAutoHide(
+        panelState = panelState,
+        controlsVisible = controlsVisible,
+        interaction = interaction,
+        isPlaying = state.isPlaying,
+        onHide = { controlsVisible = false },
+        playFocus = playFocus,
+        rootFocus = rootFocus,
+    )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
     LaunchedEffect(scrubTarget?.div(2_000)) {
@@ -218,7 +264,7 @@ fun PlayerScreen(
 
     BackHandler {
         when {
-            panel != null -> panel = null
+            panelState.value != null -> panelState.value = null
             else -> onBack()
         }
     }
@@ -294,7 +340,7 @@ fun PlayerScreen(
                         Key.ChannelUp -> if (state.liveTv) { zap(1); return@onPreviewKeyEvent true }
                         Key.ChannelDown -> if (state.liveTv) { zap(-1); return@onPreviewKeyEvent true }
                     }
-                    if (panel != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
+                    if (panelState.value != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
                     // Цифры: одна — проценты, несколько — время.
                     digitOf(e.key)?.let { d -> digits = (digits + d).takeLast(6); return@onPreviewKeyEvent true }
                     if (digits.isNotEmpty()) {
@@ -353,7 +399,7 @@ fun PlayerScreen(
                 TapSeekLayer(
                     stepMs = stepMs,
                     onSingleTap = {
-                        if (panel != null) panel = null
+                        if (panelState.value != null) panelState.value = null
                         else { controlsVisible = !controlsVisible; poke() }
                     },
                     onCenterDoubleTap = controller::playPause,
@@ -412,10 +458,11 @@ fun PlayerScreen(
                 Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = if (controlsVisible) 88.dp else 16.dp),
             )
 
-            AnimatedVisibility(
-                visible = controlsVisible && !inPictureInPicture,
-                enter = fadeIn(), exit = fadeOut(),
-            ) {
+            // Не AnimatedVisibility: её fade держит слой на весь экран и читает анимацию в measure.
+            // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
+            // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
+            if (!inPictureInPicture) {
+            PanelBoundControls(panelState = panelState, visible = controlsVisible) { panelOpen ->
                 Controls(
                     controller = controller,
                     state = state,
@@ -428,7 +475,7 @@ fun PlayerScreen(
                     onSeekBy = { seekWithFlash(it); poke() },
                     onNext = controller::next,
                     onPrevious = controller::previous,
-                    onPanel = { panel = it },
+                    onPanel = { panelState.value = it },
                     onInteraction = ::poke,
                     onScrub = { target ->
                         if (target != null && scrubTarget == null) scrubBase = controller.state.value.positionMs
@@ -437,7 +484,10 @@ fun PlayerScreen(
                     onGoTo = { goToDialog = true },
                     onNextChapter = { controller.nextChapter(); poke() },
                     onPreviousChapter = { controller.previousChapter(); poke() },
+                    panelOpen = panelOpen,
+                    followPosition = controlsVisible,
                 )
+            }
             }
 
             if (!inPictureInPicture) {
@@ -466,35 +516,18 @@ fun PlayerScreen(
                     )
                 }
 
-                val bottomOffset = if (controlsVisible) 110.dp else 32.dp
-                skippable?.let { seg ->
-                    if (panel == null) {
-                        SkipButton(
-                            type = seg.type,
-                            onClick = { controller.skip(seg); poke() },
-                            theme = theme,
-                            takeFocus = !controlsVisible,
-                            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
-                                .padding(end = 24.dp, bottom = bottomOffset),
-                        )
-                    }
-                }
-                if (showNextCard && panel == null) {
-                    var left by remember(state.playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
-                    LaunchedEffect(state.playlistIndex, state.isPlaying) {
-                        while (state.isPlaying && left > 0) { delay(1_000); left-- }
-                        if (left == 0) controller.next()
-                    }
-                    NextEpisodeCard(
-                        secondsLeft = left,
-                        totalSeconds = NEXT_COUNTDOWN_SEC,
-                        onPlayNow = controller::next,
-                        onCancel = { nextDismissedFor = state.playlistIndex },
-                        theme = theme,
-                        modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(end = 24.dp, bottom = bottomOffset),
-                    )
-                }
+                EdgeActions(
+                    panelState = panelState,
+                    controlsVisible = controlsVisible,
+                    skippable = skippable,
+                    showNextCard = showNextCard,
+                    playlistIndex = state.playlistIndex,
+                    isPlaying = state.isPlaying,
+                    theme = theme,
+                    onSkip = { seg -> controller.skip(seg); poke() },
+                    onNext = controller::next,
+                    onDismissNext = { nextDismissedFor = state.playlistIndex },
+                )
             }
 
             if (goToDialog) {
@@ -541,7 +574,7 @@ fun PlayerScreen(
                     Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
                         .padding(start = 24.dp, top = 72.dp).widthIn(max = 520.dp)
                         .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
-                        .clickable { panel = Panel.INFO; controller.dismissWarnings() }
+                        .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
@@ -560,16 +593,34 @@ fun PlayerScreen(
 
             state.resumedFromMs?.let { from ->
                 if (!inPictureInPicture) {
-                    Row(
-                        Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing)
-                            .padding(top = 72.dp)
-                            .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
-                            .padding(start = 20.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(tr("player.resumed", formatTime(from)), color = theme.onSurface)
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = controller::restartFromBeginning) { Text(tr("player.start_over"), color = theme.accent) }
+                    // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
+                    // иначе «С начала» оказывается под панелью и не нажимается.
+                    // Отступ читает панель этот узел, не весь экран.
+                    ResumeHintInset(panelState) { resumeEnd ->
+                        Box(
+                            Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.safeDrawing)
+                                .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
+                        ) {
+                            Row(
+                                Modifier.align(Alignment.Center).widthIn(max = 560.dp)
+                                    .clip(RoundedCornerShape(24.dp)).background(theme.surface.copy(alpha = 0.95f))
+                                    .padding(start = 20.dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    tr("player.resumed", formatTime(from)),
+                                    color = theme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = controller::restartFromBeginning) {
+                                    Text(tr("player.start_over"), color = theme.accent, maxLines = 1)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -589,60 +640,254 @@ fun PlayerScreen(
                 }
             }
 
-            // Панель на всю высоту накрывала верхние иконки (кроме «Продолжить на другом устройстве»).
-            // Она начинается под полосой кнопок: их можно нажать и с пульта, другая иконка меняет панель.
-            val narrowControls = LocalConfiguration.current.screenWidthDp < 600
-            Box(
-                Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                    .padding(top = sidePanelTopClearanceDp(narrowControls).dp),
-            ) {
-            AnimatedVisibility(
-                visible = panel != null,
-                enter = slideInHorizontally { it } + fadeIn(),
-                exit = slideOutHorizontally { it } + fadeOut(),
-                modifier = Modifier.align(Alignment.CenterEnd),
-            ) {
-                panel?.let { current ->
-                    SidePanel(
-                        panel = current,
-                        state = state,
-                        settings = settings,
-                        resizeMode = resizeMode,
-                        actions = PanelActions(
-                            onSelectTrack = controller::select,
-                            onDisableSubtitles = controller::disableSubtitles,
-                            onAddSubtitle = { panel = null; onPickSubtitle() },
-                            onSubtitleDelay = controller::setSubtitleDelay,
-                            onSecondarySubtitle = controller::setSecondarySubtitle,
-                            onNightMode = controller::setNightMode,
-                            report = controller::report,
-                            onNightSchedule = { auto, start, end ->
-                                settingsStore.update { it.copy(nightAuto = auto, nightStartMinute = start, nightEndMinute = end) }
-                                controller.onNightScheduleChanged()
-                            },
-                            onAudioDelay = controller::setAudioDelay,
-                            onSleepTimer = { minutes -> controller.setSleepTimer(minutes); panel = null },
-                            onSleepAtEnd = { controller.setSleepAtEndOfItem(); panel = null },
-                            onSubtitleSize = { v -> settingsStore.update { it.copy(subtitleStyle = it.subtitleStyle.copy(sizeScale = v)) } },
-                            onSpeed = controller::setSpeed,
-                            onAutoVideo = controller::autoVideo,
-                            onResize = ::changeResize,
-                            onChapter = { controller.seekToChapter(it); panel = null },
-                            onMarkIntroStart = controller::markIntroStart,
-                            onMarkIntroEnd = controller::markIntroEnd,
-                            onMarkCredits = controller::markCreditsStart,
-                            onClearMarks = controller::clearMarks,
-                            onStatsOverlay = { v -> settingsStore.update { it.copy(statsOverlay = v) } },
-                        ),
-                    )
-                }
-            }
-            }
+            // Звук и скорость собраны заранее и остаются за краем. Сдвиг — translationX слоя,
+            // не offset и не ширина. Открытая панель рисуется выше закрытых.
+            PlayerPanels(
+                panelState = panelState,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = panelActions,
+            )
         }
     }
+    }
+}
+
+/** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
+@Composable
+private fun ControlsAutoHide(
+    panelState: State<Panel?>,
+    controlsVisible: Boolean,
+    interaction: Int,
+    isPlaying: Boolean,
+    onHide: () -> Unit,
+    playFocus: FocusRequester,
+    rootFocus: FocusRequester,
+) {
+    val panel = panelState.value
+    LaunchedEffect(controlsVisible, interaction, isPlaying, panel) {
+        if (controlsVisible && isPlaying && panel == null) {
+            delay(4_000)
+            onHide()
+        }
+    }
+    LaunchedEffect(controlsVisible, panel) {
+        if (controlsVisible && panel == null) runCatching { playFocus.requestFocus() }
+        else if (!controlsVisible && panel == null) runCatching { rootFocus.requestFocus() }
+    }
+}
+
+/**
+ * Кнопки и отступ полосы. Открытость читается только тут, поэтому смена панели не обходит
+ * слот-таблицу экрана. Отступ — один padding в этом кадре, без анимации ширины.
+ */
+@Composable
+private fun PanelBoundControls(
+    panelState: State<Panel?>,
+    visible: Boolean,
+    content: @Composable (panelOpen: Boolean) -> Unit,
+) {
+    val panelOpen = panelReservesSpace(panelState.value != null)
+    ControlsFade(visible = visible, panelOpen = panelOpen) {
+        content(panelOpen)
+    }
+}
+
+/** «Пропустить» и «Следующая серия» прячутся, пока панель открыта. */
+@Composable
+private fun BoxScope.EdgeActions(
+    panelState: State<Panel?>,
+    controlsVisible: Boolean,
+    skippable: SkipSegment?,
+    showNextCard: Boolean,
+    playlistIndex: Int,
+    isPlaying: Boolean,
+    theme: PlayerTheme,
+    onSkip: (SkipSegment) -> Unit,
+    onNext: () -> Unit,
+    onDismissNext: () -> Unit,
+) {
+    if (panelState.value != null) return
+    val bottomOffset = if (controlsVisible) 110.dp else 32.dp
+    skippable?.let { seg ->
+        SkipButton(
+            type = seg.type,
+            onClick = { onSkip(seg) },
+            theme = theme,
+            takeFocus = !controlsVisible,
+            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(end = 24.dp, bottom = bottomOffset),
+        )
+    }
+    if (showNextCard) {
+        var left by remember(playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
+        LaunchedEffect(playlistIndex, isPlaying) {
+            while (isPlaying && left > 0) { delay(1_000); left-- }
+            if (left == 0) onNext()
+        }
+        NextEpisodeCard(
+            secondsLeft = left,
+            totalSeconds = NEXT_COUNTDOWN_SEC,
+            onPlayNow = onNext,
+            onCancel = onDismissNext,
+            theme = theme,
+            modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(end = 24.dp, bottom = bottomOffset),
+        )
+    }
+}
+
+/** Правый отступ подсказки «Продолжено с …». Меняется один раз при открытии, не на каждом кадре выезда. */
+@Composable
+private fun BoxScope.ResumeHintInset(
+    panelState: State<Panel?>,
+    content: @Composable BoxScope.(end: Dp) -> Unit,
+) {
+    val end = transportEndInsetDp(
+        panelState.value != null,
+        LocalConfiguration.current.screenWidthDp.toFloat(),
+    ).dp
+    content(end)
+}
+
+/**
+ * «Аудио» и «Скорость» собираются по одной на кадр простоя и остаются за краем экрана.
+ * Повторное открытие только анимирует `translationX`. Остальные панели живут, пока выезжают,
+ * и снимаются после закрытия. Сдвиг не через offset и не через ширину.
+ * [key] держит слоты на месте: прогрев звука не должен выбросить уже собранную скорость.
+ */
+@Composable
+private fun BoxScope.PlayerPanels(
+    panelState: MutableState<Panel?>,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+) {
+    val open = panelState.value
+    var keepAudio by remember { mutableStateOf(false) }
+    var keepSpeed by remember { mutableStateOf(false) }
+    var heldExtra by remember { mutableStateOf<Panel?>(null) }
+    val extra = open?.takeIf { it != Panel.AUDIO && it != Panel.SPEED }
+    if (extra != null) heldExtra = extra
+    LaunchedEffect(open) {
+        if (open == Panel.AUDIO) keepAudio = true
+        if (open == Panel.SPEED) keepSpeed = true
+    }
+    LaunchedEffect(Unit) {
+        // Кадры старта плеера не занимаем. Дальше — одна панель на кадр.
+        withFrameNanos { }
+        withFrameNanos { }
+        keepAudio = true
+        withFrameNanos { }
+        keepSpeed = true
+    }
+    val scope = this
+    key(Panel.AUDIO) {
+        if (keepAudio || open == Panel.AUDIO) {
+            scope.ParkedPanel(
+                panel = Panel.AUDIO,
+                open = open == Panel.AUDIO,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+            )
+        }
+    }
+    key(Panel.SPEED) {
+        if (keepSpeed || open == Panel.SPEED) {
+            scope.ParkedPanel(
+                panel = Panel.SPEED,
+                open = open == Panel.SPEED,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+            )
+        }
+    }
+    key(heldExtra ?: Unit) {
+        val shown = heldExtra
+        if (shown != null) {
+            val park = remember(shown) {
+                { if (panelState.value != shown) heldExtra = null }
+            }
+            scope.ParkedPanel(
+                panel = shown,
+                open = open == shown,
+                state = state,
+                settings = settings,
+                resizeMode = resizeMode,
+                actions = actions,
+                onParked = park,
+            )
+        }
+    }
+}
+
+/** Одна и та же ссылка: новая лямбда на каждый вызов не давала бы закрытой панели пропуститься. */
+private val StayParked: () -> Unit = {}
+
+@Composable
+private fun BoxScope.ParkedPanel(
+    panel: Panel,
+    open: Boolean,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    onParked: () -> Unit = StayParked,
+) {
+    // 0 — открыта, 1 — за правым краем. value в композиции не читается: это был бы кадр анимации.
+    val slide = remember { Animatable(1f) }
+    val openSignal = remember { PanelOpenSignal() }
+    // Читается только в слое: после раскладки списка заставляем записать его до выезда.
+    val layerEpoch = remember { mutableIntStateOf(0) }
+    LaunchedEffect(open) {
+        if (open) {
+            openSignal.prepare()
+            layerEpoch.intValue++
+            withFrameNanos { }
+            slide.animateTo(0f, tween(200))
+        } else if (slide.value != 1f) {
+            slide.animateTo(1f, tween(200))
+            onParked()
+        } else {
+            // Уже за краем (прогрев): не запускать tween, иначе слой 200 мс числится анимируемым.
+            onParked()
+        }
+    }
+    val density = LocalDensity.current
+    val narrowControls = LocalConfiguration.current.screenWidthDp < 600
+    val topPad = with(density) { WindowInsets.safeDrawing.getTop(this).toDp() } +
+        sidePanelTopClearanceDp(narrowControls).dp
+    val panelShape = remember { RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp) }
+    // Цепочка не зависит от open: смена модификатора заново измеряла список.
+    val layer = remember(topPad, panelShape) {
+        Modifier.padding(top = topPad).graphicsLayer {
+            translationX = size.width * slide.value
+            clip = true
+            shape = panelShape
+            compositingStrategy = CompositingStrategy.Auto
+            // Не пиксель: после prepare список уже разложен, и слой перезаписывается до выезда.
+            // Иначе первый кадр скорости — пустая полоса под заголовком.
+            val epoch = layerEpoch.intValue
+            if (epoch < 0) alpha = 1f
+        }
+    }
+    Box(Modifier.align(Alignment.TopEnd).zIndex(if (open) 1f else 0f)) {
+        SidePanel(
+            panel = panel,
+            state = state,
+            settings = settings,
+            resizeMode = resizeMode,
+            actions = actions,
+            openSignal = openSignal,
+            open = open,
+            modifier = layer,
+        )
     }
 }
 
@@ -665,6 +910,8 @@ private fun Controls(
     onGoTo: () -> Unit,
     onNextChapter: () -> Unit,
     onPreviousChapter: () -> Unit,
+    panelOpen: Boolean,
+    followPosition: Boolean,
 ) {
     val hasChapters = state.chapters.size > 1
     val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
@@ -695,7 +942,8 @@ private fun Controls(
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
                 ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
                 ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
-                ControlButton(Icons.Default.AspectRatio, tr("player.video"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
+                // Открывает панель масштаба и качества. Сама кнопка картинку не переключает — это щипок.
+                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
@@ -718,6 +966,13 @@ private fun Controls(
                 ) { actionButtons() }
             }
 
+            // Сдвиг полосы — один padding в том же кадре, что и старт выезда, без анимации ширины:
+            // анимированный padding заново измерял бы полосу, кнопки и SurfaceView каждый кадр.
+            val panelReserve = transportEndInsetDp(
+                panelOpen,
+                androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.toFloat(),
+            ).dp
+            Column(Modifier.weight(1f).fillMaxWidth().padding(end = panelReserve)) {
             Spacer(Modifier.weight(1f))
 
             Row(
@@ -747,12 +1002,76 @@ private fun Controls(
 
             Spacer(Modifier.weight(1f))
 
-            PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+            PlaybackTransport(controller, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo, followPosition)
+            }
         }
     }
 }
 
-/** Полоса и время. Собирает только позицию: остальной экран от тика прогресса не пересобирается. */
+/**
+ * Появление управления. Цепочка одна и та же во всех состояниях: смена «пусто → слой → parked»
+ * заново измеряла оверлей (скрытие на POCO: recompose 14–22 мс). Альфа читается в лямбде слоя,
+ * размер и место не меняются. `isRunning` / `targetValue` в композиции не читаются.
+ * Альфа 0 сама не отключает касания, пульт и TalkBack — это свойства постоянных узлов.
+ * Слой на весь экран не ловит касания: иначе под ним не работают тап, закрытие панели и
+ * двойной тап. Попадание только у кнопок и полосы. Пока кнопки скрыты, слой ещё и сдвинут
+ * на свою ширину, а их действия читают [InteractionGate].
+ * [panelOpen] — параметр, не только захват лямбды: у лямбды стабильная ссылка, и без этого
+ * аргумента затухание пропускалось бы, а полоса сужалась лишь на следующей пересборке.
+ * В лямбду слоя его не передаём: чтение там подписывало слой на весь экран, а `shadowElevation`
+ * даже нулевой держал контур тени на каждом кадре (медиана кадра на POCO выросла с 17 до 20 мс).
+ * Отступ полосы — раскладка ребёнка; она сама обновляет слой. `CompositingStrategy.Auto`, не
+ * ModulateAlpha: градиенты под кнопками при модуляции альфы выглядят иначе.
+ */
+@Composable
+internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
+    val opacity = remember { Animatable(if (visible) 1f else 0f) }
+    // Не читается в композиции: смена двигает только параметры слоя.
+    val shown = remember { mutableStateOf(visible) }
+    val gate = remember { InteractionGate(visible) }
+    gate.open = visible
+    // Чтение panelOpen оставляет его в маске $changed. Иначе компилятор выбрасывает
+    // неиспользуемый аргумент, стабильная лямбда пропускает функцию, и полоса
+    // сужается только на следующей пересборке.
+    val reserve = remember { mutableStateOf(panelOpen) }
+    reserve.value = panelOpen
+    LaunchedEffect(visible) {
+        if (visible) {
+            shown.value = true
+            opacity.animateTo(1f, tween(180))
+        } else {
+            opacity.animateTo(0f, tween(150))
+            shown.value = false
+        }
+    }
+    val layer = remember {
+        Modifier.graphicsLayer {
+            alpha = opacity.value
+            translationX = if (shown.value) 0f else size.width
+            compositingStrategy = CompositingStrategy.Auto
+            // Не shadowElevation: нулевая тень всё равно оставляет контур и рисует его каждый кадр
+            // (медиана на POCO выросла с 17 до 20 мс). Чтение отступа только помечает слой
+            // в кадре, когда полоса сужается, и на пиксели не влияет.
+            translationY = if (reserve.value) 0f else 0f
+        }
+    }
+    // Свойства, не состав: тот же focusGroup и semantics, другое значение при скрытии.
+    val chrome = remember(visible) {
+        Modifier
+            .focusGroup()
+            .focusProperties {
+                canFocus = visible
+                onEnter = { if (!visible) cancelFocusChange() }
+            }
+            .semantics { if (!visible) hideFromAccessibility() }
+    }
+    CompositionLocalProvider(LocalInteractionGate provides gate) {
+        Box(layer.then(chrome)) { content() }
+    }
+}
+
+/** Полоса и время. Один вызов [TransportReadout]: показ и скрытие не пересоздают полосу.
+ *  Тик пишется в состояние, только пока кнопки видны; скрытые держат последнее значение. */
 @Composable
 private fun PlaybackTransport(
     controller: PlayerController,
@@ -763,13 +1082,43 @@ private fun PlaybackTransport(
     onInteraction: () -> Unit,
     onScrub: (Long?) -> Unit,
     onGoTo: () -> Unit,
+    followPosition: Boolean,
 ) {
-    val live = controller.state.collectAsStateWithLifecycle()
-    val progress by remember {
-        derivedStateOf(structuralEqualityPolicy()) { live.value.positionMs to live.value.bufferedMs }
+    val cache = remember { mutableStateOf(readTransportProgress(controller)) }
+    val follow = remember { FollowFlag(followPosition) }
+    follow.on = followPosition
+    LaunchedEffect(controller) {
+        controller.state.collect { snapshot ->
+            if (!follow.on) return@collect
+            val next = snapshot.positionMs to snapshot.bufferedMs
+            if (cache.value != next) cache.value = next
+        }
     }
-    val (positionMs, bufferedMs) = progress
+    val (positionMs, bufferedMs) = cache.value
+    TransportReadout(positionMs, bufferedMs, state, theme, stepMs, onSeek, onInteraction, onScrub, onGoTo)
+}
+
+private class FollowFlag(var on: Boolean)
+
+private fun readTransportProgress(controller: PlayerController): Pair<Long, Long> {
+    val snapshot = controller.state.value
+    return snapshot.positionMs to snapshot.bufferedMs
+}
+
+@Composable
+private fun TransportReadout(
+    positionMs: Long,
+    bufferedMs: Long,
+    state: tv.p2160.core.engine.PlayerUiState,
+    theme: PlayerTheme,
+    stepMs: Long,
+    onSeek: (Long) -> Unit,
+    onInteraction: () -> Unit,
+    onScrub: (Long?) -> Unit,
+    onGoTo: () -> Unit,
+) {
     val chapterMarks = remember(state.chapters) { state.chapters.map { it.startMs } }
+    val gate = LocalInteractionGate.current
     if (!state.isLive || (!state.liveTv && state.durationMs > 0)) {
         SeekBar(
             positionMs = positionMs,
@@ -789,7 +1138,9 @@ private fun PlaybackTransport(
             formatTime(positionMs),
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onGoTo).padding(horizontal = 4.dp, vertical = 12.dp),
+            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable {
+                if (gate.open) onGoTo()
+            }.padding(horizontal = 4.dp, vertical = 12.dp),
         )
         state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
             Text(
@@ -909,33 +1260,41 @@ private fun VideoSurface(
             // отсоединение view при выходе снимает его само.
             view.keepScreenOn = keepScreenOn
             if (view.player !== controller.player) view.player = controller.player
-            view.resizeMode = when (resizeMode) {
+            val mode = when (resizeMode) {
                 ResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                 ResizeMode.FIT_WIDTH -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
                 ResizeMode.FIT_HEIGHT -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT
                 ResizeMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 ResizeMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             }
-            view.subtitleView?.apply {
-                setStyle(
-                    CaptionStyleCompat(
-                        Color(style.textColor).toArgb(),
-                        Color(style.backgroundColor).toArgb(),
-                        AndroidColor.TRANSPARENT,
-                        when (style.edge) {
-                            SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
-                            SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
-                            SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-                        },
-                        AndroidColor.BLACK,
-                        null,
+            if (view.resizeMode != mode) view.resizeMode = mode
+            // PlayerController нестабилен: любая пересборка PlayerScreen заходит в update.
+            // Открытие панели сюда больше не приходит. setStyle верстает субтитры заново —
+            // не делать этого, если стиль и видимость кнопок те же.
+            val subKey = AppliedSubtitles(style, controlsVisible)
+            if (view.getTag(TAG_SUBS) != subKey) {
+                view.setTag(TAG_SUBS, subKey)
+                view.subtitleView?.apply {
+                    setStyle(
+                        CaptionStyleCompat(
+                            Color(style.textColor).toArgb(),
+                            Color(style.backgroundColor).toArgb(),
+                            AndroidColor.TRANSPARENT,
+                            when (style.edge) {
+                                SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
+                                SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                                SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                            },
+                            AndroidColor.BLACK,
+                            null,
+                        )
                     )
-                )
-                setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale)
-                setApplyEmbeddedStyles(!style.overrideEmbeddedStyles)
-                setApplyEmbeddedFontSizes(!style.overrideEmbeddedStyles)
-                // Поднимаем субтитры, когда видна панель управления, чтобы она их не закрывала.
-                setBottomPaddingFraction(if (controlsVisible) style.bottomPadding + 0.2f else style.bottomPadding)
+                    setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale)
+                    setApplyEmbeddedStyles(!style.overrideEmbeddedStyles)
+                    setApplyEmbeddedFontSizes(!style.overrideEmbeddedStyles)
+                    // Поднимаем субтитры, когда видна панель управления, чтобы она их не закрывала.
+                    setBottomPaddingFraction(if (controlsVisible) style.bottomPadding + 0.2f else style.bottomPadding)
+                }
             }
         },
         onRelease = { view -> view.keepScreenOn = false },
@@ -943,6 +1302,13 @@ private fun VideoSurface(
 }
 
 private const val NEXT_COUNTDOWN_SEC = 10
+
+/** Стиль субтитров, уже применённый к [androidx.media3.ui.PlayerView]. Не путать с tag самого view. */
+private data class AppliedSubtitles(val style: SubtitleStyle, val controlsVisible: Boolean)
+
+private const val TAG_SUBS = 0x2160_0001
+private const val TAG_SEC_STYLE = 0x2160_0002
+private const val TAG_SEC_CUES = 0x2160_0003
 
 private fun digitOf(key: Key): Char? = when (key) {
     Key.Zero, Key.NumPad0 -> '0'
@@ -973,28 +1339,34 @@ private fun SecondarySubtitleLayer(controller: PlayerController, style: Subtitle
         modifier = Modifier.fillMaxSize(),
         factory = { ctx -> SubtitleView(ctx) },
         update = { view ->
-            view.setStyle(
-                CaptionStyleCompat(
-                    Color(style.textColor).toArgb(),
-                    Color(style.backgroundColor).toArgb(),
-                    AndroidColor.TRANSPARENT,
-                    when (style.edge) {
-                        SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
-                        SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
-                        SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-                    },
-                    AndroidColor.BLACK,
-                    null,
+            if (view.getTag(TAG_SEC_STYLE) != style) {
+                view.setTag(TAG_SEC_STYLE, style)
+                view.setStyle(
+                    CaptionStyleCompat(
+                        Color(style.textColor).toArgb(),
+                        Color(style.backgroundColor).toArgb(),
+                        AndroidColor.TRANSPARENT,
+                        when (style.edge) {
+                            SubtitleEdge.NONE -> CaptionStyleCompat.EDGE_TYPE_NONE
+                            SubtitleEdge.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                            SubtitleEdge.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                        },
+                        AndroidColor.BLACK,
+                        null,
+                    )
                 )
-            )
-            view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
-            view.setApplyEmbeddedStyles(false)
-            // Текстовые реплики поднимаем наверх; картинки (PGS) оставляем на их месте.
-            view.setCues(cues.map { cue ->
-                if (cue.bitmap != null) cue
-                else cue.buildUpon().setLine(0.04f, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
-                    .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_START).build()
-            })
+                view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
+                view.setApplyEmbeddedStyles(false)
+            }
+            // Реплики те же — не перекладывать слой из-за открытия панели.
+            if (view.getTag(TAG_SEC_CUES) !== cues) {
+                view.setTag(TAG_SEC_CUES, cues)
+                view.setCues(cues.map { cue ->
+                    if (cue.bitmap != null) cue
+                    else cue.buildUpon().setLine(0.04f, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
+                        .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_START).build()
+                })
+            }
         },
     )
 }

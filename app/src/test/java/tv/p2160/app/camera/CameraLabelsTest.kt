@@ -23,7 +23,7 @@ class CameraLabelsTest {
     fun backLensesUseFocalLengthAgainstTheMainCamera() {
         // Эквивалент 35 мм: основная 27, сверхширокая 14,4 (0,5×), теле 81 (3×) и 270 (10×).
         assertEquals(
-            listOf("Широкая", "Сверхширокая", "3×", "10×", "Фронтальная"),
+            listOf("Основная", "Сверхширокая", "Телевик 3×", "Телевик 10×", "Фронтальная"),
             labels(
                 Lens("0", CameraLabels.BACK, 6f, 8f),
                 Lens("2", CameraLabels.BACK, 2f, 5f),
@@ -45,7 +45,7 @@ class CameraLabelsTest {
     @Test
     fun secondUltraKeepsItsOwnZoom() {
         assertEquals(
-            listOf("Широкая", "Сверхширокая 0,6×", "Сверхширокая 0,4×"),
+            listOf("Основная", "Сверхширокая 0,6×", "Сверхширокая 0,4×"),
             labels(
                 Lens("0", CameraLabels.BACK, 6.4f),
                 Lens("2", CameraLabels.BACK, 3.84f),
@@ -57,7 +57,7 @@ class CameraLabelsTest {
     @Test
     fun focalRatioWithoutSensorStillSeparatesTele() {
         assertEquals(
-            listOf("Широкая", "Сверхширокая", "3×"),
+            listOf("Основная", "Сверхширокая", "Телевик 3×"),
             labels(
                 Lens("0", CameraLabels.BACK, 6.4f),
                 Lens("2", CameraLabels.BACK, 2.2f),
@@ -69,7 +69,7 @@ class CameraLabelsTest {
     @Test
     fun logicalCameraIsDroppedWhenItsPhysicalIdsAreListed() {
         assertEquals(
-            listOf("Сверхширокая", "Широкая"),
+            listOf("Сверхширокая", "Основная"),
             labels(
                 Lens("0", CameraLabels.BACK, 6f, 8f, logicalDuplicate = true),
                 Lens("2", CameraLabels.BACK, 2f, 5f),
@@ -81,7 +81,7 @@ class CameraLabelsTest {
     @Test
     fun sameZoomFallsBackToANumber() {
         assertEquals(
-            listOf("Широкая", "3×", "3× 2"),
+            listOf("Основная", "Телевик 3×", "Телевик 3× 2"),
             labels(
                 Lens("0", CameraLabels.BACK, 6f),
                 Lens("3", CameraLabels.BACK, 18f),
@@ -93,12 +93,61 @@ class CameraLabelsTest {
     @Test
     fun frontUltraDoesNotReuseTheBackWordAlone() {
         assertEquals(
-            listOf("Широкая", "Задняя Сверхширокая", "Фронтальная", "Фронтальная Сверхширокая"),
+            listOf("Основная", "Сверхширокая", "Фронтальная", "Фронтальная сверхширокая"),
             labels(
                 Lens("0", CameraLabels.BACK, 6f, 8f),
                 Lens("2", CameraLabels.BACK, 2f, 5f),
                 Lens("1", CameraLabels.FRONT, 3.2f, 4.4f),
                 Lens("6", CameraLabels.FRONT, 1.6f, 4f),
+            ),
+        )
+    }
+
+    @Test
+    fun secondFrontIsNamedByHowItDiffers() {
+        // 26 мм и 23 мм экв.: уже не «Фронтальная 2», а чем объектив шире.
+        assertEquals(
+            listOf("Фронтальная", "Фронтальная широкая"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.4f),
+                Lens("2", CameraLabels.FRONT, 2.8f, 4.4f),
+            ),
+        )
+        // Тот же размер сенсора не доказан, 2× без другого сенсора — это кадрирование, не телевик.
+        assertEquals(
+            listOf("Фронтальная", "Фронтальная (кадрирование)"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.4f),
+                Lens("3", CameraLabels.FRONT, 6.4f, 4.4f),
+            ),
+        )
+    }
+
+    @Test
+    fun frontCropOfTheSameSensorIsHidden() {
+        assertEquals(
+            listOf("Фронтальная"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.5f, sensorHeightMm = 3.4f, pixelWidth = 4000, pixelHeight = 3000),
+                Lens("20", CameraLabels.FRONT, 6.4f, 4.5f, sensorHeightMm = 3.4f, pixelWidth = 1920, pixelHeight = 1080),
+            ),
+        )
+        assertEquals(
+            listOf("Фронтальная"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, physicalIds = setOf("1")),
+                Lens("20", CameraLabels.FRONT, 7f, physicalIds = setOf("1")),
+            ),
+        )
+    }
+
+    @Test
+    fun frontTeleNeedsAnotherSensorAndAtLeastTwoTimes() {
+        assertEquals(
+            listOf("Фронтальная", "Фронтальная телевик 3,7×"),
+            labels(
+                Lens("1", CameraLabels.FRONT, 3.2f, 4.4f, sensorHeightMm = 3.3f),
+                Lens("2", CameraLabels.FRONT, 8f, 3.0f, sensorHeightMm = 2.2f),
             ),
         )
     }
@@ -119,11 +168,13 @@ class CameraLabelsTest {
 
     private fun ru(key: String): String = when (key) {
         CameraLabels.KEY_BACK -> "Задняя"
+        CameraLabels.KEY_MAIN -> "Основная"
         CameraLabels.KEY_FRONT -> "Фронтальная"
         CameraLabels.KEY_EXTERNAL -> "Внешняя"
         CameraLabels.KEY_WIDE -> "Широкая"
         CameraLabels.KEY_ULTRA -> "Сверхширокая"
         CameraLabels.KEY_TELE -> "Телевик"
+        CameraLabels.KEY_CROP -> "кадрирование"
         else -> key
     }
 }

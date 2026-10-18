@@ -71,7 +71,7 @@ includeBuild("../2160player") {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.10") }
+dependencies { implementation("tv.p2160:player-core:0.2.11") }
 ```
 
 Gradle соберёт библиотеку из исходников со своим каталогом версий; правки в `../2160player`
@@ -84,10 +84,10 @@ Gradle соберёт библиотеку из исходников со сво
 
 ```sh
 ./gradlew :player-core:publishReleasePublicationToMavenLocal
-# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.10-SNAPSHOT
+# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.11-SNAPSHOT
 ```
 
-Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.10/` (AAR, POM, Gradle module metadata, sources).
+Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.11/` (AAR, POM, Gradle module metadata, sources).
 
 ```kotlin
 // settings.gradle.kts вашего проекта
@@ -100,7 +100,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.10") }
+dependencies { implementation("tv.p2160:player-core:0.2.11") }
 ```
 
 ### 1d. GitHub Packages
@@ -110,7 +110,7 @@ dependencies { implementation("tv.p2160:player-core:0.2.10") }
 ```sh
 export GITHUB_ACTOR=<логин>
 export GITHUB_TOKEN=<токен>
-./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.10
+./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.11
 ```
 
 Вместо переменных окружения можно задать `gpr.user` / `gpr.key` в `~/.gradle/gradle.properties`.
@@ -137,7 +137,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.10") }
+dependencies { implementation("tv.p2160:player-core:0.2.11") }
 ```
 
 ---
@@ -279,7 +279,8 @@ Player2160.config = PlayerConfig(
 
 Все поля — [API.md §15.6](API.md#156-настройка-движка-playerconfig).
 
-Масштаб пользователь меняет и сам: панель «Видео» в плеере или щипок двумя пальцами
+Масштаб пользователь меняет и сам: панель «Видео» (кнопка-рамка сверху справа; TalkBack говорит
+«Масштаб и качество» и не крутит режим сама) или щипок двумя пальцами
 (развести — заполнить экран, свести — целиком). Выбор сохраняется в `Settings.resizeMode`.
 
 `keepScreenOn` (по умолчанию включено) держит экран включённым, только пока в `PlayerScreen`

@@ -48,4 +48,9 @@ class UiFormatTest {
         assertEquals(64f, sidePanelTopClearanceDp(narrow = false), 0.01f)
         assertEquals(112f, sidePanelTopClearanceDp(narrow = true), 0.01f)
     }
+
+    @Test
+    fun openPanelLeavesAGapBeforeTheTimeLabel() {
+        assertEquals(12f, sidePanelTransportGapDp, 0.01f)
+    }
 }

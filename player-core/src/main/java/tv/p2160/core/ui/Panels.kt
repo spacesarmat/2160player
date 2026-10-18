@@ -1,19 +1,34 @@
 package tv.p2160.core.ui
 
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -24,17 +39,31 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.SubtitlesOff
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.text.style.Hyphens
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
@@ -103,7 +132,36 @@ class PanelActions(
     val onStatsOverlay: (Boolean) -> Unit = {},
 )
 
-/** Боковая панель справа: на ТВ удобна для D-pad, на телефоне не перекрывает всё видео. */
+/**
+ * Сигнал «панель открыли». [PanelBody] на это не пересобирается:
+ * открытие не входит в параметры строк. [prepare] не возвращается, пока список
+ * не стоит вверху и этот кадр не нарисован — иначе выезд показывает чужую прокрутку.
+ */
+class PanelOpenSignal {
+    private val requests = Channel<CompletableDeferred<Unit>>(Channel.BUFFERED)
+
+    suspend fun prepare() {
+        val done = CompletableDeferred<Unit>()
+        requests.send(done)
+        done.await()
+    }
+
+    suspend fun collect(block: suspend () -> Unit) {
+        for (done in requests) {
+            try {
+                block()
+            } finally {
+                if (!done.isCompleted) done.complete(Unit)
+            }
+        }
+    }
+}
+
+/** Боковая панель справа. Хост держит фокус, доступность и прокрутку при открытии.
+ *  [PanelBody] не знает, открыта панель или нет: повторное открытие не пересобирает строки.
+ *  Экран держит собранными «Аудио» и «Скорость» (они за краем, пока закрыты). Остальные
+ *  снимаются после выезда: «Сведения» тяжёлые. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SidePanel(
     panel: Panel,
@@ -111,33 +169,148 @@ fun SidePanel(
     settings: Settings,
     resizeMode: ResizeMode,
     actions: PanelActions,
+    openSignal: PanelOpenSignal,
+    /** Панель на экране. Только хост: строки это не читают. */
+    open: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(panel) { runCatching { focus.requestFocus() } }
-    val colors = MaterialTheme.colorScheme
+    val reveal = panelRevealIndex(panel, state, settings, resizeMode)
+    val listState = remember(panel) { LazyListState(0, 0) }
+    val scrollState = remember(panel) { ScrollState(0) }
+    val bring = remember { BringIntoViewRequester() }
+    val revealPlace = remember { intArrayOf(0, 0) }
+    val revealNow = remember { PanelRevealNow(reveal, false) }
+    revealNow.index = reveal
+    // Собранная заранее панель помнит прошлую прокрутку. Перед выездом возвращаем
+    // её наверх, пока слой ещё за краем: переключатели и «Точно» видны.
+    LaunchedEffect(openSignal) {
+        openSignal.collect {
+            resetPanelScroll(revealNow.lazy, listState, scrollState)
+            withFrameNanos { }
+            withFrameNanos { }
+        }
+    }
+    Box(
+        modifier
+            .focusGroup()
+            .focusProperties {
+                canFocus = open
+                onEnter = { if (!open) cancelFocusChange() }
+            }
+            .semantics { if (!open) hideFromAccessibility() },
+    ) {
+        PanelBody(
+            panel = panel,
+            state = state,
+            settings = settings,
+            resizeMode = resizeMode,
+            actions = actions,
+            focus = focus,
+            listState = listState,
+            scrollState = scrollState,
+            bring = bring,
+            reveal = reveal,
+            revealPlace = revealPlace,
+            revealNow = revealNow,
+        )
+    }
+}
 
-    // 42 % экрана, но не уже 300 и не шире 420 dp. Раньше widthIn стоял снаружи fillMaxWidth(0.42)
-    // и 42 % считались уже от потолка 420 dp, а минимум 300 dp побеждал — панель всегда была 300 dp,
-    // и подписи («Задержка звука») рвались посреди слова.
-    BoxWithConstraints(modifier) {
-    val panelWidth = sidePanelWidthDp(maxWidth.value).dp
+/** Строки панели. Параметры не включают открытость: смена open не должна переизмерять список. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PanelBody(
+    panel: Panel,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    focus: FocusRequester,
+    listState: LazyListState,
+    scrollState: ScrollState,
+    bring: BringIntoViewRequester,
+    reveal: Int?,
+    revealPlace: IntArray,
+    revealNow: PanelRevealNow,
+) {
+    val slots = PanelSlots()
+    val infoReport = remember(panel, state.title, state.durationMs) {
+        if (panel == Panel.INFO) actions.report() else null
+    }
+    slots.populate(panel, state, settings, resizeMode, actions, focus, infoReport)
+    val lazy = panelUsesLazyList(slots.list.size)
+    revealNow.lazy = lazy
+    val colors = MaterialTheme.colorScheme
+    val listBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() + 12.dp
+    val panelWidth = sidePanelWidthDp(LocalConfiguration.current.screenWidthDp.toFloat()).dp
     Column(
         Modifier
             .width(panelWidth)
             .fillMaxHeight()
-            .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
-            // Непрозрачная подложка: полупрозрачный слой поверх SurfaceView перерисовывался каждый кадр.
             .background(colors.surface)
-            .padding(vertical = 16.dp),
+            .padding(top = 12.dp),
     ) {
-        Text(
-            tr(panel.titleKey),
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.onSurface,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        )
-        LazyColumn(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().zIndex(1f).background(colors.surface)) {
+            Text(
+                tr(panel.titleKey),
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.onSurface,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            HorizontalDivider(color = colors.outlineVariant)
+        }
+        val listMod = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .padding(bottom = listBottom)
+            .clipToBounds()
+        if (lazy) {
+            LazyColumn(
+                state = listState,
+                modifier = listMod.testTag("panel-scroll"),
+                contentPadding = PaddingValues(top = 4.dp),
+            ) {
+                slots.list.forEach { slot ->
+                    item(key = slot.key, contentType = slot.contentType) { slot.content() }
+                }
+            }
+        } else {
+            CompositionLocalProvider(LocalBringIntoViewSpec provides panelBringIntoViewSpec) {
+                // Метка на узле прокрутки, без layout-модификатора снаружи: иначе семантика сдвига на другом узле.
+                Column(listMod.verticalScroll(scrollState).testTag("panel-scroll")) {
+                    Spacer(Modifier.size(width = 0.dp, height = 4.dp))
+                    for (index in slots.list.indices) {
+                        val slot = slots.list[index]
+                        key(slot.key) {
+                            if (reveal != null && index == reveal && reveal > 0) {
+                                Box(
+                                    Modifier.bringIntoViewRequester(bring).onGloballyPositioned { coords ->
+                                        revealPlace[0] = coords.positionInParent().y.roundToInt()
+                                        revealPlace[1] = coords.size.height
+                                    },
+                                ) { slot.content() }
+                            } else {
+                                slot.content()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PanelSlots.populate(
+    panel: Panel,
+    state: PlayerUiState,
+    settings: Settings,
+    resizeMode: ResizeMode,
+    actions: PanelActions,
+    focus: FocusRequester,
+    infoReport: MediaReport?,
+) {
             when (panel) {
                 Panel.AUDIO -> {
                     item(key = "night") {
@@ -190,8 +363,8 @@ fun SidePanel(
                         )
                     }
                     item(key = "audio-delay-hint") { Hint(tr("panel.audio_delay_hint")) }
-                    if (state.audioTracks.isEmpty()) item { Hint(tr("panel.no_audio")) }
-                    items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }) { (i, t) ->
+                    if (state.audioTracks.isEmpty()) item(key = "no-audio", contentType = "hint") { Hint(tr("panel.no_audio")) }
+                    items(state.audioTracks.withIndex().toList(), key = { "a${it.index}" }, contentType = { "track" }) { (i, t) ->
                         PanelRow(
                             text = t.label,
                             secondary = if (!t.supported) tr("panel.unsupported_audio") else null,
@@ -208,7 +381,7 @@ fun SidePanel(
                         PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
                             modifier = if (!active) Modifier.focusRequester(focus) else Modifier)
                     }
-                    items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }) { minutes ->
+                    items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }, contentType = { "choice" }) { minutes ->
                         PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
                     }
                     item(key = "sleep-end") {
@@ -232,7 +405,7 @@ fun SidePanel(
                         )
                     }
                     val primaryTracks = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
-                    items(primaryTracks.withIndex().toList(), key = { "t${it.index}" }) { (_, t) ->
+                    items(primaryTracks.withIndex().toList(), key = { "t${it.index}" }, contentType = { "track" }) { (_, t) ->
                         PanelRow(
                             text = t.label,
                             selected = t.selected && !state.textDisabled,
@@ -246,7 +419,7 @@ fun SidePanel(
                             PanelRow(tr("panel.subs_off"), selected = state.secondaryTextId == null, onClick = { actions.onSecondarySubtitle(null) })
                         }
                         val candidates = state.textTracks.filter { !(it.selected && it.formatId != state.secondaryTextId) || state.textDisabled }
-                        items(candidates.withIndex().toList(), key = { "s${it.index}" }) { (_, t) ->
+                        items(candidates.withIndex().toList(), key = { "s${it.index}" }, contentType = { "track" }) { (_, t) ->
                             PanelRow(
                                 text = t.label,
                                 selected = t.formatId != null && t.formatId == state.secondaryTextId,
@@ -279,6 +452,8 @@ fun SidePanel(
                 }
 
                 Panel.SPEED -> {
+                    // Не Slider: шаг 0.05 и чипы пресетов. У строки нет тени, размытия и ripple
+                    // (indication = null). Дорогая первая запись уходит на кадр прогрева, не на открытие.
                     item(key = "fine") {
                         Stepper(
                             label = tr("panel.fine"),
@@ -288,7 +463,7 @@ fun SidePanel(
                             onReset = { actions.onSpeed(1f) },
                         )
                     }
-                    items(SPEED_PRESETS, key = { "s$it" }) { s ->
+                    items(SPEED_PRESETS, key = { "s$it" }, contentType = { "choice" }) { s ->
                         val selected = kotlin.math.abs(state.speed - s) < 0.01f
                         PanelRow(
                             text = if (s == 1f) tr("panel.speed_normal") else "${formatSpeed(s)}×",
@@ -300,7 +475,7 @@ fun SidePanel(
                 }
 
                 Panel.INFO -> {
-                    val report = actions.report()
+                    val report = infoReport ?: actions.report()
                     item(key = "stats") {
                         PanelRow(
                             text = tr("panel.stats_overlay"),
@@ -322,7 +497,7 @@ fun SidePanel(
                     }
                     report.sections.forEachIndexed { si, section ->
                         item(key = "sec$si") { Hint(section.title) }
-                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }) { (ri, row) ->
+                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (ri, row) ->
                             InfoRow(row, modifier = Modifier.focusable())
                         }
                     }
@@ -332,7 +507,7 @@ fun SidePanel(
                     if (state.chapters.isEmpty()) {
                         item(key = "no-ch") { Hint(tr("panel.no_chapters")) }
                     }
-                    items(state.chapters.withIndex().toList(), key = { "ch${it.index}" }) { (i, ch) ->
+                    items(state.chapters.withIndex().toList(), key = { "ch${it.index}" }, contentType = { "chapter" }) { (i, ch) ->
                         val current = i == state.chapterIndex
                         PanelRow(
                             text = ch.title ?: tr("player.chapter_n", i + 1),
@@ -382,7 +557,7 @@ fun SidePanel(
 
                 Panel.VIDEO -> {
                     item(key = "resize-title") { Hint(tr("panel.scale")) }
-                    items(ResizeMode.entries, key = { "r${it.name}" }) { mode ->
+                    items(ResizeMode.entries, key = { "r${it.name}" }, contentType = { "choice" }) { mode ->
                         PanelRow(
                             text = resizeLabel(mode),
                             selected = resizeMode == mode,
@@ -395,7 +570,7 @@ fun SidePanel(
                         if (state.videoTracks.size > 1) {
                             item(key = "auto") { PanelRow(tr("panel.auto"), selected = false, onClick = actions.onAutoVideo) }
                         }
-                        items(state.videoTracks.withIndex().toList(), key = { "v${it.index}" }) { (_, t) ->
+                        items(state.videoTracks.withIndex().toList(), key = { "v${it.index}" }, contentType = { "track" }) { (_, t) ->
                             PanelRow(
                                 text = t.label,
                                 secondary = if (!t.supported) tr("panel.unsupported_video") else null,
@@ -406,8 +581,24 @@ fun SidePanel(
                     }
                 }
             }
-        }
+}
+
+private class PanelSlot(val key: Any, val contentType: Any, val content: @Composable () -> Unit)
+
+private class PanelSlots {
+    val list = mutableListOf<PanelSlot>()
+
+    fun item(key: Any, contentType: Any = "row", content: @Composable () -> Unit) {
+        list += PanelSlot(key, contentType, content)
     }
+
+    fun <T> items(
+        items: List<T>,
+        key: (T) -> Any,
+        contentType: (T) -> Any = { "row" },
+        content: @Composable (T) -> Unit,
+    ) {
+        items.forEach { value -> item(key(value), contentType(value)) { content(value) } }
     }
 }
 
@@ -454,6 +645,133 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 }
 
 fun formatSpeed(s: Float): String = UiFormat.speed(s)
+
+/**
+ * На сколько пикселей прокрутить список, чтобы строка оказалась целиком в окне.
+ * Плюс — контент вверх. Уже видимую строку не двигает. Строка выше окна — только на величину обрезки.
+ */
+internal fun revealDelta(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int): Int {
+    if (size <= 0 || viewportEnd <= viewportStart) return 0
+    val itemEnd = offset + size
+    if (offset >= viewportStart && itemEnd <= viewportEnd) return 0
+    if (offset < viewportStart && itemEnd > viewportEnd) return 0
+    if (itemEnd > viewportEnd) return itemEnd - viewportEnd
+    return offset - viewportStart
+}
+
+/**
+ * После [androidx.compose.foundation.lazy.LazyListState.scrollToItem] строка стоит у верхнего края.
+ * Сколько пикселей отмотать назад, чтобы она села у нижнего края и верхние переключатели не уехали зря.
+ */
+internal fun revealPullBack(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int): Int {
+    val room = viewportEnd - viewportStart - size
+    if (room <= 0) return 0
+    return (room - (offset - viewportStart)).coerceAtLeast(0)
+}
+
+private class PanelRevealNow(var index: Int?, var lazy: Boolean)
+
+/**
+ * Занимает ли панель место у полосы и подсказки.
+ * Состав может оставаться после закрытия — это не повод держать отступ. Решает только открытость.
+ */
+internal fun panelReservesSpace(open: Boolean): Boolean = open
+
+/** Правый отступ полосы и подсказки, dp. Ноль, пока панель закрыта; ширина панели плюс зазор, когда открыта. */
+internal fun transportEndInsetDp(open: Boolean, screenWidthDp: Float): Float =
+    if (panelReservesSpace(open)) sidePanelWidthDp(screenWidthDp) + sidePanelTransportGapDp else 0f
+
+/**
+ * Минимальный сдвиг, чтобы низ строки сел у нижнего края окна.
+ * Открытие панели это не вызывает: список всегда с нуля, иначе прячутся переключатели сверху.
+ */
+internal fun scrollOffsetToReveal(itemOffset: Int, itemSize: Int, viewport: Int): Int {
+    if (itemSize <= 0 || viewport <= 0 || itemOffset <= 0) return 0
+    val itemEnd = itemOffset + itemSize
+    if (itemEnd <= viewport) return 0
+    if (itemSize >= viewport) return itemOffset
+    return itemEnd - viewport
+}
+
+/** Перед выездом список в нуле. Не крутить к выбранной строке: у звука это прячет переключатели. */
+private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, scrollState: ScrollState) {
+    if (lazy) {
+        if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
+            listState.scrollToItem(0)
+        }
+    } else if (scrollState.value != 0) {
+        scrollState.scrollTo(0)
+    }
+}
+
+/** До скольких строк панель — обычная колонка, а не LazyColumn. */
+internal const val PANEL_EAGER_ROW_LIMIT = 16
+
+/** Длинный список (главы, много дорожек) остаётся ленивым. Короткая панель собирается сразу. */
+internal fun panelUsesLazyList(rowCount: Int): Boolean = rowCount > PANEL_EAGER_ROW_LIMIT
+
+/**
+ * Сдвиг bring-into-view для короткой панели: 0, если строка уже целиком в окне,
+ * иначе только обрезанный край. Совпадает с [revealDelta].
+ */
+internal fun panelBringIntoViewDistance(offset: Float, size: Float, containerSize: Float): Float {
+    if (containerSize <= 0f) return 0f
+    return revealDelta(offset.toInt(), size.toInt(), 0, containerSize.toInt()).toFloat()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+private val panelBringIntoViewSpec = object : BringIntoViewSpec {
+    override val scrollAnimationSpec: AnimationSpec<Float> = snap()
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        panelBringIntoViewDistance(offset, size, containerSize)
+}
+
+/**
+ * Индекс выбранной строки в порядке `item` панели. Открытие к ней не прокручивает.
+ * null — выбранного нет или оно и так первое.
+ */
+internal fun panelRevealIndex(panel: Panel, state: PlayerUiState, settings: Settings, resizeMode: ResizeMode): Int? =
+    when (panel) {
+        Panel.SPEED -> speedRevealIndex(state.speed)
+        Panel.VIDEO -> resizeRevealIndex(resizeMode)
+        Panel.AUDIO -> audioTrackRevealIndex(
+            nightAuto = settings.nightAuto,
+            trackCount = state.audioTracks.size,
+            selectedTrack = state.audioTracks.indexOfFirst { it.selected },
+        )
+        Panel.SUBTITLES -> {
+            val primary = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
+            subtitleRevealIndex(state.textDisabled, primary.size, primary.indexOfFirst { it.selected })
+        }
+        Panel.CHAPTERS -> state.chapterIndex.takeIf { it in 0 until state.chapters.size }
+        // «Выкл» — 0, шесть длительностей, затем «В конце серии».
+        Panel.SLEEP -> if (state.sleepAtEnd) 7 else null
+        Panel.INFO -> null
+    }
+
+/** Пресет скорости. 0 — шаговый регулятор сверху, дальше [SPEED_PRESETS]. */
+internal fun speedRevealIndex(speed: Float): Int? {
+    val i = SPEED_PRESETS.indexOfFirst { kotlin.math.abs(it - speed) < 0.01f }
+    return if (i < 0) null else 1 + i
+}
+
+/** Режим масштаба. 0 — заголовок «Масштаб». */
+internal fun resizeRevealIndex(mode: ResizeMode): Int = 1 + ResizeMode.entries.indexOf(mode).coerceAtLeast(0)
+
+/**
+ * Дорожка звука. Перед ней: ночной звук, расписание, при включённом расписании начало и конец,
+ * задержка и подсказка. Нет выбранной дорожки — прокрутка не нужна.
+ */
+internal fun audioTrackRevealIndex(nightAuto: Boolean, trackCount: Int, selectedTrack: Int): Int? {
+    if (selectedTrack !in 0 until trackCount) return null
+    return 4 + (if (nightAuto) 2 else 0) + selectedTrack
+}
+
+/** «Выкл» — 0, дальше основные дорожки. Выключенные субтитры оставляют фокус на «Выкл». */
+internal fun subtitleRevealIndex(disabled: Boolean, primaryCount: Int, selectedInPrimary: Int): Int {
+    if (disabled || selectedInPrimary !in 0 until primaryCount) return 0
+    return 1 + selectedInPrimary
+}
 
 private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 1440 + 1440) % 1440
 

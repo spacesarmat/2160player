@@ -367,8 +367,8 @@ object CameraStream {
 
     /**
      * Камеры устройства. Задние первыми, среди них — основная (первая задняя в списке системы).
-     * Имя — по стороне и фокусному относительно основной той же стороны; логическая камера
-     * скрыта, если её физические id уже есть в списке.
+     * Имя — по стороне и фокусному относительно основной той же стороны. Логическая камера
+     * и кадрирование того же сенсора в ряд не попадают.
      */
     fun cameras(context: Context): List<CameraInfo> {
         val manager = context.getSystemService(CameraManager::class.java) ?: return emptyList()
@@ -379,8 +379,9 @@ object CameraStream {
             runCatching {
                 val c = manager.getCameraCharacteristics(id)
                 val facing = c.get(CameraCharacteristics.LENS_FACING) ?: return@mapNotNull null
-                val sensorWidth = c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)?.width
-                val focal = CameraLabels.pickFocal(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS), sensorWidth)
+                val sensor = c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+                val pixels = c.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)
+                val focal = CameraLabels.pickFocal(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS), sensor?.width)
                 val logical = if (android.os.Build.VERSION.SDK_INT >= 28) {
                     c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
                         ?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) == true
@@ -388,12 +389,24 @@ object CameraStream {
                     false
                 }
                 val physical = if (android.os.Build.VERSION.SDK_INT >= 28) c.physicalCameraIds else emptySet()
-                val duplicate = logical && physical.isNotEmpty() && physical.all { it in listedIds }
-                RawCamera(id, facing, focal, sensorWidth, duplicate, modesFor(c, encoder), c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true)
+                // Логическая камера или отдельный id, который только ссылается на уже перечисленные физические.
+                val duplicate = physical.isNotEmpty() && physical.all { it in listedIds } && (logical || id !in physical)
+                RawCamera(
+                    id, facing, focal, sensor?.width, sensor?.height,
+                    pixels?.width ?: 0, pixels?.height ?: 0, physical, duplicate,
+                    modesFor(c, encoder), c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true,
+                )
             }.getOrNull()
         }
-        val names = CameraLabels.names(raw.map { CameraLabels.Lens(it.id, it.facing, it.focal, it.sensorWidth, it.logicalDuplicate) })
-        val visible = raw.filter { !it.logicalDuplicate }
+        val lenses = raw.map {
+            CameraLabels.Lens(
+                it.id, it.facing, it.focal, it.sensorWidth, it.sensorHeight,
+                it.pixelWidth, it.pixelHeight, it.physicalIds, it.logicalDuplicate,
+            )
+        }
+        val kept = CameraLabels.shown(lenses).map { it.id }.toSet()
+        val names = CameraLabels.names(lenses)
+        val visible = raw.filter { it.id in kept }
         val mainBack = visible.firstOrNull { it.facing == CameraCharacteristics.LENS_FACING_BACK }?.id
         return visible.zip(names).map { (cam, name) ->
             CameraInfo(cam.id, cam.facing, cam.focal, name, cam.modes.ifEmpty { listOf(StreamMode.DEFAULT) }, cam.flash)
@@ -405,6 +418,10 @@ object CameraStream {
         val facing: Int,
         val focal: Float,
         val sensorWidth: Float?,
+        val sensorHeight: Float?,
+        val pixelWidth: Int,
+        val pixelHeight: Int,
+        val physicalIds: Set<String>,
         val logicalDuplicate: Boolean,
         val modes: List<StreamMode>,
         val flash: Boolean,

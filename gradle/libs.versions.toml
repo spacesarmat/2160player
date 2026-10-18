@@ -12,6 +12,7 @@ libtorrent4j = "2.1.0-39"
 zxing = "3.5.3"
 rootEncoder = "2.8.1"
 ktor = "3.5.2"
+robolectric = "4.16.1"
 
 [libraries]
 rootencoder-library = { module = "com.github.pedroSG94.RootEncoder:library", version.ref = "rootEncoder" }
@@ -26,6 +27,9 @@ compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeB
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-material-icons = { module = "androidx.compose.material:material-icons-extended" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }

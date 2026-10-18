@@ -48,6 +48,11 @@ fun sidePanelWidthDp(availableDp: Float): Float {
 /**
  * Отступ сверху боковой панели, dp: панель начинается под верхней полосой кнопок,
  * иначе на широком телефоне она накрывает иконки меню. 8+48+8; в узком портрете
- * кнопки во втором ряду — ещё 48.
+ * кнопки во втором ряду — ещё 48. Вызывающий добавляет сверху safeDrawing обычным
+ * padding, не windowInsetsPadding: вместе со сдвигом в measure это заново измеряло
+ * кадр на каждом кадре анимации (0.2.10).
  */
 fun sidePanelTopClearanceDp(narrow: Boolean): Float = if (narrow) 112f else 64f
+
+/** Зазор между временем у полосы перемотки и краем открытой панели, dp. */
+const val sidePanelTransportGapDp = 12f

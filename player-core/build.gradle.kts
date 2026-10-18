@@ -6,7 +6,7 @@ plugins {
 
 // Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
 group = "tv.p2160"
-version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.10")
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.11")
 
 android {
     namespace = "tv.p2160.core"
@@ -28,6 +28,7 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 
     publishing {
@@ -39,6 +40,11 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose-reports")
+    metricsDestination = layout.buildDirectory.dir("compose-metrics")
 }
 
 dependencies {
@@ -68,8 +74,11 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
     // XmlPullParser для JVM-тестов разбора XMLTV (на устройстве — android.util.Xml)
     testImplementation(libs.kxml2)
 }

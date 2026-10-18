@@ -26,10 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -44,14 +46,27 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.heightIn
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.api.SkipSegment
 import androidx.compose.material.icons.filled.Check
+
+/**
+ * Ворота нажатий скрытого оверлея. Один объект на всё затухание: чтение в лямбде клика,
+ * не в композиции, чтобы показ и скрытие не пересобирали кнопки.
+ */
+internal class InteractionGate(var open: Boolean = true)
+
+private val AlwaysInteractive = InteractionGate(true)
+
+internal val LocalInteractionGate = staticCompositionLocalOf { AlwaysInteractive }
 
 /**
  * Кнопка, одинаково удобная для пальца и пульта: заметная подсветка фокуса, лёгкое увеличение.
@@ -71,13 +86,16 @@ fun ControlButton(
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
     val target = size.coerceAtLeast(48.dp)
+    val gate = LocalInteractionGate.current
     Box(
         modifier = modifier
             .size(target)
             .scale(scale)
             .clip(CircleShape)
             .background(if (focused) accent else Color.Transparent)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = {
+                if (gate.open) onClick()
+            })
             .semantics(mergeDescendants = true) {
                 this.contentDescription = contentDescription
                 role = Role.Button
@@ -121,6 +139,7 @@ fun SeekBar(
     val focused by interaction.collectIsFocusedAsState()
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var keyTarget by remember { mutableStateOf<Long?>(null) }
+    val gate = LocalInteractionGate.current
     val duration = durationMs.coerceAtLeast(1)
     val fraction = dragFraction ?: keyTarget?.let { (it.toFloat() / duration).coerceIn(0f, 1f) }
         ?: if (durationMs <= 0) 0f else (positionMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -132,7 +151,7 @@ fun SeekBar(
             .height(48.dp)
             .focusable(interactionSource = interaction)
             .onKeyEvent { e ->
-                if (durationMs <= 0) return@onKeyEvent false
+                if (!gate.open || durationMs <= 0) return@onKeyEvent false
                 val arrow = e.key == Key.DirectionLeft || e.key == Key.DirectionRight
                 if (e.type == KeyEventType.KeyUp) {
                     val target = keyTarget ?: return@onKeyEvent false
@@ -159,6 +178,7 @@ fun SeekBar(
             }
             .pointerInput(durationMs) {
                 detectTapGestures { o ->
+                    if (!gate.open) return@detectTapGestures
                     onSeek((o.x / size.width * duration).toLong())
                     onInteraction()
                 }
@@ -166,20 +186,24 @@ fun SeekBar(
             .pointerInput(durationMs) {
                 detectHorizontalDragGestures(
                     onDragStart = { o ->
-                        dragFraction = (o.x / size.width).coerceIn(0f, 1f)
-                        onScrub((dragFraction!! * duration).toLong())
-                        onInteraction()
+                        if (gate.open) {
+                            dragFraction = (o.x / size.width).coerceIn(0f, 1f)
+                            onScrub((dragFraction!! * duration).toLong())
+                            onInteraction()
+                        }
                     },
                     onDragEnd = {
-                        dragFraction?.let { onSeek((it * duration).toLong()) }
+                        if (gate.open) dragFraction?.let { onSeek((it * duration).toLong()) }
                         dragFraction = null
                         onScrub(null)
                     },
                     onDragCancel = { dragFraction = null; onScrub(null) },
                 ) { change, _ ->
-                    dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                    onScrub((dragFraction!! * duration).toLong())
-                    onInteraction()
+                    if (gate.open) {
+                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        onScrub((dragFraction!! * duration).toLong())
+                        onInteraction()
+                    }
                 }
             },
         contentAlignment = Alignment.Center,
@@ -226,15 +250,17 @@ fun PanelRow(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
+    val switched = switch
+    val on = selected
     val stateText = when {
-        switch && selected -> tr("a11y.on")
-        switch -> tr("a11y.off")
-        selected -> tr("a11y.selected")
+        switched && on -> tr("a11y.on")
+        switched -> tr("a11y.off")
+        on -> tr("a11y.selected")
         else -> tr("a11y.unselected")
     }
-    val choice = if (switch) {
+    val choice = if (switched) {
         Modifier.toggleable(
-            value = selected,
+            value = on,
             interactionSource = interaction,
             indication = null,
             role = Role.Switch,
@@ -242,7 +268,7 @@ fun PanelRow(
         )
     } else {
         Modifier.selectable(
-            selected = selected,
+            selected = on,
             interactionSource = interaction,
             indication = null,
             role = Role.RadioButton,
@@ -263,19 +289,32 @@ fun PanelRow(
                 }
             )
             .then(if (focused) Modifier.border(2.dp, colors.primary, RoundedCornerShape(12.dp)) else Modifier)
+            // Роль на внешнем узле, который склеивает текст. Иначе TalkBack читает строку без состояния.
+            .semantics(mergeDescendants = true) {
+                stateDescription = stateText
+                if (switched) {
+                    role = Role.Switch
+                    toggleableState = if (on) ToggleableState.On else ToggleableState.Off
+                } else {
+                    role = Role.RadioButton
+                    this.selected = on
+                }
+            }
             .then(choice)
-            .semantics(mergeDescendants = true) { stateDescription = stateText }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (leading != null) {
                 Icon(leading, null, tint = colors.onSurface, modifier = Modifier.size(20.dp))
                 androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
             }
-            androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            androidx.compose.foundation.layout.Column(Modifier.weight(1f).padding(end = if (switched) 12.dp else 0.dp)) {
                 androidx.compose.material3.Text(
                     text,
-                    color = if (selected) colors.primary else colors.onSurface,
+                    color = if (selected && !switched) colors.primary else colors.onSurface,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 if (secondary != null) {
@@ -286,7 +325,14 @@ fun PanelRow(
                     )
                 }
             }
-            if (selected) {
+            if (switched) {
+                // Индикатор, как в настройках: нажатие обрабатывает вся строка (удобно с пульта).
+                androidx.compose.material3.Switch(
+                    checked = on,
+                    onCheckedChange = null,
+                    modifier = Modifier.focusProperties { canFocus = false },
+                )
+            } else if (selected) {
                 Icon(
                     androidx.compose.material.icons.Icons.Default.Check, null,
                     tint = colors.primary, modifier = Modifier.size(20.dp),

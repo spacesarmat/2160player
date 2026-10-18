@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 /** Оформление плеера и приложения. Темы можно добавлять, расширяя [PlayerThemes.all]. */
 @Immutable
@@ -25,9 +26,12 @@ data class PlayerTheme(
     val isLight: Boolean = false,
 ) {
     val colorScheme: ColorScheme
-        get() = if (isLight) {
+        get() {
+        val container = lerp(surface, accent, if (isLight) 0.18f else 0.42f)
+        return if (isLight) {
             lightColorScheme(
                 primary = accent, onPrimary = onAccent,
+                primaryContainer = container, onPrimaryContainer = onSurface,
                 background = background, surface = surface, onSurface = onSurface, onBackground = onSurface,
                 surfaceVariant = surface.copy(alpha = 0.9f), onSurfaceVariant = muted,
                 secondaryContainer = accent.copy(alpha = 0.18f), onSecondaryContainer = onSurface,
@@ -35,11 +39,15 @@ data class PlayerTheme(
         } else {
             darkColorScheme(
                 primary = accent, onPrimary = onAccent,
+                // Без этого primaryContainer остаётся фиолетовым токеном Material, и кнопки «Начать» и чипы
+                // не совпадают с оранжевым (или другим) акцентом темы.
+                primaryContainer = container, onPrimaryContainer = onSurface,
                 background = background, surface = surface, onSurface = onSurface, onBackground = onSurface,
                 surfaceVariant = surface, onSurfaceVariant = muted,
                 secondaryContainer = accent.copy(alpha = 0.22f), onSecondaryContainer = onSurface,
             )
         }
+    }
 }
 
 object PlayerThemes {

@@ -29,6 +29,7 @@ import tv.p2160.core.resume.ResumeEntry
 import tv.p2160.app.handoff.Handoff
 import tv.p2160.core.source.smb.SmbEntry
 import tv.p2160.core.source.smb.SmbServers
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.remember
 import tv.p2160.core.ui.P2160Theme
 import tv.p2160.core.ui.PlayerThemes
@@ -96,6 +97,8 @@ class MainActivity : ComponentActivity() {
             val s by settings.state.collectAsStateWithLifecycle()
             val strings by i18n.strings.collectAsStateWithLifecycle()
             var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+            // Экран настроек снимается с композиции, когда открыта справка. Состояние списка — здесь.
+            val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
             // Нажали уведомление «Трансляция камеры» — сразу на её экран.
             val camera by openCamera.collectAsStateWithLifecycle()
             androidx.compose.runtime.LaunchedEffect(camera) {
@@ -205,6 +208,7 @@ class MainActivity : ComponentActivity() {
                                 store.clear()
                                 toast(strings["app.history_cleared"])
                             },
+                            listState = settingsListState,
                         )
                     }
                 }

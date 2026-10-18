@@ -79,6 +79,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -392,10 +393,12 @@ fun PlayerScreen(
                 hasVideo = state.hasVideo,
                 isLive = state.isLive || state.liveTv,
             )
-            VideoSurface(controller, settings.subtitleStyle, resizeMode, controlsVisible, !inPictureInPicture, keepOn)
+            VideoSurface(
+                controller, settings.subtitleStyle, resizeMode, controlsVisible, !inPictureInPicture, keepOn, panelState,
+            )
             // Частота экрана под частоту кадров (ТВ).
             MatchDisplayFrameRate(controller, settings.frameRateMatching && state.hasVideo, state.videoFrameRate)
-            if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle)
+            if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle, panelState)
 
             // Слой жестов: тап — показать/скрыть, двойной (и более) тап по краям — накопительная перемотка.
             if (!inPictureInPicture) {
@@ -1152,7 +1155,7 @@ private fun PlaybackTransport(
 private class FollowFlag(var on: Boolean)
 
 @Composable
-private fun TransportReadout(
+internal fun TransportReadout(
     clock: TransportClock,
     state: tv.p2160.core.engine.PlayerUiState,
     theme: PlayerTheme,
@@ -1172,26 +1175,29 @@ private fun TransportReadout(
             stepMs = stepMs,
             onSeek = onSeek,
             onInteraction = onInteraction,
+            modifier = Modifier.testTag("seek-bar"),
             accent = theme.accent,
             chapterStartsMs = chapterMarks,
             segments = state.segments,
             onScrub = onScrub,
         )
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Без правого отступа: конец остатка совпадает с концом полосы. Прошедшее прижато к началу.
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).clickable {
                 if (gate.open) onGoTo()
-            }.padding(horizontal = 4.dp, vertical = 12.dp),
+            }.padding(vertical = 12.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             FixedTickText(
                 clock = clock,
-                sample = TIME_SAMPLE,
+                sample = elapsedTimeSample(state.durationMs),
                 style = timeStyle,
                 color = Color.White,
-                textKey = Unit,
-                label = { formatTime(it.positionMs.longValue) },
+                textKey = state.durationMs,
+                label = { formatTime(it.shownMs()) },
+                modifier = Modifier.testTag("time-elapsed"),
             )
         }
         state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
@@ -1216,13 +1222,15 @@ private fun TransportReadout(
             val remainKey: Any = if (durationMs > 0) durationMs else if (state.isBuffering) -1L else liveLabel
             FixedTickText(
                 clock = clock,
-                sample = if (durationMs > 0) REMAINING_SAMPLE else TIME_SAMPLE,
+                sample = if (durationMs > 0) remainingTimeSample(durationMs) else if (state.isBuffering) " " else liveLabel,
                 style = timeStyle,
                 color = Color.White.copy(alpha = 0.85f),
                 textKey = remainKey,
+                alignEnd = durationMs > 0,
+                modifier = Modifier.testTag("time-remaining"),
                 label = { tick ->
                     if (durationMs > 0) {
-                        val positionMs = tick.positionMs.longValue
+                        val positionMs = tick.shownMs()
                         "−${formatTime(durationMs - positionMs)} / ${formatTime(durationMs)}"
                     } else if (state.isBuffering) {
                         ""
@@ -1311,15 +1319,21 @@ private fun VideoSurface(
     controlsVisible: State<Boolean>,
     liftForControls: Boolean,
     keepScreenOn: Boolean,
+    panelState: State<Panel?>,
 ) {
     val viewRef = remember { PlayerViewRef() }
-    // Обычное поле, не State: скрытие кнопок не заходит в update и не верстает субтитры заново.
+    val density = LocalDensity.current
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
+    // Обычные поля, не State: скрытие кнопок и открытие панели не заходят в update и не вызывают setStyle.
     val liftNow = remember { FollowFlag(liftForControls) }
-    LaunchedEffect(style, liftForControls) {
-        snapshotFlow { liftForControls && controlsVisible.value }.collect { lift ->
-            liftNow.on = lift
-            viewRef.view?.let { applySubtitleLift(it, style, lift) }
-        }
+    val panelNow = remember { FollowFlag(false) }
+    LaunchedEffect(style, liftForControls, screenWidthDp, density) {
+        snapshotFlow { (liftForControls && controlsVisible.value) to (panelState.value != null) }
+            .collect { (lift, panelOpen) ->
+                liftNow.on = lift
+                panelNow.on = panelOpen
+                viewRef.view?.let { applySubtitleChrome(it, style, lift, panelOpen, screenWidthDp, density) }
+            }
     }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -1371,7 +1385,7 @@ private fun VideoSurface(
                     setApplyEmbeddedStyles(!style.overrideEmbeddedStyles)
                     setApplyEmbeddedFontSizes(!style.overrideEmbeddedStyles)
                 }
-                applySubtitleLift(view, style, liftNow.on)
+                applySubtitleChrome(view, style, liftNow.on, panelNow.on, screenWidthDp, density)
             }
         },
         onRelease = { view ->
@@ -1384,10 +1398,31 @@ private fun VideoSurface(
 private class PlayerViewRef(var view: PlayerView? = null)
 
 @OptIn(UnstableApi::class)
-private fun applySubtitleLift(view: PlayerView, style: SubtitleStyle, lift: Boolean) {
-    view.subtitleView?.setBottomPaddingFraction(
-        if (lift) style.bottomPadding + 0.2f else style.bottomPadding,
-    )
+private class SubtitleViewRef(var view: SubtitleView? = null)
+
+@OptIn(UnstableApi::class)
+private fun applySubtitleChrome(
+    view: PlayerView,
+    style: SubtitleStyle,
+    lift: Boolean,
+    panelOpen: Boolean,
+    screenWidthDp: Float,
+    density: androidx.compose.ui.unit.Density,
+) {
+    val sub = view.subtitleView ?: return
+    sub.setBottomPaddingFraction(if (lift) style.bottomPadding + 0.2f else style.bottomPadding)
+    sub.applyPanelInset(panelOpen, screenWidthDp, density)
+}
+
+/** Правый отступ субтитров — тот же, что у полосы. Один раз на открытие и закрытие, не на кадр выезда. */
+@OptIn(UnstableApi::class)
+private fun SubtitleView.applyPanelInset(
+    panelOpen: Boolean,
+    screenWidthDp: Float,
+    density: androidx.compose.ui.unit.Density,
+) {
+    val insetPx = with(density) { transportEndInsetDp(panelOpen, screenWidthDp).dp.roundToPx() }
+    if (paddingRight != insetPx) setPadding(paddingLeft, paddingTop, insetPx, paddingBottom)
 }
 
 private const val NEXT_COUNTDOWN_SEC = 10
@@ -1419,11 +1454,25 @@ private fun commitDigits(digits: String, durationMs: Long, seekTo: (Long) -> Uni
 /** Слой вторых субтитров: те же настройки стиля, но у верхнего края и чуть мельче. */
 @OptIn(UnstableApi::class)
 @Composable
-private fun SecondarySubtitleLayer(controller: PlayerController, style: SubtitleStyle) {
+private fun SecondarySubtitleLayer(
+    controller: PlayerController,
+    style: SubtitleStyle,
+    panelState: State<Panel?>,
+) {
     val cues by controller.secondaryCues.collectAsStateWithLifecycle()
+    val viewRef = remember { SubtitleViewRef() }
+    val density = LocalDensity.current
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.toFloat()
+    LaunchedEffect(screenWidthDp, density) {
+        snapshotFlow { panelState.value != null }.collect { open ->
+            viewRef.view?.applyPanelInset(open, screenWidthDp, density)
+        }
+    }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
-        factory = { ctx -> SubtitleView(ctx) },
+        factory = { ctx ->
+            SubtitleView(ctx).also { viewRef.view = it }
+        },
         update = { view ->
             if (view.getTag(TAG_SEC_STYLE) != style) {
                 view.setTag(TAG_SEC_STYLE, style)

@@ -145,12 +145,25 @@ internal class TransportClock(positionMs: Long = 0L, bufferedMs: Long = 0L) {
     val positionMs = mutableLongStateOf(positionMs)
     val bufferedMs = mutableLongStateOf(bufferedMs)
 
+    /** Позиция под пальцем или стрелкой. null — на экране время воспроизведения. */
+    val scrubMs = mutableStateOf<Long?>(null)
+
     fun publish(position: Long, buffered: Long) {
         if (positionMs.longValue == position && bufferedMs.longValue == buffered) return
         Snapshot.withMutableSnapshot {
             positionMs.longValue = position
             bufferedMs.longValue = buffered
         }
+    }
+
+    /** Что рисовать. Читает состояние: вызывать из отрисовки, не из композиции. */
+    fun shownMs(): Long {
+        val scrub = scrubMs.value
+        return if (scrub != null) scrub else positionMs.longValue
+    }
+
+    fun preview(ms: Long?) {
+        if (scrubMs.value != ms) scrubMs.value = ms
     }
 }
 
@@ -226,7 +239,10 @@ internal fun SeekBar(
                 if (e.type == KeyEventType.KeyUp) {
                     val target = keyTarget.value ?: return@onKeyEvent false
                     if (!arrow) return@onKeyEvent false
-                    keyTarget.value = null
+                    Snapshot.withMutableSnapshot {
+                        keyTarget.value = null
+                        clock.preview(null)
+                    }
                     onScrub(null)
                     onSeek(target)
                     return@onKeyEvent true
@@ -241,8 +257,11 @@ internal fun SeekBar(
                 }
                 if (!arrow) return@onKeyEvent false
                 val delta = if (e.key == Key.DirectionLeft) -step else step
-                val next = ((keyTarget.value ?: clock.positionMs.longValue) + delta).coerceIn(0, durationMs)
-                keyTarget.value = next
+                val next = ((keyTarget.value ?: clock.shownMs()) + delta).coerceIn(0, durationMs)
+                Snapshot.withMutableSnapshot {
+                    keyTarget.value = next
+                    clock.preview(next)
+                }
                 onScrub(next)
                 onInteraction()
                 true
@@ -259,22 +278,40 @@ internal fun SeekBar(
                     onDragStart = { o ->
                         if (gate.open) {
                             val fraction = (o.x / size.width).coerceIn(0f, 1f)
-                            dragFraction.value = fraction
-                            onScrub((fraction * duration).toLong())
+                            val ms = (fraction * duration).toLong()
+                            Snapshot.withMutableSnapshot {
+                                dragFraction.value = fraction
+                                clock.preview(ms)
+                            }
+                            onScrub(ms)
                             onInteraction()
                         }
                     },
                     onDragEnd = {
-                        if (gate.open) dragFraction.value?.let { onSeek((it * duration).toLong()) }
-                        dragFraction.value = null
+                        val fraction = dragFraction.value
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = null
+                            clock.preview(null)
+                        }
+                        onScrub(null)
+                        if (gate.open) fraction?.let { onSeek((it * duration).toLong()) }
+                    },
+                    onDragCancel = {
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = null
+                            clock.preview(null)
+                        }
                         onScrub(null)
                     },
-                    onDragCancel = { dragFraction.value = null; onScrub(null) },
                 ) { change, _ ->
                     if (gate.open) {
                         val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                        dragFraction.value = fraction
-                        onScrub((fraction * duration).toLong())
+                        val ms = (fraction * duration).toLong()
+                        Snapshot.withMutableSnapshot {
+                            dragFraction.value = fraction
+                            clock.preview(ms)
+                        }
+                        onScrub(ms)
                         onInteraction()
                     }
                 }
@@ -331,6 +368,31 @@ internal const val TIME_SAMPLE = "88:88:88"
 internal const val REMAINING_SAMPLE = "−88:88:88 / 88:88:88"
 
 /**
+ * Ширина прошедшего времени под текущую длительность: `m:ss`, `mm:ss` или `h:mm:ss`.
+ * Считается при смене длительности, не на каждом тике. Цифры — «8»: с `tnum` все одной ширины.
+ */
+internal fun elapsedTimeSample(durationMs: Long): String {
+    if (durationMs <= 0L) return "8:88"
+    val totalSec = durationMs / 1000
+    val hours = totalSec / 3600
+    return when {
+        hours >= 1 -> "8".repeat(hours.toString().length) + ":88:88"
+        totalSec >= 600 -> "88:88"
+        else -> "8:88"
+    }
+}
+
+/** «−остаток / длительность» той же ширины, что [elapsedTimeSample] для этой длительности. */
+internal fun remainingTimeSample(durationMs: Long): String {
+    val body = elapsedTimeSample(durationMs)
+    return "−$body / $body"
+}
+
+/** Горизонталь глифа в коробке фиксированной ширины. Конец — у правого края, начало — у левого. */
+internal fun tickTextX(boxWidthPx: Float, textWidthPx: Float, alignEnd: Boolean): Float =
+    if (alignEnd) (boxWidthPx - textWidthPx).coerceAtLeast(0f) else 0f
+
+/**
  * Подпись фиксированной ширины. Текст измеряется заранее по [sample] и рисуется в своём слое:
  * смена [clock] не измеряет родителя и не перезаписывает полосу целиком.
  */
@@ -343,6 +405,8 @@ internal fun FixedTickText(
     textKey: Any,
     label: (TransportClock) -> String,
     modifier: Modifier = Modifier,
+    /** Остаток прижат к концу полосы. Прошедшее — к началу. */
+    alignEnd: Boolean = false,
 ) {
     val measurer = rememberTextMeasurer()
     val resolved = remember(style, color) { style.merge(TextStyle(fontFeatureSettings = "tnum", color = color)) }
@@ -355,7 +419,7 @@ internal fun FixedTickText(
             .width(with(density) { sampleLayout.size.width.toDp() })
             .height(with(density) { sampleLayout.size.height.toDp() })
             .graphicsLayer {}
-            .then(TickDrawElement(clock, measurer, resolved, textKey, label)),
+            .then(TickDrawElement(clock, measurer, resolved, textKey, label, alignEnd)),
     )
 }
 
@@ -367,26 +431,30 @@ private class TickDrawElement(
     val style: TextStyle,
     val textKey: Any,
     val label: (TransportClock) -> String,
+    val alignEnd: Boolean,
 ) : ModifierNodeElement<TickDrawNode>() {
-    override fun create(): TickDrawNode = TickDrawNode(clock, measurer, style, label)
+    override fun create(): TickDrawNode = TickDrawNode(clock, measurer, style, label, alignEnd)
 
     override fun update(node: TickDrawNode) {
         node.clock = clock
         node.measurer = measurer
         node.style = style
         node.label = label
+        node.alignEnd = alignEnd
         // Чтение позиции только внутри observeReads, иначе тик подпишет композицию.
         node.observe()
     }
 
     override fun equals(other: Any?): Boolean = other is TickDrawElement &&
-        clock == other.clock && measurer == other.measurer && style == other.style && textKey == other.textKey
+        clock == other.clock && measurer == other.measurer && style == other.style &&
+        textKey == other.textKey && alignEnd == other.alignEnd
 
     override fun hashCode(): Int {
         var result = clock.hashCode()
         result = 31 * result + measurer.hashCode()
         result = 31 * result + style.hashCode()
         result = 31 * result + textKey.hashCode()
+        result = 31 * result + alignEnd.hashCode()
         return result
     }
 }
@@ -400,6 +468,7 @@ private class TickDrawNode(
     var measurer: TextMeasurer,
     var style: TextStyle,
     var label: (TransportClock) -> String,
+    var alignEnd: Boolean,
 ) : Modifier.Node(), DrawModifierNode, SemanticsModifierNode, ObserverModifierNode {
     private var description: String = ""
     private var layout: TextLayoutResult? = null
@@ -425,7 +494,8 @@ private class TickDrawNode(
     }
 
     override fun ContentDrawScope.draw() {
-        layout?.let { drawText(it) }
+        val text = layout ?: return
+        drawText(text, topLeft = Offset(tickTextX(size.width, text.size.width.toFloat(), alignEnd), 0f))
     }
 
     override fun SemanticsPropertyReceiver.applySemantics() {

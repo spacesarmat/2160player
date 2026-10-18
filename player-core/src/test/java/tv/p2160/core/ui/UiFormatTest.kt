@@ -1,6 +1,7 @@
 package tv.p2160.core.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
 
@@ -47,6 +48,26 @@ class UiFormatTest {
     fun sidePanelStartsBelowTheTopBar() {
         assertEquals(64f, sidePanelTopClearanceDp(narrow = false), 0.01f)
         assertEquals(112f, sidePanelTopClearanceDp(narrow = true), 0.01f)
+    }
+
+    @Test
+    fun timeSampleFollowsTheDurationFormat() {
+        assertEquals("8:88", elapsedTimeSample(5 * 60_000L))
+        assertEquals("8:88", elapsedTimeSample(9 * 60_000L + 59_000L))
+        assertEquals("88:88", elapsedTimeSample(10 * 60_000L))
+        assertEquals("88:88", elapsedTimeSample(59 * 60_000L))
+        assertEquals("8:88:88", elapsedTimeSample(60 * 60_000L))
+        assertEquals("88:88:88", elapsedTimeSample(10 * 60 * 60_000L))
+        assertEquals("−8:88 / 8:88", remainingTimeSample(5 * 60_000L))
+        assertEquals("−8:88:88 / 8:88:88", remainingTimeSample(60 * 60_000L))
+        assertTrue(remainingTimeSample(60 * 60_000L).length < REMAINING_SAMPLE.length)
+    }
+
+    @Test
+    fun tickTextSitsAtTheStartOrTheEndOfItsBox() {
+        assertEquals(0f, tickTextX(200f, 80f, alignEnd = false), 0.01f)
+        assertEquals(120f, tickTextX(200f, 80f, alignEnd = true), 0.01f)
+        assertEquals(0f, tickTextX(40f, 80f, alignEnd = true), 0.01f)
     }
 
     @Test

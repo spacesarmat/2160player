@@ -834,7 +834,7 @@ private fun SettingRow(title: String, value: String, hint: String? = null, onCli
     val inline = title.length <= 16 && value.length <= 12
     FocusCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), background = colors.surfaceVariant, mergeDescendants = true) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f, fill = !inline)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (!inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
                 hint?.let { Text(it, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }

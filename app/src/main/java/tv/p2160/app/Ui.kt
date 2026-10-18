@@ -30,15 +30,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import kotlin.math.min
 
 /**
- * На широком экране и ТВ колонка настроек не растягивается на всю ширину:
- * значение остаётся в той же колонке, что и название, а не у противоположного края панели.
+ * Потолок колонки на обычном экране, dp. На широком кадре (телефон лёжа, ТВ) он ещё
+ * ограничивается долей ширины: 720 dp на плотности 600 — это почти весь экран.
  */
-val ReadableContentMax = 720.dp
+const val ReadableContentMaxDp = 720f
 
-fun Modifier.readableColumn(): Modifier = this.widthIn(max = ReadableContentMax).fillMaxWidth()
+/**
+ * Ширина колонки настроек и таких же экранов, dp.
+ * Широкий кадр (ширина ≥ 1,5 высоты): не шире 60 % экрана и не шире 720 dp.
+ * Иначе — до 720 dp, но не шире самого экрана. Портрет телефона остаётся на всю ширину.
+ */
+fun readableContentMaxDp(widthDp: Float, heightDp: Float): Float {
+    if (widthDp <= 0f) return 0f
+    val wide = heightDp > 0f && widthDp >= heightDp * 1.5f
+    val cap = if (wide) min(ReadableContentMaxDp, widthDp * 0.6f) else ReadableContentMaxDp
+    return cap.coerceIn(min(320f, widthDp), widthDp)
+}
+
+@Composable
+fun Modifier.readableColumn(): Modifier {
+    val config = LocalConfiguration.current
+    val max = readableContentMaxDp(config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat())
+    return this.widthIn(max = max.dp).fillMaxWidth()
+}
 
 /** Карточка с заметным фокусом для пульта и обычным нажатием для пальца. */
 @OptIn(ExperimentalFoundationApi::class)

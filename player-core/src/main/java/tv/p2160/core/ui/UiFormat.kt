@@ -44,3 +44,10 @@ fun sidePanelWidthDp(availableDp: Float): Float {
     if (availableDp <= 0f) return availableDp
     return (availableDp * 0.42f).coerceIn(300f, 420f).coerceAtMost(availableDp)
 }
+
+/**
+ * Отступ сверху боковой панели, dp: панель начинается под верхней полосой кнопок,
+ * иначе на широком телефоне она накрывает иконки меню. 8+48+8; в узком портрете
+ * кнопки во втором ряду — ещё 48.
+ */
+fun sidePanelTopClearanceDp(narrow: Boolean): Float = if (narrow) 112f else 64f

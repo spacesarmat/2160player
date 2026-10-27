@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.Constraints
 import tv.p2160.core.i18n.tr
 import tv.p2160.core.api.SkipSegment
 import androidx.compose.material.icons.filled.Check
+import kotlin.math.ceil
 
 /**
  * Ворота нажатий скрытого оверлея. Один объект на всё затухание: чтение в лямбде клика,
@@ -388,18 +389,30 @@ internal fun remainingTimeSample(durationMs: Long): String {
     return "−$body / $body"
 }
 
+/**
+ * Строки, по которым меряется коробка прошедшего времени. Не на каждый тик.
+ * Пока длительность неизвестна, на экране бывает `--:--`, `m:ss`, `mm:ss` и `h:mm:ss`
+ * (во время буфера «3:29» шире, чем «--:--»: дефис уже табличной цифры).
+ * Резерв - самая широкая из них, иначе последний знак обрезается.
+ */
+internal fun elapsedBoxSamples(durationMs: Long): List<String> =
+    if (durationMs > 0L) listOf(elapsedTimeSample(durationMs))
+    else listOf(UNKNOWN_TIME, "8:88", "88:88", TIME_SAMPLE)
+
 /** Горизонталь глифа в коробке фиксированной ширины. Конец - у правого края, начало - у левого. */
 internal fun tickTextX(boxWidthPx: Float, textWidthPx: Float, alignEnd: Boolean): Float =
     if (alignEnd) (boxWidthPx - textWidthPx).coerceAtLeast(0f) else 0f
 
 /**
- * Подпись фиксированной ширины. Текст измеряется заранее по [sample] и рисуется в своём слое:
- * смена [clock] не измеряет родителя и не перезаписывает полосу целиком.
+ * Подпись фиксированной ширины. Коробка меряется заранее по [samples] (самая широкая строка)
+ * и текст рисуется в своём слое: смена [clock] не измеряет родителя и не перезаписывает полосу целиком.
+ * Пока длина неизвестна, в [samples] есть и `--:--`, и `h:mm:ss`: дефис уже цифры, и узкая коробка
+ * срезает последний знак.
  */
 @Composable
 internal fun FixedTickText(
     clock: TransportClock,
-    sample: String,
+    samples: List<String>,
     style: TextStyle,
     color: Color,
     textKey: Any,
@@ -411,16 +424,27 @@ internal fun FixedTickText(
     val measurer = rememberTextMeasurer()
     val resolved = remember(style, color) { style.merge(TextStyle(fontFeatureSettings = "tnum", color = color)) }
     val density = LocalDensity.current
-    val sampleLayout = remember(measurer, resolved, sample, density) {
-        measurer.measure(sample, style = resolved, maxLines = 1, softWrap = false, constraints = TickConstraints)
+    val sampleLayout = remember(measurer, resolved, samples, density) {
+        samples.map { text ->
+            measurer.measure(text, style = resolved, maxLines = 1, softWrap = false, constraints = TickConstraints)
+        }
     }
+    // +1 px: перевод в dp и обратно может округлить ширину вниз и снова срезать глиф.
+    val widthPx = sampleLayout.maxOf { textWidthPx(it) } + 1
+    val heightPx = sampleLayout.maxOf { it.size.height }
     Box(
         modifier
-            .width(with(density) { sampleLayout.size.width.toDp() })
-            .height(with(density) { sampleLayout.size.height.toDp() })
+            .width(with(density) { widthPx.toDp() })
+            .height(with(density) { heightPx.toDp() })
             .graphicsLayer {}
             .then(TickDrawElement(clock, measurer, resolved, textKey, label, alignEnd)),
     )
+}
+
+/** Ширина строки в пикселях, округлённая вверх: иначе последний глиф срезается коробкой. */
+internal fun textWidthPx(layout: TextLayoutResult): Int {
+    val line = if (layout.lineCount > 0) layout.getLineRight(0) else 0f
+    return ceil(line.toDouble()).toInt().coerceAtLeast(layout.size.width)
 }
 
 private val TickConstraints = Constraints(maxWidth = Constraints.Infinity)
@@ -495,7 +519,8 @@ private class TickDrawNode(
 
     override fun ContentDrawScope.draw() {
         val text = layout ?: return
-        drawText(text, topLeft = Offset(tickTextX(size.width, text.size.width.toFloat(), alignEnd), 0f))
+        val glyph = textWidthPx(text).toFloat()
+        drawText(text, topLeft = Offset(tickTextX(size.width, glyph, alignEnd), 0f))
     }
 
     override fun SemanticsPropertyReceiver.applySemantics() {

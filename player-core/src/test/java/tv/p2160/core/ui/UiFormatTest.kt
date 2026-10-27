@@ -67,6 +67,16 @@ class UiFormatTest {
     }
 
     @Test
+    fun unknownDurationReservesEveryElapsedFormat() {
+        assertEquals(listOf(UNKNOWN_TIME, "8:88", "88:88", TIME_SAMPLE), elapsedBoxSamples(0L))
+        assertEquals(listOf(UNKNOWN_TIME, "8:88", "88:88", TIME_SAMPLE), elapsedBoxSamples(-1L))
+        assertEquals(listOf("8:88"), elapsedBoxSamples(5 * 60_000L))
+        assertEquals(listOf("88:88"), elapsedBoxSamples(10 * 60_000L))
+        assertEquals(listOf("8:88:88"), elapsedBoxSamples(60 * 60_000L))
+        assertEquals(listOf("88:88:88"), elapsedBoxSamples(10 * 60 * 60_000L))
+    }
+
+    @Test
     fun tickTextSitsAtTheStartOrTheEndOfItsBox() {
         assertEquals(0f, tickTextX(200f, 80f, alignEnd = false), 0.01f)
         assertEquals(120f, tickTextX(200f, 80f, alignEnd = true), 0.01f)

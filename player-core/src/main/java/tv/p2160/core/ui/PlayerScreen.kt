@@ -1204,7 +1204,7 @@ internal fun TransportReadout(
             val durationKnown = state.durationMs > 0
             FixedTickText(
                 clock = clock,
-                sample = if (durationKnown) elapsedTimeSample(state.durationMs) else UNKNOWN_TIME,
+                samples = elapsedBoxSamples(state.durationMs),
                 style = timeStyle,
                 color = Color.White,
                 textKey = state.durationMs,
@@ -1232,7 +1232,7 @@ internal fun TransportReadout(
             val durationMs = state.durationMs
             FixedTickText(
                 clock = clock,
-                sample = remainingTimeSample(durationMs),
+                samples = listOf(remainingTimeSample(durationMs)),
                 style = timeStyle,
                 color = Color.White.copy(alpha = 0.85f),
                 textKey = durationMs,

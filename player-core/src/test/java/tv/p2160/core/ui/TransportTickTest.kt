@@ -5,11 +5,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -17,6 +20,10 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -51,7 +58,7 @@ class TransportTickTest {
                 ) {
                     FixedTickText(
                         clock = clock,
-                        sample = TIME_SAMPLE,
+                        samples = listOf(TIME_SAMPLE),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White,
                         textKey = Unit,
@@ -203,6 +210,118 @@ class TransportTickTest {
         assertEquals("0:30", description("time-elapsed"))
         assertEquals("−0:30 / 1:00", description("time-remaining"))
         rule.onNodeWithTag("seek-bar").performTouchInput { up() }
+    }
+
+    @Test
+    fun bufferingElapsedKeepsTheLastDigitAndDoesNotRelayout() {
+        val clock = TransportClock(209_000L, 0L)
+        val measures = intArrayOf(0)
+        val probe = intArrayOf(0)
+        rule.setContent {
+            MaterialTheme {
+                val measurer = rememberTextMeasurer()
+                val style = MaterialTheme.typography.bodyMedium.merge(
+                    TextStyle(fontFeatureSettings = "tnum", color = Color.White),
+                )
+                SideEffect {
+                    val layout = measurer.measure(
+                        "3:29",
+                        style = style,
+                        maxLines = 1,
+                        softWrap = false,
+                        constraints = Constraints(maxWidth = Constraints.Infinity),
+                    )
+                    probe[0] = textWidthPx(layout)
+                }
+                Box(
+                    Modifier.layout { measurable, constraints ->
+                        measures[0]++
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    },
+                ) {
+                    FixedTickText(
+                        clock = clock,
+                        samples = elapsedBoxSamples(0L),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        textKey = 0L,
+                        label = { transportElapsedText(durationKnown = false, it.shownMs()) },
+                        modifier = Modifier.testTag("readout"),
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        assertEquals("3:29", description("readout"))
+        val width = rule.onNodeWithTag("readout").getUnclippedBoundsInRoot().let { it.right - it.left }
+        assertTrue("box ${width.value} dp is narrower than 3:29 (${probe[0]} px)", width.value * rule.density.density >= probe[0])
+        val before = measures[0]
+        clock.publish(210_000L, 0L)
+        rule.waitForIdle()
+        assertEquals("3:30", description("readout"))
+        val after = rule.onNodeWithTag("readout").getUnclippedBoundsInRoot().let { it.right - it.left }
+        assertEquals(width.value, after.value, 0.05f)
+        assertEquals(before, measures[0])
+    }
+
+    @Test
+    fun reservedWidthCoversEveryElapsedAndRemainingString() {
+        val elapsed = listOf(UNKNOWN_TIME, "3:29", "9:59", "10:00", "59:59", "1:23:45", "12:34:56")
+        val remaining = listOf(
+            5 * 60_000L to listOf("−3:29 / 5:00", "−0:00 / 5:00", "−9:59 / 5:00"),
+            10 * 60_000L to listOf("−10:00 / 10:00", "−59:59 / 59:59"),
+            60 * 60_000L to listOf("−59:59 / 1:00:00", "−1:00:00 / 1:00:00", "−0:01 / 1:00:00"),
+        )
+        val scales = listOf(1f to 2f, 1.3f to 2f, 1f to 4f, 1.3f to 4f)
+        val widths = mutableMapOf<String, Int>()
+        rule.setContent {
+            scales.forEach { (font, dens) ->
+                CompositionLocalProvider(LocalDensity provides Density(density = dens, fontScale = font)) {
+                    MaterialTheme {
+                        val measurer = rememberTextMeasurer()
+                        val style = MaterialTheme.typography.bodyMedium.merge(TextStyle(fontFeatureSettings = "tnum"))
+                        SideEffect {
+                            val key = "$font@$dens"
+                            fun widthOf(text: String): Int {
+                                val layout = measurer.measure(
+                                    text,
+                                    style = style,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    constraints = Constraints(maxWidth = Constraints.Infinity),
+                                )
+                                return textWidthPx(layout)
+                            }
+                            val box = elapsedBoxSamples(0L).maxOf { widthOf(it) }
+                            widths["$key|elapsed"] = box
+                            elapsed.forEach { text -> widths["$key|e|$text"] = widthOf(text) }
+                            remaining.forEach { (duration, texts) ->
+                                val reserved = widthOf(remainingTimeSample(duration))
+                                widths["$key|r|$duration"] = reserved
+                                texts.forEach { text -> widths["$key|t|$text"] = widthOf(text) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        scales.forEach { (font, dens) ->
+            val key = "$font@$dens"
+            val box = widths.getValue("$key|elapsed")
+            elapsed.forEach { text ->
+                val width = widths.getValue("$key|e|$text")
+                assertTrue("$text at font $font density $dens is $width px, box $box", box >= width)
+            }
+            remaining.forEach { (duration, texts) ->
+                val reserved = widths.getValue("$key|r|$duration")
+                texts.forEach { text ->
+                    val width = widths.getValue("$key|t|$text")
+                    assertTrue("$text at font $font density $dens is $width px, reserved $reserved", reserved >= width)
+                }
+            }
+        }
     }
 
     private fun description(tag: String): String =

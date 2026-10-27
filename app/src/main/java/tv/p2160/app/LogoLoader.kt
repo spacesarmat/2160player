@@ -109,7 +109,7 @@ object LogoLoader {
         MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 }
 
-/** Логотип канала; пока грузится или его нет — [placeholder]. */
+/** Логотип канала; пока грузится или его нет - [placeholder]. */
 @Composable
 fun ChannelLogo(url: String?, sizePx: Int, modifier: Modifier = Modifier, placeholder: @Composable () -> Unit) {
     val context = LocalContext.current

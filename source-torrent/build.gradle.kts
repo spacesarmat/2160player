@@ -35,7 +35,7 @@ kotlin {
 dependencies {
     implementation(project(":player-core"))
     api(libs.libtorrent4j)
-    // Нативные .so внутри jar (lib/<abi>/libtorrent4j.so) — AGP раскладывает их по ABI-сплитам.
+    // Нативные .so внутри jar (lib/<abi>/libtorrent4j.so) - AGP раскладывает их по ABI-сплитам.
     implementation(libs.libtorrent4j.android.arm)
     implementation(libs.libtorrent4j.android.arm64)
     implementation(libs.libtorrent4j.android.x86)

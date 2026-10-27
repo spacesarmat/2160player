@@ -40,7 +40,7 @@ object SegmentDetector {
 
     /**
      * Ключ сериала по имени файла: «Show.S01E02.1080p.mkv» → «show».
-     * null — имя не похоже на серию, отметки тогда хранятся для одного файла.
+     * null - имя не похоже на серию, отметки тогда хранятся для одного файла.
      */
     fun seriesKey(fileName: String?): String? {
         val name = fileName?.substringBeforeLast('.') ?: return null
@@ -57,7 +57,7 @@ object SegmentDetector {
     }
 }
 
-/** Отметки, поставленные пользователем вручную. Титры храним «от конца» — длина серий разная. */
+/** Отметки, поставленные пользователем вручную. Титры храним «от конца» - длина серий разная. */
 data class ManualMarks(
     val introStartMs: Long? = null,
     val introEndMs: Long? = null,

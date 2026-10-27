@@ -1,20 +1,20 @@
 # Встраивание 2160 Player за 5 минут
 
-Пошаговое руководство для разработчика стороннего приложения. Полный справочник — [API.md](API.md),
-рабочий пример — модуль [`samples/embed-demo`](../samples/embed-demo).
+Пошаговое руководство для разработчика стороннего приложения. Полный справочник - [API.md](API.md),
+рабочий пример - модуль [`samples/embed-demo`](../samples/embed-demo).
 
 > **Лицензия.** 2160 Player распространяется под [GPL v3](../LICENSE): приложение, в которое
 > встроена библиотека `player-core`, тоже должно быть открытым под GPL v3. Intent API (шаг 0) этого
-> не требует — вы лишь вызываете установленное отдельно приложение.
+> не требует - вы лишь вызываете установленное отдельно приложение.
 
-> Не хотите тянуть библиотеку в APK? Используйте Intent API — пользователь ставит приложение
+> Не хотите тянуть библиотеку в APK? Используйте Intent API - пользователь ставит приложение
 > 2160 Player, а вы отправляете ему Intent (совместимо с MX Player/VLC). См. [шаг 0](#шаг-0-вариант-без-библиотеки-intent-api).
 
 ## Требования
 
 - Android Gradle Plugin с поддержкой `compileSdk = 37` (проект собирается AGP 9.4, Kotlin 2.4, JDK 21 для Gradle, toolchain 17).
 - `minSdk` вашего приложения ≥ 24.
-- Jetpack Compose в модуле, если вы встраиваете `PlayerScreen` или создаёте `PlayerAction` (иконка — `ImageVector`).
+- Jetpack Compose в модуле, если вы встраиваете `PlayerScreen` или создаёте `PlayerAction` (иконка - `ImageVector`).
 
 ---
 
@@ -33,7 +33,7 @@ val launcher = registerForActivityResult(ActivityResultContracts.StartActivityFo
 launcher.launch(intent)
 ```
 
-Все ключи и форматы — [API.md §3](API.md#3-intent-api-без-библиотеки). Дальше — путь с библиотекой.
+Все ключи и форматы - [API.md §3](API.md#3-intent-api-без-библиотеки). Дальше - путь с библиотекой.
 
 ---
 
@@ -54,9 +54,9 @@ dependencies { implementation(project(":player-core")) }
 
 Модулю `player-core` нужен тот же version catalog (`gradle/libs.versions.toml`) с алиасами
 `libs.plugins.android.library`, `libs.plugins.kotlin.compose` и библиотеками из его `build.gradle.kts`.
-Если у вас свой каталог — проще вариант 1b.
+Если у вас свой каталог - проще вариант 1b.
 
-### 1b. Composite build (`includeBuild`) — исходники 2160 Player отдельным репозиторием
+### 1b. Composite build (`includeBuild`) - исходники 2160 Player отдельным репозиторием
 
 ```sh
 git clone https://github.com/spacesarmat/2160player.git ../2160player
@@ -71,7 +71,7 @@ includeBuild("../2160player") {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.12") }
+dependencies { implementation("tv.p2160:player-core:0.2.13") }
 ```
 
 Gradle соберёт библиотеку из исходников со своим каталогом версий; правки в `../2160player`
@@ -84,10 +84,10 @@ Gradle соберёт библиотеку из исходников со сво
 
 ```sh
 ./gradlew :player-core:publishReleasePublicationToMavenLocal
-# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.12-SNAPSHOT
+# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.13-SNAPSHOT
 ```
 
-Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.12/` (AAR, POM, Gradle module metadata, sources).
+Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.13/` (AAR, POM, Gradle module metadata, sources).
 
 ```kotlin
 // settings.gradle.kts вашего проекта
@@ -100,7 +100,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.12") }
+dependencies { implementation("tv.p2160:player-core:0.2.13") }
 ```
 
 ### 1d. GitHub Packages
@@ -110,14 +110,14 @@ dependencies { implementation("tv.p2160:player-core:0.2.12") }
 ```sh
 export GITHUB_ACTOR=<логин>
 export GITHUB_TOKEN=<токен>
-./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.12
+./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.13
 ```
 
 Вместо переменных окружения можно задать `gpr.user` / `gpr.key` в `~/.gradle/gradle.properties`.
 В GitHub Actions достаточно `GITHUB_TOKEN` с `permissions: packages: write`. Никогда не
 коммитьте токены в репозиторий.
 
-**Подключение** (токен с правом `read:packages` — GitHub Packages требует авторизацию даже для публичных пакетов):
+**Подключение** (токен с правом `read:packages` - GitHub Packages требует авторизацию даже для публичных пакетов):
 
 ```kotlin
 // settings.gradle.kts
@@ -137,7 +137,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.12") }
+dependencies { implementation("tv.p2160:player-core:0.2.13") }
 ```
 
 ---
@@ -174,7 +174,7 @@ android {
 `PlaybackService` (уведомление с управлением, экран блокировки, гарнитура, фоновое воспроизведение),
 разрешения `INTERNET`, `ACCESS_NETWORK_STATE`, `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA),
 `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` и `usesCleartextTraffic`.
-Торренты — отдельный модуль `:source-torrent` ([API.md §21](API.md#21-торренты-модуль-source-torrent)). ProGuard-правила подключаются автоматически (`consumer-rules.pro`).
+Торренты - отдельный модуль `:source-torrent` ([API.md §21](API.md#21-торренты-модуль-source-torrent)). ProGuard-правила подключаются автоматически (`consumer-rules.pro`).
 
 ---
 
@@ -188,7 +188,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.parse("https://example.com/m
 ```
 
 Подходят `http(s)`, HLS/DASH, `rtsp`, `file://`, `content://`, `smb://host/share/file.mkv`,
-а также `.iso`/папка `BDMV` Blu-ray — без дополнительного кода.
+а также `.iso`/папка `BDMV` Blu-ray - без дополнительного кода.
 
 С возвратом позиции:
 
@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
 ## Шаг 4. «Сейчас играет» и своя кнопка
 
 ```kotlin
-// Application.onCreate — кнопка в верхней панели плеера
+// Application.onCreate - кнопка в верхней панели плеера
 Player2160.registerAction(
     PlayerAction("share", Icons.Default.Share, "Поделиться ссылкой") { context, nowPlaying ->
         val uri = nowPlaying?.uri ?: return@PlayerAction
@@ -217,7 +217,7 @@ Player2160.registerAction(
     }
 )
 
-// Любой Compose-экран — мини-плеер
+// Любой Compose-экран - мини-плеер
 val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 np?.let { Text("${it.title}: ${it.positionMs / 1000} c, ${if (it.isPlaying) "играет" else "пауза"}") }
 ```
@@ -238,11 +238,11 @@ setContent {
 }
 // onStart: controller.setInBackground(false)
 // onStop:  controller.saveProgress(); затем либо controller.player.pause(),
-//          либо (фоновое воспроизведение) controller.setInBackground(true) — см. API.md §15.4
+//          либо (фоновое воспроизведение) controller.setInBackground(true) - см. API.md §15.4
 // когда экран закрывается навсегда: controller.release()
 ```
 
-Полный пример с ViewModel, PiP и выбором субтитров — [API.md §6.2](API.md#62-полный-пример-activity)
+Полный пример с ViewModel, PiP и выбором субтитров - [API.md §6.2](API.md#62-полный-пример-activity)
 и `samples/embed-demo/src/main/java/tv/p2160/sample/embed/EmbeddedPlayerActivity.kt`.
 
 ---
@@ -257,18 +257,18 @@ Player2160.settings(context).update {
         preferredAudioLanguages = listOf("en", "ru"),
         resizeMode = ResizeMode.FIT_WIDTH,   // FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL
         backgroundPlayback = true,           // видео звучит, когда плеер свёрнут
-        backgroundAudio = false,             // музыка при сворачивании — на паузу
+        backgroundAudio = false,             // музыка при сворачивании - на паузу
         pictureInPicture = false,            // без окна «картинка в картинке»
         keepScreenOn = true,                // не гасить экран, пока идёт видео или эфир (по умолчанию и так true)
     )
 }
 ```
 
-Движок (буфер, тайм-ауты, фоновая работа) настраивается отдельно — до создания плеера:
+Движок (буфер, тайм-ауты, фоновая работа) настраивается отдельно - до создания плеера:
 
 ```kotlin
 Player2160.config = PlayerConfig(
-    bufferTargetBytes = 32 * 1024 * 1024,   // свой предел; по умолчанию PlayerConfig.AUTO — по памяти устройства (24–128 МБ)
+    bufferTargetBytes = 32 * 1024 * 1024,   // свой предел; по умолчанию PlayerConfig.AUTO - по памяти устройства (24–128 МБ)
     readTimeoutMs = 90_000,                 // медленные источники
     introDetection = false,                 // отрезки даёт ваш сервер
     readChapters = false,
@@ -277,17 +277,17 @@ Player2160.config = PlayerConfig(
 )
 ```
 
-Все поля — [API.md §15.6](API.md#156-настройка-движка-playerconfig).
+Все поля - [API.md §15.6](API.md#156-настройка-движка-playerconfig).
 
 Масштаб пользователь меняет и сам: панель «Видео» (кнопка-рамка сверху справа; TalkBack говорит
 «Масштаб и качество» и не крутит режим сама) или щипок двумя пальцами
-(развести — заполнить экран, свести — целиком). Выбор сохраняется в `Settings.resizeMode`.
+(развести - заполнить экран, свести - целиком). Выбор сохраняется в `Settings.resizeMode`.
 
 `keepScreenOn` (по умолчанию включено) держит экран включённым, только пока в `PlayerScreen`
 идёт видео или прямой эфир, включая буферизацию после «играть». Пауза, конец и уход с экрана
 флаг снимают. В приложении 2160 Player это переключатель «Не выключать экран во время просмотра».
 
-Темы: `cinema`, `ocean`, `ruby`, `mint`, `amoled`, `light`. Свои строки и переводы —
+Темы: `cinema`, `ocean`, `ruby`, `mint`, `amoled`, `light`. Свои строки и переводы -
 `app/src/main/assets/i18n/<ваш_модуль>/<код>.json` ([API.md §13](API.md#13-локализация)).
 
 ---
@@ -316,21 +316,21 @@ adb install -r samples/embed-demo/build/outputs/apk/debug/embed-demo-debug.apk
 | Плеер не открывается из других приложений | `Player2160Activity` в библиотеке `exported=false`; переопределите в своём манифесте ([API.md §4.2](API.md#42-манифест)). |
 | `ACTION_VIEW` по http-ссылке открывает браузер | Укажите MIME (`video/*`) или явный пакет/компонент. |
 | SMB: «access denied» | Сохраните сервер с логином через `SmbServers.get(context).save(SmbServer(...))`; логин в URI не поддерживается. |
-| Звук продолжает играть после ухода с вашего экрана | Во встроенном `PlayerScreen` пауза в `onStop` — ваша задача (шаг 5). |
+| Звук продолжает играть после ухода с вашего экрана | Во встроенном `PlayerScreen` пауза в `onStop` - ваша задача (шаг 5). |
 | В шторке появилось уведомление плеера | Это медиасессия `PlaybackService`: управление с экрана блокировки, гарнитуры и Bluetooth. Исчезает после `controller.release()`. |
 | Нужно остановить воспроизведение из своего кода (с любого потока) | `Player2160.pause()`. |
-| 4K падает с нехваткой памяти на слабом ТВ | По умолчанию буфер уже подбирается по памяти (`PlayerConfig.AUTO`); если мало — задайте `bufferTargetBytes` вручную (16–32 МБ). Буфер живёт в куче Java: `android:largeHeap="true"` в манифесте приложения позволяет `AUTO` взять больше на мощных устройствах. |
-| Дёргается картинка на панорамах (ТВ) | Включите `Settings.frameRateMatching` — частота экрана под видео (API.md §15.7). |
+| 4K падает с нехваткой памяти на слабом ТВ | По умолчанию буфер уже подбирается по памяти (`PlayerConfig.AUTO`); если мало - задайте `bufferTargetBytes` вручную (16–32 МБ). Буфер живёт в куче Java: `android:largeHeap="true"` в манифесте приложения позволяет `AUTO` взять больше на мощных устройствах. |
+| Дёргается картинка на панорамах (ТВ) | Включите `Settings.frameRateMatching` - частота экрана под видео (API.md §15.7). |
 | Нужно понять, почему тормозит | `Settings.statsOverlay` или `PlayerController.stats`: декодеры, пропущенные кадры, буфер, сеть, процессор, память. |
 | Медленный источник отваливается по тайм-ауту | Увеличьте `PlayerConfig.connectTimeoutMs` / `readTimeoutMs`. |
-| Плеер сам выбирает дорожки или продолжает «не с того места» | `PlayerConfig(restoreFromHistory = false)` — дорожки и позицию задаёт ваше приложение. |
+| Плеер сам выбирает дорожки или продолжает «не с того места» | `PlayerConfig(restoreFromHistory = false)` - дорожки и позицию задаёт ваше приложение. |
 | Лишние сетевые чтения при старте серии | `PlayerConfig(introDetection = false, readChapters = false)`. |
-| Фильм с Dolby Vision играет без DV | Устройство не умеет этот профиль — плеер показывает совместимый слой HDR10 и пишет об этом в «Сведениях о файле» ([API.md §15.5](API.md#155-dolby-vision-без-декодера)). |
+| Фильм с Dolby Vision играет без DV | Устройство не умеет этот профиль - плеер показывает совместимый слой HDR10 и пишет об этом в «Сведениях о файле» ([API.md §15.5](API.md#155-dolby-vision-без-декодера)). |
 
 ## Сборка с NDI®
 
 Приложение 2160 Player умеет транслировать камеру и экран по NDI® (NDI® is a registered trademark of Vizrt NDI AB,
 https://ndi.video/). Библиотека NDI SDK закрытая и в репозиторий не входит: установите «NDI SDK for Android» с
-https://ndi.video/ и укажите путь в `local.properties` — `ndi.sdk.dir=C\:/Program Files/NDI/NDI 6 SDK (Android)` —
+https://ndi.video/ и укажите путь в `local.properties` - `ndi.sdk.dir=C\:/Program Files/NDI/NDI 6 SDK (Android)` -
 или переменной `NDI_SDK_DIR` (путь по умолчанию проверяется сам). Без SDK приложение собирается без NDI. Подробности
-и лицензия — `third-party/ndi/NOTICE.md` и `LICENSE-NDI-EXCEPTION.md`. Для `player-core` NDI не нужен.
+и лицензия - `third-party/ndi/NOTICE.md` и `LICENSE-NDI-EXCEPTION.md`. Для `player-core` NDI не нужен.

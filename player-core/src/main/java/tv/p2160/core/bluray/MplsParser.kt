@@ -8,7 +8,7 @@ data class MplsPlayItem(
     val stcId: Int,
     val inTime45k: Long,
     val outTime45k: Long,
-    /** Число ракурсов (1 — обычный элемент); используется ракурс 1 — [clipName]. */
+    /** Число ракурсов (1 - обычный элемент); используется ракурс 1 - [clipName]. */
     val angleCount: Int,
     val videoStreams: List<BlurayStream>,
     val audioStreams: List<BlurayStream>,
@@ -20,7 +20,7 @@ data class MplsPlayItem(
     val duration45k: Long get() = (outTime45k - inTime45k).coerceAtLeast(0)
 }
 
-/** Метка плейлиста; [type] 1 — начало главы (entry mark), 2 — link point. */
+/** Метка плейлиста; [type] 1 - начало главы (entry mark), 2 - link point. */
 data class MplsMark(val type: Int, val playItemRef: Int, val time45k: Long, val entryPid: Int, val duration45k: Long)
 
 data class MplsPlaylist(

@@ -37,7 +37,7 @@ internal class BuiltPlayer(
     val passthrough: PassthroughGuard,
     /** Память буфера (для статистики: сколько занято). */
     val allocator: DefaultAllocator,
-    /** Итоговый предел буфера, байт (0 — без предела). */
+    /** Итоговый предел буфера, байт (0 - без предела). */
     val bufferTargetBytes: Int,
 ) {
     fun release() {
@@ -63,7 +63,7 @@ internal object PlayerFactory {
 
     /**
      * @param lowLatency живой источник (камера по RTSP и т.п.): почти без буфера перед стартом и не больше
-     *   2 с в буфере — задержка ~0,3–0,5 с вместо 2 с, ценой подгрузок на плохой сети.
+     *   2 с в буфере - задержка ~0,3–0,5 с вместо 2 с, ценой подгрузок на плохой сети.
      */
     fun build(context: Context, settings: Settings, headers: Map<String, String>, config: PlayerConfig = PlayerConfig(), lowLatency: Boolean = false): BuiltPlayer {
         val mode = when (settings.decoder) {
@@ -87,13 +87,13 @@ internal object PlayerFactory {
                 buildUponParameters()
                     .setPreferredAudioLanguages(*settings.preferredAudioLanguages.toTypedArray())
                     .setPreferredTextLanguages(*settings.preferredSubtitleLanguages.toTypedArray())
-                    // Даже если декодер «не уверен» в формате — пробуем, а не молчим.
+                    // Даже если декодер «не уверен» в формате - пробуем, а не молчим.
                     .setExceedRendererCapabilitiesIfNecessary(true)
                     .setExceedAudioConstraintsIfNecessary(true)
                     .setExceedVideoConstraintsIfNecessary(true)
                     // Туннельный режим (ТВ): кадры идут прямо в дисплей, синхронизацию делает железо.
                     .setTunnelingEnabled(settings.tunneling)
-                    // Аудио offload для звука без видео (музыка, видео в фоне); ночной звук требует обработки — тогда нет.
+                    // Аудио offload для звука без видео (музыка, видео в фоне); ночной звук требует обработки - тогда нет.
                     .setAudioOffloadPreferences(offloadPreferences(settings.audioOffload && !nightNow))
                     .build()
             )
@@ -106,7 +106,7 @@ internal object PlayerFactory {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(config.connectTimeoutMs)
             .setReadTimeoutMs(config.readTimeoutMs)
-        // smb:// — свой источник, остальное (file, content, http…) — стандартный.
+        // smb:// - свой источник, остальное (file, content, http…) - стандартный.
         val dataSourceFactory = RoutingDataSource.Factory(context, DefaultDataSource.Factory(context, httpFactory))
 
         val extractors = DefaultExtractorsFactory()
@@ -121,7 +121,7 @@ internal object PlayerFactory {
         val m2tsExtractors = M2tsExtractorsFactory(fallback = extractors, hintsForUri = DiscMediaSourceFactory::hintsFor)
 
         // Предел буфера: без него 4K-ремукс держит ~130 МБ, и слабые ТВ падают от нехватки памяти.
-        // По умолчанию — по памяти устройства (24–128 МБ).
+        // По умолчанию - по памяти устройства (24–128 МБ).
         val bufferBytes = when (config.bufferTargetBytes) {
             PlayerConfig.AUTO -> DeviceProfile.bufferTargetBytes(context)
             else -> config.bufferTargetBytes.coerceAtLeast(0)
@@ -151,7 +151,7 @@ internal object PlayerFactory {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(settings.seekStepSeconds * 1000L)
             .setSeekForwardIncrementMs(settings.seekStepSeconds * 1000L)
-            // Цикл воспроизведения просыпается, только когда рендерерам есть что делать, — меньше пробуждений процессора.
+            // Цикл воспроизведения просыпается, только когда рендерерам есть что делать, - меньше пробуждений процессора.
             .experimentalSetDynamicSchedulingEnabled(true)
             .build()
 
@@ -161,9 +161,9 @@ internal object PlayerFactory {
 }
 
 /**
- * RTSP — с RTP внутри TCP-соединения (interleaved). По умолчанию Media3 сначала ждёт RTP по UDP, а по Wi-Fi
+ * RTSP - с RTP внутри TCP-соединения (interleaved). По умолчанию Media3 сначала ждёт RTP по UDP, а по Wi-Fi
  * (телефон → ТВ, точки доступа, NAT) UDP часто теряется или режется: картинка не приходит. TCP надёжнее,
- * задержка почти та же. Остальные источники — как у [delegate].
+ * задержка почти та же. Остальные источники - как у [delegate].
  */
 @OptIn(UnstableApi::class)
 internal class RtspOverTcp(private val delegate: androidx.media3.exoplayer.source.MediaSource.Factory) :

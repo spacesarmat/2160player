@@ -1,9 +1,9 @@
 # Intent API
 
-Отдельное приложение, без библиотеки. Пакет release — `tv.p2160.player`, debug — `tv.p2160.player.debug`.
+Отдельное приложение, без библиотеки. Пакет release - `tv.p2160.player`, debug - `tv.p2160.player.debug`.
 Activity: `tv.p2160.core.Player2160Activity`.
 
-Полные таблицы и примеры `adb` — [API.md §3](../API.md#3-intent-api-без-библиотеки).
+Полные таблицы и примеры `adb` - [API.md §3](../API.md#3-intent-api-без-библиотеки).
 
 ## Как открыть
 
@@ -13,10 +13,10 @@ Activity: `tv.p2160.core.Player2160Activity`.
 | `ACTION_VIEW` | `content`, `file`, `http`, `https` | `video/*`, `audio/*`, HLS, DASH, SmoothStreaming, mp4, matroska, ogg |
 | `ACTION_VIEW` | `rtsp` | без MIME |
 
-`ACTION_VIEW` на `http(s)` **без MIME** фильтр не ловит. `smb://`, `torrent://`, `udp://` — только
+`ACTION_VIEW` на `http(s)` **без MIME** фильтр не ловит. `smb://`, `torrent://`, `udp://` - только
 явный компонент `ComponentName("tv.p2160.player", "tv.p2160.core.Player2160Activity")`.
 
-Обязательное поле одно: `Intent.data`. Нет `data` — плеер не запускает воспроизведение.
+Обязательное поле одно: `Intent.data`. Нет `data` - плеер не запускает воспроизведение.
 
 ## Вход
 
@@ -54,7 +54,7 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 | `end_by` | String | `user` или `playback_completion` |
 | `extra_position`, `extra_duration` | Long | как у VLC |
 
-Свайп из «Недавних» и убийство процесса — `RESULT_CANCELED` без extras.
+Свайп из «Недавних» и убийство процесса - `RESULT_CANCELED` без extras.
 Позиция длиннее `Int` (~24,8 суток) в MX-полях обрезается до Int; в VLC-полях остаётся Long.
 
 ```kotlin

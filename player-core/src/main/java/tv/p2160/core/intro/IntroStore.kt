@@ -180,7 +180,7 @@ class IntroStore(private val dir: File, private val maxFingerprints: Int = 400) 
 
     private companion object {
         const val MAGIC = 0x50324650 // «P2FP»
-        /** Меняется вместе с алгоритмом отпечатков — старый кэш тогда игнорируется. */
+        /** Меняется вместе с алгоритмом отпечатков - старый кэш тогда игнорируется. */
         const val VERSION = 1
         const val MAX_FRAMES = 200_000
     }

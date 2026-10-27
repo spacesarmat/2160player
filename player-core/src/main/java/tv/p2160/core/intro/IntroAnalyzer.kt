@@ -20,7 +20,7 @@ class IntroAnalyzer(
 ) {
 
     data class Config(
-        /** Сколько начала серии слушать. Больше — дольше и тяжелее для сети (читается весь поток файла). */
+        /** Сколько начала серии слушать. Больше - дольше и тяжелее для сети (читается весь поток файла). */
         val introWindowMs: Long = 600_000,
         /** Сколько конца серии слушать для титров. */
         val creditsWindowMs: Long = 360_000,
@@ -35,8 +35,8 @@ class IntroAnalyzer(
     )
 
     /**
-     * Серия: [key] — устойчивый ключ файла (для кэша), [durationMs] — если уже известна,
-     * [open] — открыть источник звука (null — не получилось); вызывается не больше одного раза.
+     * Серия: [key] - устойчивый ключ файла (для кэша), [durationMs] - если уже известна,
+     * [open] - открыть источник звука (null - не получилось); вызывается не больше одного раза.
      */
     class Episode(val key: String, val durationMs: Long = -1, val open: () -> PcmSource?)
 
@@ -108,7 +108,7 @@ class IntroAnalyzer(
 
     private fun addTemplate(list: List<Fingerprint>, new: Fingerprint?, params: IntroMatcher.Params): List<Fingerprint> {
         new ?: return list
-        // Та же музыка уже есть — оставляем старый шаблон, но поднимаем его наверх.
+        // Та же музыка уже есть - оставляем старый шаблон, но поднимаем его наверх.
         val same = list.indexOfFirst { IntroMatcher.matchTemplate(it, new, params) != null }
         return if (same >= 0) listOf(list[same]) + list.filterIndexed { i, _ -> i != same }
         else (listOf(new) + list).take(config.maxTemplates)
@@ -169,7 +169,7 @@ class IntroAnalyzer(
             val stream = fingerprinter.stream(startMs)
             val got = src.read(startMs, lengthMs, fingerprinter.config.sampleRate, stream) { !job.isActive }
             coroutineContext.ensureActive()
-            // Совсем мало звука — источник не читается; кэшировать нечего.
+            // Совсем мало звука - источник не читается; кэшировать нечего.
             if (got < fingerprinter.config.sampleRate * 20L) null else stream.finish()
         }
 

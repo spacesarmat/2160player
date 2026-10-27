@@ -10,7 +10,7 @@ data class DiscEntry(val name: String, val isDirectory: Boolean, val size: Long)
 
 /**
  * Файловая система диска: ISO (UDF) или папка BDMV.
- * Пути — относительно корня, через «/», регистр имён не важен ("BDMV/PLAYLIST/00800.mpls").
+ * Пути - относительно корня, через «/», регистр имён не важен ("BDMV/PLAYLIST/00800.mpls").
  */
 interface DiscFileSystem : Closeable {
     /** Содержимое каталога или null, если каталога нет. */
@@ -38,7 +38,7 @@ internal fun splitPath(path: String): List<String> =
 
 /**
  * Поставщик содержимого папки (локальная папка, SMB, SAF).
- * Пути — уже нормализованные, с точным регистром, "" — корень.
+ * Пути - уже нормализованные, с точным регистром, "" - корень.
  */
 interface DirectoryProvider : Closeable {
     fun list(path: String): List<DiscEntry>?
@@ -58,7 +58,7 @@ class FileDirectoryProvider(private val root: File) : DirectoryProvider {
 
 /**
  * Диск в виде папки (корень с BDMV или сама BDMV). Имена ищутся без учёта регистра,
- * листинги кэшируются — у сетевых поставщиков каждый запрос дорогой.
+ * листинги кэшируются - у сетевых поставщиков каждый запрос дорогой.
  */
 class DirectoryFileSystem(private val provider: DirectoryProvider) : DiscFileSystem {
     private val listings = HashMap<String, List<DiscEntry>?>()
@@ -66,7 +66,7 @@ class DirectoryFileSystem(private val provider: DirectoryProvider) : DiscFileSys
     @Synchronized
     private fun listExact(path: String): List<DiscEntry>? = listings.getOrPut(path) { provider.list(path) }
 
-    /** Переводит путь в точный регистр; null — нет такого элемента. */
+    /** Переводит путь в точный регистр; null - нет такого элемента. */
     private fun resolve(path: String): Pair<String, DiscEntry>? {
         var exact = ""
         var entry = DiscEntry("", true, 0)

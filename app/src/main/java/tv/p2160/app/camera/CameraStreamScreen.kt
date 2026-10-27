@@ -96,7 +96,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
     val streaming = state as? CameraStreamState.Streaming
     val currentCam = cameras.firstOrNull { it.id == config.cameraId } ?: cameras.firstOrNull()
     val torch by CameraStream.torch.collectAsState()
-    // У каждого устройства свои режимы: если выбранного у этой камеры нет — 1080p·30, иначе лучший до 30 fps.
+    // У каждого устройства свои режимы: если выбранного у этой камеры нет - 1080p·30, иначе лучший до 30 fps.
     LaunchedEffect(currentCam?.id) {
         val modes = currentCam?.modes.orEmpty()
         if (streaming == null && modes.isNotEmpty() && config.quality !in modes) {
@@ -107,7 +107,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
     val wide = LocalConfiguration.current.screenWidthDp >= 600
     val screen = config.source == StreamSource.SCREEN
     val screenModes = remember { CameraStream.screenModes() }
-    // Экран: режимы кодировщика, а не камеры; выбранного нет — 1080p·30 (или лучший до 30 fps).
+    // Экран: режимы кодировщика, а не камеры; выбранного нет - 1080p·30 (или лучший до 30 fps).
     LaunchedEffect(screen) {
         val modes = if (screen) screenModes else currentCam?.modes.orEmpty()
         if (streaming == null && modes.isNotEmpty() && config.quality !in modes) {
@@ -115,7 +115,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
             CameraStream.update(context) { it.copy(quality = pick) }
         }
     }
-    // Системный запрос «Начать запись экрана?»; согласились — трансляция в сервисе.
+    // Системный запрос «Начать запись экрана?»; согласились - трансляция в сервисе.
     val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode == android.app.Activity.RESULT_OK && r.data != null) CameraStream.startScreen(context, r.resultCode, r.data!!)
     }
@@ -243,7 +243,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                         val selected = (config.cameraId ?: cameras.firstOrNull()?.id) == cam.id
                         val label = cam.name.text({ strings[it] }, strings.locale)
                         Choice(label, selected) {
-                            // Новая камера может не уметь текущее качество — берём лучшее из того, что она умеет.
+                            // Новая камера может не уметь текущее качество - берём лучшее из того, что она умеет.
                             CameraStream.update(context) { c ->
                                 val q = if (c.quality in cam.modes || streaming != null) c.quality
                                 else cam.modes.lastOrNull { e -> e.height <= c.quality.height && e.fps <= c.quality.fps } ?: cam.modes.first()
@@ -288,7 +288,7 @@ fun CameraStreamScreen(onBack: () -> Unit) {
                     onClick = { if (streaming == null) CameraStream.update(context) { it.copy(audio = !it.audio) } },
                 )
             }
-            // Звук экрана: микрофон, звук телефона или оба (звук телефона — Android 10+).
+            // Звук экрана: микрофон, звук телефона или оба (звук телефона - Android 10+).
             if (screen && config.audio && android.os.Build.VERSION.SDK_INT >= 29) item(key = "screen-audio") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ScreenAudio.entries.forEach { a ->
@@ -316,7 +316,7 @@ private fun CameraPreview() {
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
             SurfaceView(ctx).apply {
-                // Касание — фокус в точке, два пальца — зум щипком.
+                // Касание - фокус в точке, два пальца - зум щипком.
                 val taps = android.view.GestureDetector(ctx, object : android.view.GestureDetector.SimpleOnGestureListener() {
                     override fun onSingleTapUp(e: android.view.MotionEvent): Boolean = CameraStream.tapToFocus(this@apply, e)
                 })
@@ -327,7 +327,7 @@ private fun CameraPreview() {
                 }
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) = CameraStream.startPreview(context, this@apply)
-                    // Размер окна предпросмотра (поворот, раскладка) — иначе картинка рисуется в части окна.
+                    // Размер окна предпросмотра (поворот, раскладка) - иначе картинка рисуется в части окна.
                     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) =
                         CameraStream.setPreviewSize(width, height)
                     override fun surfaceDestroyed(holder: SurfaceHolder) = CameraStream.stopPreview(this@apply)
@@ -339,7 +339,7 @@ private fun CameraPreview() {
     DisposableEffect(Unit) { onDispose { view?.let(CameraStream::stopPreview) } }
 }
 
-/** Зум (ползунок, работает и с пульта) и возврат автофокуса. Фокус касанием и щипок — на самом предпросмотре. */
+/** Зум (ползунок, работает и с пульта) и возврат автофокуса. Фокус касанием и щипок - на самом предпросмотре. */
 @Composable
 private fun ZoomAndFocus() {
     val colors = MaterialTheme.colorScheme
@@ -471,7 +471,7 @@ private fun DestinationFields(config: CameraStreamConfig, enabled: Boolean) {
     }
 }
 
-/** Заготовки серверов RTMP: адреса приёма сервисов (ключ — из кабинета сервиса). */
+/** Заготовки серверов RTMP: адреса приёма сервисов (ключ - из кабинета сервиса). */
 private val RTMP_PRESETS = listOf(
     "YouTube" to "rtmp://a.rtmp.youtube.com/live2",
     "Twitch" to "rtmp://live.twitch.tv/app",
@@ -519,7 +519,7 @@ private fun PushStatus(s: CameraStreamState.Streaming) {
 private fun StreamAddress(s: CameraStreamState.Streaming) {
     val colors = MaterialTheme.colorScheme
     val full = s.urlWithAuth
-    // В QR — страница /watch: её откроет камера любого телефона (кнопка — 2160 Player или установка).
+    // В QR - страница /watch: её откроет камера любого телефона (кнопка - 2160 Player или установка).
     val qrText = CameraStream.watchUrl(s) ?: full
     val qr = remember(qrText) { ShareApp.qr(qrText, 512).asImageBitmap() }
     Row(
@@ -579,7 +579,7 @@ private fun LiveBadge() {
     }
 }
 
-/** Строка-переключатель: виджет Switch, как в настройках. Нажатие — на всей строке. */
+/** Строка-переключатель: виджет Switch, как в настройках. Нажатие - на всей строке. */
 @Composable
 private fun SwitchLine(
     title: String,
@@ -618,7 +618,7 @@ private fun SwitchLine(
 
 /**
  * Обычный ползунок: круглый бегунок и дорожка без точки на конце.
- * Штатный Slider Material 3 рисует высокий бегунок и точку конца шкалы — на зуме 1×
+ * Штатный Slider Material 3 рисует высокий бегунок и точку конца шкалы - на зуме 1×
  * бегунок оказывается слева, а точка справа, и положение не читается.
  */
 @OptIn(ExperimentalMaterial3Api::class)

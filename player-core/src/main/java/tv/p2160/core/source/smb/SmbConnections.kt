@@ -37,7 +37,7 @@ object SmbConnections {
     private val client: SMBClient by lazy {
         SMBClient(
             SmbConfig.builder()
-                // В Android нет MD4 для NTLM — берём реализацию из BouncyCastle.
+                // В Android нет MD4 для NTLM - берём реализацию из BouncyCastle.
                 .withSecurityProvider(BCSecurityProvider())
                 .withTimeout(20, TimeUnit.SECONDS)
                 .withSoTimeout(30_000)
@@ -108,7 +108,7 @@ object SmbConnections {
 
     /**
      * Общие дисковые папки сервера (без служебных `C$`, `IPC$`…).
-     * [credentials] — логин/пароль, share в нём не важен.
+     * [credentials] - логин/пароль, share в нём не важен.
      */
     fun listShares(host: String, credentials: SmbServer?): List<String> {
         val transport = SMBTransportFactories.SRVSVC.getTransport(session(host, credentials))

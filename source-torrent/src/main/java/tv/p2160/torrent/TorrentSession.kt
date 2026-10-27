@@ -52,12 +52,12 @@ data class TorrentFile(val index: Int, val path: String, val size: Long) {
 /** Настройки сессии libtorrent. */
 data class SessionConfig(
     val maxConnections: Int = 200,
-    /** Байт/с, 0 — без ограничения. */
+    /** Байт/с, 0 - без ограничения. */
     val uploadLimit: Int = 0,
     val downloadLimit: Int = 0,
     /**
      * POSIX-ввод/вывод вместо mmap. По умолчанию libtorrent сам выбирает mmap на 64-бит и
-     * POSIX на 32-бит — это и оставляем.
+     * POSIX на 32-бит - это и оставляем.
      */
     val posixDiskIo: Boolean = false,
     val userAgent: String = "2160Player/0.1 libtorrent/2.0",
@@ -91,23 +91,23 @@ data class TorrentStats(
     /** Скачано/нужно по выбранным файлам. */
     val wantedDone: Long,
     val wanted: Long,
-    /** Основной (выбранный пользователем) файл, -1 — не выбран. */
+    /** Основной (выбранный пользователем) файл, -1 - не выбран. */
     val primaryFile: Int,
     val primaryProgress: Float,
     /** Сколько байт подряд скачано от позиции чтения плеера. */
     val bufferedBytes: Long,
     val readers: Int,
     val error: String?,
-    /** Отдано за всё время (байт) — для правила «раздавать до 1:1». */
+    /** Отдано за всё время (байт) - для правила «раздавать до 1:1». */
     val uploadedTotal: Long = 0,
-    /** Секунд в состоянии «загружено» (раздача) — для правила «24 часа». */
+    /** Секунд в состоянии «загружено» (раздача) - для правила «24 часа». */
     val finishedSeconds: Long = 0,
 ) {
     enum class State { METADATA, CHECKING, DOWNLOADING, FINISHED, ERROR }
 }
 
 /**
- * Сессия libtorrent и потоковое чтение файлов. Без зависимостей от Android — работает и на
+ * Сессия libtorrent и потоковое чтение файлов. Без зависимостей от Android - работает и на
  * десктопной JVM (интеграционный тест).
  *
  * Чтение: [openStream] возвращает [FileStream], чей [FileStream.read] блокируется, пока нужный
@@ -119,7 +119,7 @@ class TorrentSession(
 ) : Closeable {
 
     interface Callbacks {
-        /** Получены метаданные; [torrent] — .torrent-файл (если удалось собрать). */
+        /** Получены метаданные; [torrent] - .torrent-файл (если удалось собрать). */
         fun onMetadata(id: String, torrent: ByteArray?) {}
         /** Готовы данные быстрого возобновления (вместе со словарём info). */
         fun onResumeData(id: String, data: ByteArray) {}
@@ -188,7 +188,7 @@ class TorrentSession(
         activeDownloads(if (c.lowMemory) 3 else 8)
         activeSeeds(if (c.lowMemory) 2 else 4)
         if (c.lowMemory) {
-            // Каждый известный пир — память; libtorrent по умолчанию помнит до 3000 на торрент.
+            // Каждый известный пир - память; libtorrent по умолчанию помнит до 3000 на торрент.
             setInteger(settings_pack.int_types.max_peerlist_size.swigValue(), 800)
             setInteger(settings_pack.int_types.max_paused_peerlist_size.swigValue(), 200)
         }
@@ -270,7 +270,7 @@ class TorrentSession(
 
     fun hasMetadata(id: String): Boolean = entries[id]?.handle?.torrentFile() != null
 
-    /** Список файлов; null — метаданные ещё не получены. */
+    /** Список файлов; null - метаданные ещё не получены. */
     fun files(id: String): List<TorrentFile>? {
         val ti = entries[id]?.handle?.torrentFile() ?: return null
         val fs = ti.files()
@@ -301,8 +301,8 @@ class TorrentSession(
     // ---------------------------------------------------------------- выбор файла и приоритеты
 
     /**
-     * Делает файл «основным»: качаем его последовательно, начало и хвост — в первую очередь.
-     * [exclusive] — остальные файлы перестают качаться.
+     * Делает файл «основным»: качаем его последовательно, начало и хвост - в первую очередь.
+     * [exclusive] - остальные файлы перестают качаться.
      */
     fun select(id: String, fileIndex: Int, exclusive: Boolean = true) {
         val entry = entries[id] ?: throw IOException("torrent $id is not active")
@@ -335,7 +335,7 @@ class TorrentSession(
 
     /**
      * Сразу спросить трекеры и DHT о пирах. Восстановленный из данных возобновления торрент помнит время
-     * прошлого анонса и иначе ждёт интервал трекера (15–30 мин) — всё это время «пиров: 0».
+     * прошлого анонса и иначе ждёт интервал трекера (15–30 мин) - всё это время «пиров: 0».
      */
     private fun announceNow(entry: Entry) {
         runCatching { entry.handle.forceReannounce(0, -1, TorrentHandle.IGNORE_MIN_INTERVAL) }
@@ -370,7 +370,7 @@ class TorrentSession(
                 sequentialTo = span.lastPiece
             }
         }
-        // Последовательная докачка — от позиции чтения, а не от начала файла (после перемотки).
+        // Последовательная докачка - от позиции чтения, а не от начала файла (после перемотки).
         if (sequentialTo >= 0) runCatching { entry.handle.setSequentialRange(sequentialFrom, sequentialTo) }
     }
 
@@ -387,7 +387,7 @@ class TorrentSession(
                 entry.handle.filePriority(fileIndex, Priority.DEFAULT)
                 entry.selected += fileIndex
             }
-            // Основной файл — последний открытый видео/аудио (следующая серия плейлиста), не субтитры.
+            // Основной файл - последний открытый видео/аудио (следующая серия плейлиста), не субтитры.
             if (entry.primary < 0 || TorrentFile(fileIndex, fs0.filePath(fileIndex), 0).isPlayable) entry.primary = fileIndex
             activate(entry)
         }
@@ -416,8 +416,8 @@ class TorrentSession(
 
         /**
          * Читает до [length] байт с позиции [position] (не дальше конца куска).
-         * Блокируется, пока кусок не скачан; [stallTimeoutMs] — сколько ждать при полном
-         * отсутствии загрузки по торренту. -1 — конец файла.
+         * Блокируется, пока кусок не скачан; [stallTimeoutMs] - сколько ждать при полном
+         * отсутствии загрузки по торренту. -1 - конец файла.
          */
         fun read(position: Long, buffer: ByteArray, offset: Int, length: Int, stallTimeoutMs: Long = 90_000): Int {
             if (closed) throw IOException("stream closed")
@@ -432,7 +432,7 @@ class TorrentSession(
             awaitPiece(piece, stallTimeoutMs)
             val n = minOf(length.toLong(), span.pieceEnd(piece) - position).toInt()
             if (n <= 0) throw IOException("short read at $position in ${path.name}")
-            // Кусок уже отмечен скачанным, а файл на диске ещё короче — короткая пауза, не обрыв воспроизведения.
+            // Кусок уже отмечен скачанным, а файл на диске ещё короче - короткая пауза, не обрыв воспроизведения.
             for (attempt in 0 until 8) {
                 if (closed) throw IOException("stream closed")
                 val raf = file ?: RandomAccessFile(path, "r").also { file = it }
@@ -588,7 +588,7 @@ class TorrentSession(
         announceNow(e)
     }
 
-    /** Пользователь сам продолжил раздачу — не ставить её на автопаузу. */
+    /** Пользователь сам продолжил раздачу - не ставить её на автопаузу. */
     fun keepActive(id: String): Boolean = entries[id]?.keepActive == true
 
     fun requestResumeData(id: String) {
@@ -597,7 +597,7 @@ class TorrentSession(
         runCatching { e.handle.saveResumeData(TorrentHandle.SAVE_INFO_DICT) }
     }
 
-    /** Убирает торрент из сессии; [deleteFiles] — вместе со скачанными данными. */
+    /** Убирает торрент из сессии; [deleteFiles] - вместе со скачанными данными. */
     fun remove(id: String, deleteFiles: Boolean) {
         val e = entries.remove(id) ?: return
         e.removed = true
@@ -617,7 +617,7 @@ class TorrentSession(
     }
 
     private companion object {
-        // status() без флагов не заполняет битовое поле кусков (и кэширует результат) —
+        // status() без флагов не заполняет битовое поле кусков (и кэширует результат) -
         // getBit на пустом поле роняет нативный код.
         val STATUS_FLAGS = TorrentHandle.QUERY_PIECES.or_(TorrentHandle.QUERY_NAME)
     }

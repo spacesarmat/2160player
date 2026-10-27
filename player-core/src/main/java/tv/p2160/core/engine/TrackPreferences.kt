@@ -8,12 +8,12 @@ data class TrackChoice(
     val audioLanguage: String?,
     /** Нормализованная подсказка из названия дорожки: "dub", "mvo", "original"… */
     val audioHint: String?,
-    /** null — субтитры выключены. */
+    /** null - субтитры выключены. */
     val textLanguage: String?,
     val textForced: Boolean = false,
 )
 
-/** Минимальное описание дорожки для правил (без зависимостей от Media3 — удобно тестировать). */
+/** Минимальное описание дорожки для правил (без зависимостей от Media3 - удобно тестировать). */
 data class TrackCandidate(
     val index: Int,
     val language: String?,
@@ -74,7 +74,7 @@ object TrackRules {
 
     /**
      * Самая похожая сохранённая привычка для набора языков файла: выбранный язык озвучки
-     * должен быть в файле, сходство наборов (Жаккар) ≥ 0,5. Точное совпадение — 1,0.
+     * должен быть в файле, сходство наборов (Жаккар) ≥ 0,5. Точное совпадение - 1,0.
      */
     fun bestContext(stored: Map<String, TrackChoice>, languages: Set<String>): TrackChoice? =
         stored.entries
@@ -102,7 +102,7 @@ class TrackPreferences private constructor(context: Context) {
 
     fun forContext(contextKey: String?): TrackChoice? = contextKey?.let { key ->
         read("ctx:$key") ?: run {
-            // Точной привычки нет — ищем похожую («en+ru» подходит к «en+ru+uk»).
+            // Точной привычки нет - ищем похожую («en+ru» подходит к «en+ru+uk»).
             val stored = prefs.all.keys.filter { it.startsWith("ctx:") }
                 .mapNotNull { k -> read(k)?.let { k.removePrefix("ctx:") to it } }.toMap()
             TrackRules.bestContext(stored, key.split('+').toSet())

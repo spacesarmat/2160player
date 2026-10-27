@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Снимок текущего воспроизведения — для виджетов, «продолжить на другом устройстве», аналитики. */
+/** Снимок текущего воспроизведения - для виджетов, «продолжить на другом устройстве», аналитики. */
 data class NowPlaying(
-    /** URI, с которым был запущен плеер (для дисков — путь к ISO/папке, а не внутренний клип). */
+    /** URI, с которым был запущен плеер (для дисков - путь к ISO/папке, а не внутренний клип). */
     val uri: Uri,
     val title: String,
     val positionMs: Long,
@@ -22,7 +22,7 @@ data class NowPlaying(
 
 /**
  * Дополнительная кнопка в верхней панели плеера. Регистрируется приложением через
- * [Player2160.registerAction] — так встраивающее приложение добавляет свои функции
+ * [Player2160.registerAction] - так встраивающее приложение добавляет свои функции
  * («Отправить на ТВ», «Добавить в избранное»…), не меняя код библиотеки.
  */
 class PlayerAction(
@@ -35,8 +35,8 @@ class PlayerAction(
 
 /**
  * Телегид для эфирных запросов ([PlaybackRequest.liveTv]): подпись под названием канала,
- * обычно текущая передача из EPG. Вызывается с главного потока примерно раз в 30 с —
- * должен отвечать быстро (из памяти), null — подписи нет.
+ * обычно текущая передача из EPG. Вызывается с главного потока примерно раз в 30 с -
+ * должен отвечать быстро (из памяти), null - подписи нет.
  */
 fun interface LiveGuide {
     fun describe(entry: MediaEntry, nowMs: Long): String?
@@ -53,7 +53,7 @@ object PlayerExtensions {
     /** Настройка движка для новых плееров ([Player2160.config]). */
     @Volatile var config: PlayerConfig = PlayerConfig()
 
-    /** Свой телегид; null — встроенный (каналы из IPTV-плейлистов [tv.p2160.core.iptv.IptvStore]). */
+    /** Свой телегид; null - встроенный (каналы из IPTV-плейлистов [tv.p2160.core.iptv.IptvStore]). */
     @Volatile var liveGuide: LiveGuide? = null
 
     internal fun publish(value: NowPlaying?) {

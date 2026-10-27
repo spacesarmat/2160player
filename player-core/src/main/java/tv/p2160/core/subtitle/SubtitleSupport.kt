@@ -47,7 +47,7 @@ object SubtitleSupport {
 
     /**
      * Приводит текстовые субтитры к UTF-8. Русские .srt очень часто лежат в cp1251,
-     * а Media3 по умолчанию читает их как UTF-8 — получаются «кракозябры».
+     * а Media3 по умолчанию читает их как UTF-8 - получаются «кракозябры».
      * Возвращает URI на нормализованную копию в кэше или исходный URI, если перекодировать не нужно.
      */
     suspend fun normalize(context: Context, uri: Uri, headers: Map<String, String>): Uri =
@@ -66,7 +66,7 @@ object SubtitleSupport {
 
     /**
      * Имя субтитров относится к видео с основой [base]: `Movie.srt`, `Movie.ru.srt`.
-     * `Movie2.srt` и `Show.S01E10.srt` к `Show.S01E1` не подходят — после основы нужна точка.
+     * `Movie2.srt` и `Show.S01E10.srt` к `Show.S01E1` не подходят - после основы нужна точка.
      */
     fun matchesStem(base: String, fileName: String): Boolean {
         if (base.isEmpty() || fileName.length <= base.length) return false
@@ -123,7 +123,7 @@ object SubtitleSupport {
         }
     }
 
-    /** null — перекодирование не требуется (уже UTF-8/UTF-16 с BOM). */
+    /** null - перекодирование не требуется (уже UTF-8/UTF-16 с BOM). */
     internal fun decode(bytes: ByteArray): String? {
         if (bytes.size >= 2 && (bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() ||
                 bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte())

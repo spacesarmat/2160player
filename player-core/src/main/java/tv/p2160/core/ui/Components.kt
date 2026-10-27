@@ -145,7 +145,7 @@ internal class TransportClock(positionMs: Long = 0L, bufferedMs: Long = 0L) {
     val positionMs = mutableLongStateOf(positionMs)
     val bufferedMs = mutableLongStateOf(bufferedMs)
 
-    /** Позиция под пальцем или стрелкой. null — на экране время воспроизведения. */
+    /** Позиция под пальцем или стрелкой. null - на экране время воспроизведения. */
     val scrubMs = mutableStateOf<Long?>(null)
 
     fun publish(position: Long, buffered: Long) {
@@ -168,7 +168,7 @@ internal class TransportClock(positionMs: Long = 0L, bufferedMs: Long = 0L) {
 }
 
 /**
- * Полоса перемотки: тянется пальцем, на пульте — влево/вправо с шагом [stepMs].
+ * Полоса перемотки: тянется пальцем, на пульте - влево/вправо с шагом [stepMs].
  * Позиция приходит параметром и попадает в [TransportClock] после композиции, без нового измерения.
  */
 @Composable
@@ -181,11 +181,11 @@ fun SeekBar(
     onInteraction: () -> Unit,
     modifier: Modifier = Modifier,
     accent: Color = MaterialTheme.colorScheme.primary,
-    /** Начала глав — рисуются разрывами на полосе. */
+    /** Начала глав - рисуются разрывами на полосе. */
     chapterStartsMs: List<Long> = emptyList(),
-    /** Пропускаемые отрезки (вступление, титры) — подсвечиваются на полосе. */
+    /** Пропускаемые отрезки (вступление, титры) - подсвечиваются на полосе. */
     segments: List<SkipSegment> = emptyList(),
-    /** Позиция под пальцем во время перетаскивания (для превью), null — перетаскивание закончено. */
+    /** Позиция под пальцем во время перетаскивания (для превью), null - перетаскивание закончено. */
     onScrub: (Long?) -> Unit = {},
 ) {
     val clock = remember { TransportClock(positionMs, bufferedMs) }
@@ -326,7 +326,7 @@ internal fun SeekBar(
             val r = CornerRadius(trackH / 2)
             drawRoundRect(Color.White.copy(alpha = 0.25f), Offset(0f, y), Size(size.width, trackH), r)
         }
-        // Буфер, пройденное и ползунок — свой слой. Родительская полоса из-за тика не измеряется.
+        // Буфер, пройденное и ползунок - свой слой. Родительская полоса из-за тика не измеряется.
         Canvas(Modifier.fillMaxWidth().height(36.dp).graphicsLayer {}) {
             val active = focused || dragFraction.value != null || keyTarget.value != null
             val trackH = if (active) 8.dp.toPx() else 5.dp.toPx()
@@ -364,12 +364,12 @@ internal fun SeekBar(
 /** Самая широкая подпись времени: табличные цифры, ширина не пляшет на тике. */
 internal const val TIME_SAMPLE = "88:88:88"
 
-/** «−часы / длительность» той же ширины, что и худший случай. Минус — U+2212, как на экране. */
+/** «−часы / длительность» той же ширины, что и худший случай. Минус - U+2212, как на экране. */
 internal const val REMAINING_SAMPLE = "−88:88:88 / 88:88:88"
 
 /**
  * Ширина прошедшего времени под текущую длительность: `m:ss`, `mm:ss` или `h:mm:ss`.
- * Считается при смене длительности, не на каждом тике. Цифры — «8»: с `tnum` все одной ширины.
+ * Считается при смене длительности, не на каждом тике. Цифры - «8»: с `tnum` все одной ширины.
  */
 internal fun elapsedTimeSample(durationMs: Long): String {
     if (durationMs <= 0L) return "8:88"
@@ -388,7 +388,7 @@ internal fun remainingTimeSample(durationMs: Long): String {
     return "−$body / $body"
 }
 
-/** Горизонталь глифа в коробке фиксированной ширины. Конец — у правого края, начало — у левого. */
+/** Горизонталь глифа в коробке фиксированной ширины. Конец - у правого края, начало - у левого. */
 internal fun tickTextX(boxWidthPx: Float, textWidthPx: Float, alignEnd: Boolean): Float =
     if (alignEnd) (boxWidthPx - textWidthPx).coerceAtLeast(0f) else 0f
 
@@ -405,7 +405,7 @@ internal fun FixedTickText(
     textKey: Any,
     label: (TransportClock) -> String,
     modifier: Modifier = Modifier,
-    /** Остаток прижат к концу полосы. Прошедшее — к началу. */
+    /** Остаток прижат к концу полосы. Прошедшее - к началу. */
     alignEnd: Boolean = false,
 ) {
     val measurer = rememberTextMeasurer()
@@ -585,13 +585,15 @@ fun PanelRow(
                 androidx.compose.material3.Text(
                     text,
                     color = if (selected && !switched) colors.primary else colors.onSurface,
-                    style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                    style = (if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge).unbrokenWords(),
+                    softWrap = true,
                 )
                 if (secondary != null) {
                     androidx.compose.material3.Text(
                         secondary,
                         color = colors.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.unbrokenWords(),
+                        softWrap = true,
                     )
                 }
             }
@@ -611,6 +613,13 @@ fun PanelRow(
         }
     }
 }
+
+/** Пока длина файла неизвестна и воспроизведение ещё не сдвинулось с нуля. */
+internal const val UNKNOWN_TIME = "--:--"
+
+/** Прошедшее время. Неизвестная длина и нулевая позиция - не «0:00» и не «ЭФИР». */
+internal fun transportElapsedText(durationKnown: Boolean, positionMs: Long): String =
+    if (durationKnown || positionMs > 0L) formatTime(positionMs) else UNKNOWN_TIME
 
 fun formatTime(ms: Long): String {
     val total = (ms.coerceAtLeast(0) / 1000)

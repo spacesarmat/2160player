@@ -10,7 +10,7 @@ import tv.p2160.core.settings.ResizeMode
 class PanelRevealTest {
     @Test
     fun normalSpeedIsBelowTheFineStepper() {
-        // 0 — «Точно», дальше пресеты: 0,25 0,5 0,75 1 …
+        // 0 - «Точно», дальше пресеты: 0,25 0,5 0,75 1 …
         assertEquals(4, speedRevealIndex(1f))
         assertEquals(1, speedRevealIndex(0.25f))
         assertNull(speedRevealIndex(1.05f))
@@ -58,7 +58,7 @@ class PanelRevealTest {
         assertFalse(panelReservesSpace(open = false))
         assertTrue(panelReservesSpace(open = true))
         assertEquals(0f, transportEndInsetDp(open = false, screenWidthDp = 1000f), 0.01f)
-        assertEquals(432f, transportEndInsetDp(open = true, screenWidthDp = 1000f), 0.01f)
+        assertEquals(472f, transportEndInsetDp(open = true, screenWidthDp = 1000f), 0.01f)
     }
 
     @Test

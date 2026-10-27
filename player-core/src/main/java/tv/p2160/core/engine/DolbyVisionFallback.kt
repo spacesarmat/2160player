@@ -15,7 +15,7 @@ import androidx.media3.extractor.TrackOutput
 
 /**
  * Dolby Vision, которого устройство не умеет (чаще всего профиль 7 из UHD Blu-ray-ремуксов), Media3
- * просто отбрасывает — видео пропадает. Такой поток совместим с HEVC/AVC/AV1: подменяем формат на
+ * просто отбрасывает - видео пропадает. Такой поток совместим с HEVC/AVC/AV1: подменяем формат на
  * базовый кодек, декодер играет базовый слой (HDR10), слой улучшения и RPU игнорируются.
  * Исходный профиль запоминаем в [Marker], чтобы сводка по файлу показала «Dolby Vision → HDR10».
  */
@@ -33,9 +33,9 @@ object DolbyVisionFallback {
     /** dvhe.07.06 → 7. */
     fun profile(codecs: String?): Int? = codecs?.split('.')?.getOrNull(1)?.toIntOrNull()
 
-    /** Кодек базового слоя по строке codecs; null — совместимого слоя нет. */
+    /** Кодек базового слоя по строке codecs; null - совместимого слоя нет. */
     fun baseMimeType(codecs: String?, profile: Int?): String? {
-        // Профиль 5 — без совместимого слоя (IPT): цвета будут неверными, пусть Media3 решает сама.
+        // Профиль 5 - без совместимого слоя (IPT): цвета будут неверными, пусть Media3 решает сама.
         if (profile == 5) return null
         val c = codecs?.lowercase() ?: return MimeTypes.VIDEO_H265
         return when {

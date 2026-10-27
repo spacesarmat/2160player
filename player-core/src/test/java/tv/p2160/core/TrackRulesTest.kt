@@ -32,7 +32,7 @@ class TrackRulesTest {
         assertEquals("en", TrackRules.bestContext(stored, setOf("en", "ru", "uk"))?.audioLanguage)
         assertEquals("ja", TrackRules.bestContext(stored, setOf("ja", "ru"))?.audioLanguage)
         assertNull(TrackRules.bestContext(stored, setOf("fr", "de")))
-        // Нужный язык озвучки отсутствует — привычка не подходит.
+        // Нужный язык озвучки отсутствует - привычка не подходит.
         assertNull(TrackRules.bestContext(mapOf("en+ru" to TrackChoice("en", null, null)), setOf("ru", "uk")))
     }
 

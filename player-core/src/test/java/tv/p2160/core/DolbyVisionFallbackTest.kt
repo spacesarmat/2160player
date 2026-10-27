@@ -22,7 +22,7 @@ class DolbyVisionFallbackTest {
         assertEquals(MimeTypes.VIDEO_H265, DolbyVisionFallback.baseMimeType("dvh1.08.06", 8))
         assertEquals(MimeTypes.VIDEO_H264, DolbyVisionFallback.baseMimeType("dvav.09.05", 9))
         assertEquals(MimeTypes.VIDEO_AV1, DolbyVisionFallback.baseMimeType("dav1.10.06", 10))
-        // Профиль 5 без совместимого слоя — не подменяем.
+        // Профиль 5 без совместимого слоя - не подменяем.
         assertNull(DolbyVisionFallback.baseMimeType("dvhe.05.06", 5))
     }
 }

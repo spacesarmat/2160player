@@ -87,8 +87,8 @@ fun playDlna(context: Context, items: List<DlnaItem>, index: Int) {
 }
 
 /**
- * Обзор папок медиасервера DLNA. «Назад» — на уровень выше, из корня — [onBack].
- * [onPlay] получает видео (или аудио) текущей папки и индекс выбранного — см. [playDlna].
+ * Обзор папок медиасервера DLNA. «Назад» - на уровень выше, из корня - [onBack].
+ * [onPlay] получает видео (или аудио) текущей папки и индекс выбранного - см. [playDlna].
  */
 @Composable
 fun DlnaBrowserScreen(
@@ -97,7 +97,7 @@ fun DlnaBrowserScreen(
     onBack: () -> Unit,
     onPlay: (items: List<DlnaItem>, index: Int) -> Unit,
 ) {
-    // Путь: пары id/название, корень — "0". Переживает поворот экрана.
+    // Путь: пары id/название, корень - "0". Переживает поворот экрана.
     var path by rememberSaveable(server.udn) { mutableStateOf(listOf(ContentDirectory.ROOT_ID, server.friendlyName)) }
     val currentId = path[path.size - 2]
     val titles = path.filterIndexed { i, _ -> i % 2 == 1 }
@@ -145,7 +145,7 @@ fun DlnaBrowserScreen(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(titles.last(), style = MaterialTheme.typography.titleLarge, color = colors.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                // На корне путь совпадает с заголовком (имя сервера) — вторую строку не дублируем.
+                // На корне путь совпадает с заголовком (имя сервера) - вторую строку не дублируем.
                 val crumb = titles.dropLast(1)
                 if (crumb.isNotEmpty()) {
                     Text(
@@ -190,7 +190,7 @@ fun DlnaBrowserScreen(
                                 icon = Icons.Default.Folder,
                                 imageUrl = obj.albumArtUrl,
                                 title = obj.title,
-                                // 0 у MiniDLNA — «число неизвестно», а не пустая папка. Такое не показываем.
+                                // 0 у MiniDLNA - «число неизвестно», а не пустая папка. Такое не показываем.
                                 subtitle = obj.childCount?.takeIf { it > 0 }?.let { strings.format("dlna.items", it) },
                                 modifier = modifier,
                                 onClick = {
@@ -214,7 +214,7 @@ fun DlnaBrowserScreen(
                                     modifier = modifier,
                                     onClick = {
                                         lastFocus[currentId] = obj.id
-                                        // Плейлист — элементы того же типа из этой папки.
+                                        // Плейлист - элементы того же типа из этой папки.
                                         val same = list.filterIsInstance<DlnaItem>().filter { it.kind == obj.kind }
                                         onPlay(same, same.indexOf(obj))
                                     },

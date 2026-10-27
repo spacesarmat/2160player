@@ -103,7 +103,7 @@ import java.util.Date
 /**
  * IPTV: список плейлистов → каналы (группы, поиск, избранное, «сейчас/далее» из EPG).
  * Единственная точка входа для навигации приложения; [onPlay] получает готовый запрос
- * с `liveTv = true` — передайте его в `Player2160.play`.
+ * с `liveTv = true` - передайте его в `Player2160.play`.
  */
 @Composable
 fun IptvScreen(onBack: () -> Unit, onPlay: (PlaybackRequest) -> Unit) {
@@ -216,7 +216,7 @@ private fun PlaylistDialog(initial: IptvPlaylist?, store: IptvStore, onDismiss: 
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
-        // Доступ к файлу нужен и после перезапуска — для обновления плейлиста.
+        // Доступ к файлу нужен и после перезапуска - для обновления плейлиста.
         runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         source = uri.toString()
         if (name.isBlank()) name = displayName(context, uri)?.substringBeforeLast('.').orEmpty()
@@ -347,7 +347,7 @@ private fun ChannelsPage(store: IptvStore, playlist: IptvPlaylist, onBack: () ->
             .onSuccess { parsed = it }
             .onFailure { loadError = describeError(it.message ?: it.javaClass.simpleName, strings) }
         loading = false
-        // Телепрограмма — после каналов, в фоне.
+        // Телепрограмма - после каналов, в фоне.
         if (parsed != null) {
             guideLoading = guide == null
             runCatching { store.guide(id, forceRefresh = reload.second) }.onSuccess { if (it != null) guide = it }
@@ -356,7 +356,7 @@ private fun ChannelsPage(store: IptvStore, playlist: IptvPlaylist, onBack: () ->
     }
     LaunchedEffect(guideVersion) { store.cachedGuide(id)?.let { guide = it } }
 
-    // Передачи по id канала — считаем один раз на телепрограмму (сопоставление по имени не бесплатное).
+    // Передачи по id канала - считаем один раз на телепрограмму (сопоставление по имени не бесплатное).
     val schedule by produceState<Map<String, List<EpgProgramme>>>(emptyMap(), guide, parsed) {
         val g = guide
         val p = parsed
@@ -493,7 +493,7 @@ private fun ChannelList(
     val focusIndex = lastIndex.coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (focusIndex - 2).coerceAtLeast(0))
     val requester = remember(listKey) { FocusRequester() }
-    // Фокус на последний просмотренный канал (или первый) — пульт сразу «в списке».
+    // Фокус на последний просмотренный канал (или первый) - пульт сразу «в списке».
     LaunchedEffect(listKey, takeFocus) {
         if (!takeFocus) return@LaunchedEffect
         if (state.layoutInfo.visibleItemsInfo.none { it.index == focusIndex }) state.scrollToItem((focusIndex - 2).coerceAtLeast(0))

@@ -76,7 +76,7 @@ object MediaReporter {
             }
             val dv = isDolbyVision(video)
             if (dv) {
-                // Маркер — плеер уже переключился на базовый слой: декодера Dolby Vision нет или он не умеет этот профиль.
+                // Маркер - плеер уже переключился на базовый слой: декодера Dolby Vision нет или он не умеет этот профиль.
                 val dvDecoder = DolbyVisionFallback.marker(video) == null && hasDecoder(MimeTypes.VIDEO_DOLBY_VISION, hardwareOnly = true)
                 if (!dvDecoder) {
                     rows += ReportRow("Dolby Vision", t["info.dv_fallback"], ReportRow.Level.WARN)
@@ -163,7 +163,7 @@ object MediaReporter {
         else -> null
     }
 
-    /** null — узнать нельзя; пустой список — экран не HDR. */
+    /** null - узнать нельзя; пустой список - экран не HDR. */
     private fun displayHdrTypes(context: Context): IntArray? = runCatching {
         val display = context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY) ?: return null
         @Suppress("DEPRECATION")

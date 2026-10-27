@@ -28,7 +28,7 @@ class SmbDataSource(private val context: Context) : BaseDataSource(/* isNetwork 
     private val buffer = ByteArray(BUFFER_SIZE)
     private var bufferStart = 0L
     private var bufferLength = 0
-    /** transferStarted() уже вызван — только тогда в close() сообщаем transferEnded(). */
+    /** transferStarted() уже вызван - только тогда в close() сообщаем transferEnded(). */
     private var opened = false
 
     override fun open(dataSpec: DataSpec): Long {

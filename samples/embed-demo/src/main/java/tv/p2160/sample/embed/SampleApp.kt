@@ -14,7 +14,7 @@ class SampleApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Кнопки регистрируются глобально (на процесс) — удобнее всего в Application.onCreate.
+        // Кнопки регистрируются глобально (на процесс) - удобнее всего в Application.onCreate.
         Player2160.registerAction(
             PlayerAction(
                 id = SHARE_ACTION_ID,

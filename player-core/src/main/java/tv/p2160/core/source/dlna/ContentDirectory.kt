@@ -4,7 +4,7 @@ package tv.p2160.core.source.dlna
 data class BrowsePage(
     val objects: List<DlnaObject>,
     val numberReturned: Int,
-    /** 0 — сервер не знает общего числа (так допускает спецификация). */
+    /** 0 - сервер не знает общего числа (так допускает спецификация). */
     val totalMatches: Int,
     val updateId: String? = null,
 )
@@ -15,7 +15,7 @@ class ContentDirectory(
     private val http: DlnaHttp = UrlConnectionHttp(),
 ) {
 
-    /** Одна страница детей контейнера [objectId] (`"0"` — корень). */
+    /** Одна страница детей контейнера [objectId] (`"0"` - корень). */
     fun browse(objectId: String, start: Int = 0, count: Int = PAGE_SIZE): BrowsePage {
         val res = http.post(
             server.contentDirectoryControlUrl,
@@ -85,7 +85,7 @@ class ContentDirectory(
                 result.children.isNotEmpty() -> DidlParser.parse(result.find("DIDL-Lite") ?: result)
                 else -> {
                     var didl = result.text.trim()
-                    // Двойное экранирование (&amp;lt;DIDL-Lite...) — раскрываем ещё раз.
+                    // Двойное экранирование (&amp;lt;DIDL-Lite...) - раскрываем ещё раз.
                     if (didl.startsWith("&lt;")) didl = XmlLite.decodeEntities(didl)
                     if (didl.isEmpty()) emptyList() else DidlParser.parse(didl)
                 }

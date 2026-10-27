@@ -71,7 +71,7 @@ class NightAudioProcessorTest {
     fun downmixes51ToStereo() {
         val processor = NightAudioProcessor(downmixToStereo = true).apply { enabled = true }
         val format = processor.configure(AudioProcessor.AudioFormat(rate, 6, C.ENCODING_PCM_16BIT))
-        assertTrue("выход — стерео", format.channelCount == 2)
+        assertTrue("выход - стерео", format.channelCount == 2)
         processor.flush()
         val frames = rate
         val input = ByteBuffer.allocateDirect(frames * 6 * 2).order(ByteOrder.nativeOrder())

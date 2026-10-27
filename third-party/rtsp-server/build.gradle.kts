@@ -2,7 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
 }
 
-// RTSP-Server 1.4.3 (pedroSG94, Apache-2.0) исходниками: правка ответа на PLAY — см. NOTICE.md.
+// RTSP-Server 1.4.3 (pedroSG94, Apache-2.0) исходниками: правка ответа на PLAY - см. NOTICE.md.
 android {
     namespace = "com.pedro.rtspserver"
     compileSdk = 37

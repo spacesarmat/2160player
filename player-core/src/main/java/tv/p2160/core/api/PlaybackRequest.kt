@@ -20,17 +20,17 @@ data class MediaEntry(
     val mimeType: String? = null,
     /** Известные отрезки (вступление, титры…), например от медиасервера. */
     val segments: List<SkipSegment> = emptyList(),
-    /** Обложка/постер (http(s), smb, file, content) — для «Продолжить просмотр»; иначе ищется сама. */
+    /** Обложка/постер (http(s), smb, file, content) - для «Продолжить просмотр»; иначе ищется сама. */
     val artworkUri: Uri? = null,
 )
 
 /**
- * Запрос на воспроизведение — основная точка входа API.
+ * Запрос на воспроизведение - основная точка входа API.
  *
- * @param startPositionMs позиция старта для [startIndex]; `null` — продолжить с сохранённого места.
+ * @param startPositionMs позиция старта для [startIndex]; `null` - продолжить с сохранённого места.
  * @param headers HTTP-заголовки для сетевых источников (User-Agent, Referer, Authorization…).
  * @param returnResult вернуть вызывающему приложению позицию остановки (см. [PlaybackResult]).
- * @param liveTv элементы — телеканалы (IPTV): без продолжения с места и истории, «Эфир» вместо
+ * @param liveTv элементы - телеканалы (IPTV): без продолжения с места и истории, «Эфир» вместо
  *   полосы перемотки, переключение каналов стрелками вверх/вниз, текущая передача из [LiveGuide].
  */
 data class PlaybackRequest(

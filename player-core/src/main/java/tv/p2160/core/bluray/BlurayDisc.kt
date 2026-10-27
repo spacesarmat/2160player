@@ -2,7 +2,7 @@ package tv.p2160.core.bluray
 
 import java.io.Closeable
 
-/** Отрезок клипа в составе плейлиста. Время клипа — в тиках 45 кГц (как PTS/2). */
+/** Отрезок клипа в составе плейлиста. Время клипа - в тиках 45 кГц (как PTS/2). */
 data class BlurayClip(
     val clipName: String,
     /** Путь m2ts относительно корня файловой системы диска. */
@@ -43,7 +43,7 @@ data class BlurayTitle(
         get() = if (items.size < 2) 1.0
         else items.zipWithNext().count { (a, b) -> b.clipName > a.clipName }.toDouble() / (items.size - 1)
 
-    /** Время плейлиста (мс) → элемент и время клипа. За пределами — края. */
+    /** Время плейлиста (мс) → элемент и время клипа. За пределами - края. */
     fun locate(playlistMs: Long): ClipPosition {
         if (items.isEmpty()) return ClipPosition(0, 0)
         val t = (playlistMs.coerceAtLeast(0) * 45).coerceAtMost(duration45k)
@@ -75,11 +75,11 @@ data class BlurayTitle(
 
 /**
  * Структура диска Blu-ray: плейлисты, главный фильм, название.
- * Открывается поверх любой [DiscFileSystem] — ISO или папки (корень диска либо сама BDMV).
+ * Открывается поверх любой [DiscFileSystem] - ISO или папки (корень диска либо сама BDMV).
  */
 class BlurayDisc private constructor(
     val fs: DiscFileSystem,
-    /** Путь каталога BDMV в [fs] ("BDMV" или "" если корень — сама BDMV). */
+    /** Путь каталога BDMV в [fs] ("BDMV" или "" если корень - сама BDMV). */
     val bdmvPath: String,
     val titles: List<BlurayTitle>,
     /** Название из BDMV/META/DL/bdmt_*.xml. */
@@ -91,7 +91,7 @@ class BlurayDisc private constructor(
     /**
      * Главный фильм:
      * 1. Плейлисты короче 10 минут не рассматриваются (если есть хоть один длиннее).
-     * 2. Кандидаты — плейлисты в пределах 1% от самого длинного. На дисках с защитой от
+     * 2. Кандидаты - плейлисты в пределах 1% от самого длинного. На дисках с защитой от
      *    копирования (Disney, Lionsgate) их десятки с одинаковой длиной и перемешанными клипами.
      * 3. Среди кандидатов: меньше повторов клипов → больше доля клипов по возрастанию →
      *    больше глав → длиннее → меньший номер плейлиста.
@@ -110,7 +110,7 @@ class BlurayDisc private constructor(
         ).first()
     }
 
-    /** Много плейлистов одинаковой длины — похоже на защиту плейлистами-обманками. */
+    /** Много плейлистов одинаковой длины - похоже на защиту плейлистами-обманками. */
     val looksObfuscated: Boolean
         get() {
             val main = mainTitle() ?: return false
@@ -120,7 +120,7 @@ class BlurayDisc private constructor(
     fun title(playlistName: String): BlurayTitle? =
         titles.firstOrNull { it.playlistName.equals(playlistName.removeSuffix(".mpls"), ignoreCase = true) }
 
-    /** CLPI клипа (потоки, EP_map); null — нет файла или он повреждён. */
+    /** CLPI клипа (потоки, EP_map); null - нет файла или он повреждён. */
     fun clipInfo(clipName: String): ClipInfo? = synchronized(clipInfoCache) {
         clipInfoCache.getOrPut(clipName) {
             runCatching { ClpiParser.parse(fs.readAll(join(bdmvPath, "CLIPINF/$clipName.clpi"))) }.getOrNull()
@@ -171,7 +171,7 @@ class BlurayDisc private constructor(
                     ticksToMs(clip.playlistStart45k + (m.time45k - clip.inTime45k).coerceIn(0, clip.duration45k))
                 }
                 .distinct().sorted()
-                // Метка в самом конце (часто бывает) — не глава.
+                // Метка в самом конце (часто бывает) - не глава.
                 .filter { it == 0L || it < ticksToMs(start) - 1000 }
             val first = mpls.items.firstOrNull()
             return BlurayTitle(

@@ -3,7 +3,7 @@ package android.util;
 import java.util.Arrays;
 
 /**
- * Минимальная JVM-реализация для unit-тестов: в android.jar для тестов методы — заглушки,
+ * Минимальная JVM-реализация для unit-тестов: в android.jar для тестов методы - заглушки,
  * а TsExtractor на SparseArray держит всё состояние. Классы тестов стоят в classpath раньше android.jar.
  */
 @SuppressWarnings("unchecked")

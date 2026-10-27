@@ -13,14 +13,14 @@ import javax.crypto.spec.SecretKeySpec
  *
  * Сопряжение нужно один раз для нового устройства: клиент получает одноразовый nonce
  * (`GET /pair/challenge`), а хозяин видит уведомление «… хочет подключиться» с кнопками
- * «Разрешить/Отклонить» ([PairRequests]). Токен клиент получает либо по коду —
- * HMAC-SHA256(код, nonce:id) в `POST /pair`, — либо после «Разрешить», опрашивая `GET /pair/status`
+ * «Разрешить/Отклонить» ([PairRequests]). Токен клиент получает либо по коду -
+ * HMAC-SHA256(код, nonce:id) в `POST /pair`, - либо после «Разрешить», опрашивая `GET /pair/status`
  * с того же IP, что и challenge. Дальше запросы `/now` и `/play` идут с токеном, пока пользователь
- * не нажмёт «Забыть устройства». Код на сутки меняется в полночь — это касается только новых сопряжений.
+ * не нажмёт «Забыть устройства». Код на сутки меняется в полночь - это касается только новых сопряжений.
  * Уже выданные токены (`issued_*`) от смены кода не пропадают.
  *
- * Пароль RTSP-трансляции и ключ QR `/watch` — другие секреты, не этот PIN.
- * Защищает от других плееров и людей в той же сети; от перехвата трафика в сети — нет (HTTP без TLS).
+ * Пароль RTSP-трансляции и ключ QR `/watch` - другие секреты, не этот PIN.
+ * Защищает от других плееров и людей в той же сети; от перехвата трафика в сети - нет (HTTP без TLS).
  */
 object HandoffAuth {
 
@@ -39,7 +39,7 @@ object HandoffAuth {
         data object Limited : ChallengeBegin
     }
 
-    /** Состояние запроса. [sameIp] — опрашивает тот же адрес, что прислал challenge. Токен только тогда. */
+    /** Состояние запроса. [sameIp] - опрашивает тот же адрес, что прислал challenge. Токен только тогда. */
     data class StatusResult(val decision: Decision, val token: String?, val sameIp: Boolean)
 
     /** Сколько ждём кода или ответа хозяина. */
@@ -88,7 +88,7 @@ object HandoffAuth {
         get() = s().getString("off_warned") == "1"
         set(value) = s().putString("off_warned", if (value) "1" else null)
 
-    /** Свой код: новый — 6–8 цифр. Уже сохранённые 4–5 цифр по-прежнему принимаются. */
+    /** Свой код: новый - 6–8 цифр. Уже сохранённые 4–5 цифр по-прежнему принимаются. */
     var customCode: String
         get() = s().getString("custom_code").orEmpty()
         set(value) = s().putString("custom_code", value)
@@ -132,7 +132,7 @@ object HandoffAuth {
 
     /**
      * Новый запрос подключения от [clientId] с адреса [remoteIp].
-     * [ChallengeBegin.Denied] — клиент недавно отклонён. [ChallengeBegin.Limited] — слишком часто с этого IP.
+     * [ChallengeBegin.Denied] - клиент недавно отклонён. [ChallengeBegin.Limited] - слишком часто с этого IP.
      */
     @Synchronized
     fun beginChallenge(clientId: String, clientName: String, remoteIp: String): ChallengeBegin {
@@ -191,7 +191,7 @@ object HandoffAuth {
     @Synchronized
     fun requesterName(nonce: String): String? = pending[nonce]?.clientName
 
-    /** Проверка кода от клиента; при успехе — новый токен для [clientId]. Неверный код запрос не закрывает. */
+    /** Проверка кода от клиента; при успехе - новый токен для [clientId]. Неверный код запрос не закрывает. */
     @Synchronized
     fun verify(nonce: String, clientId: String, clientName: String, proof: String): Pair<PairResult, String?> {
         val now = System.currentTimeMillis()

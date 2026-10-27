@@ -63,7 +63,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.channels.Channel
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextOverflow
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.MediaReport
@@ -110,9 +113,9 @@ class PanelActions(
     val onNightMode: (Boolean) -> Unit,
     /** Изменение настроек расписания ночного звука (вкл/выкл, начало, конец в минутах от полуночи). */
     val onNightSchedule: (auto: Boolean, start: Int, end: Int) -> Unit,
-    /** Задержка звука, мс (> 0 — звук позже картинки). */
+    /** Задержка звука, мс (> 0 - звук позже картинки). */
     val onAudioDelay: (Int) -> Unit,
-    /** Таймер сна: минуты или null — выключить. */
+    /** Таймер сна: минуты или null - выключить. */
     val onSleepTimer: (Int?) -> Unit,
     /** Таймер сна «в конце серии». */
     val onSleepAtEnd: () -> Unit,
@@ -602,12 +605,23 @@ private class PanelSlots {
     }
 }
 
+/** Подпись панели: перенос по словам, без переносов по слогам. */
+internal fun TextStyle.unbrokenWords(): TextStyle = copy(
+    hyphens = Hyphens.None,
+    lineBreak = LineBreak(
+        strategy = LineBreak.Strategy.Simple,
+        strictness = LineBreak.Strictness.Normal,
+        wordBreak = LineBreak.WordBreak.Phrase,
+    ),
+)
+
 @Composable
 private fun Hint(text: String) {
     Text(
         text,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelLarge.unbrokenWords(),
+        softWrap = true,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
     )
 }
@@ -633,8 +647,10 @@ private fun Stepper(
             Text(
                 label,
                 color = colors.onSurface,
-                style = MaterialTheme.typography.bodyMedium.copy(hyphens = Hyphens.None),
+                style = MaterialTheme.typography.bodyMedium.unbrokenWords(),
                 maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp),
             )
             ControlButton(Icons.Default.Remove, tr("panel.less"), onMinus, size = 40.dp, tint = colors.onSurface, compact = true)
@@ -655,8 +671,9 @@ private fun Stepper(
         Text(
             label,
             color = colors.onSurface,
-            style = MaterialTheme.typography.bodyLarge.copy(hyphens = Hyphens.None),
-            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.bodyLarge.unbrokenWords(),
+            softWrap = true,
+            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 2.dp),
         )
         Row(
             Modifier.fillMaxWidth(),
@@ -683,7 +700,7 @@ fun formatSpeed(s: Float): String = UiFormat.speed(s)
 
 /**
  * На сколько пикселей прокрутить список, чтобы строка оказалась целиком в окне.
- * Плюс — контент вверх. Уже видимую строку не двигает. Строка выше окна — только на величину обрезки.
+ * Плюс - контент вверх. Уже видимую строку не двигает. Строка выше окна - только на величину обрезки.
  */
 internal fun revealDelta(offset: Int, size: Int, viewportStart: Int, viewportEnd: Int): Int {
     if (size <= 0 || viewportEnd <= viewportStart) return 0
@@ -708,7 +725,7 @@ private class PanelRevealNow(var index: Int?, var lazy: Boolean)
 
 /**
  * Занимает ли панель место у полосы и подсказки.
- * Состав может оставаться после закрытия — это не повод держать отступ. Решает только открытость.
+ * Состав может оставаться после закрытия - это не повод держать отступ. Решает только открытость.
  */
 internal fun panelReservesSpace(open: Boolean): Boolean = open
 
@@ -739,7 +756,7 @@ private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, sc
     if (lazy) listState.scrollToItem(0) else scrollState.scrollTo(0)
 }
 
-/** До скольких строк панель — обычная колонка, а не LazyColumn. */
+/** До скольких строк панель - обычная колонка, а не LazyColumn. */
 internal const val PANEL_EAGER_ROW_LIMIT = 16
 
 /** Длинный список (главы, много дорожек) остаётся ленивым. Короткая панель собирается сразу. */
@@ -763,7 +780,7 @@ private val panelBringIntoViewSpec = object : BringIntoViewSpec {
 
 /**
  * Индекс выбранной строки в порядке `item` панели. Открытие к ней не прокручивает.
- * null — выбранного нет или оно и так первое.
+ * null - выбранного нет или оно и так первое.
  */
 internal fun panelRevealIndex(panel: Panel, state: PlayerUiState, settings: Settings, resizeMode: ResizeMode): Int? =
     when (panel) {
@@ -779,30 +796,30 @@ internal fun panelRevealIndex(panel: Panel, state: PlayerUiState, settings: Sett
             subtitleRevealIndex(state.textDisabled, primary.size, primary.indexOfFirst { it.selected })
         }
         Panel.CHAPTERS -> state.chapterIndex.takeIf { it in 0 until state.chapters.size }
-        // «Выкл» — 0, шесть длительностей, затем «В конце серии».
+        // «Выкл» - 0, шесть длительностей, затем «В конце серии».
         Panel.SLEEP -> if (state.sleepAtEnd) 7 else null
         Panel.INFO -> null
     }
 
-/** Пресет скорости. 0 — шаговый регулятор сверху, дальше [SPEED_PRESETS]. */
+/** Пресет скорости. 0 - шаговый регулятор сверху, дальше [SPEED_PRESETS]. */
 internal fun speedRevealIndex(speed: Float): Int? {
     val i = SPEED_PRESETS.indexOfFirst { kotlin.math.abs(it - speed) < 0.01f }
     return if (i < 0) null else 1 + i
 }
 
-/** Режим масштаба. 0 — заголовок «Масштаб». */
+/** Режим масштаба. 0 - заголовок «Масштаб». */
 internal fun resizeRevealIndex(mode: ResizeMode): Int = 1 + ResizeMode.entries.indexOf(mode).coerceAtLeast(0)
 
 /**
  * Дорожка звука. Перед ней: ночной звук, расписание, при включённом расписании начало и конец,
- * задержка и подсказка. Нет выбранной дорожки — прокрутка не нужна.
+ * задержка и подсказка. Нет выбранной дорожки - прокрутка не нужна.
  */
 internal fun audioTrackRevealIndex(nightAuto: Boolean, trackCount: Int, selectedTrack: Int): Int? {
     if (selectedTrack !in 0 until trackCount) return null
     return 4 + (if (nightAuto) 2 else 0) + selectedTrack
 }
 
-/** «Выкл» — 0, дальше основные дорожки. Выключенные субтитры оставляют фокус на «Выкл». */
+/** «Выкл» - 0, дальше основные дорожки. Выключенные субтитры оставляют фокус на «Выкл». */
 internal fun subtitleRevealIndex(disabled: Boolean, primaryCount: Int, selectedInPrimary: Int): Int {
     if (disabled || selectedInPrimary !in 0 until primaryCount) return 0
     return 1 + selectedInPrimary
@@ -814,7 +831,13 @@ private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 144
 private fun InfoRow(row: ReportRow, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Row(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
-        Text(row.label, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(
+            row.label,
+            color = colors.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium.unbrokenWords(),
+            softWrap = true,
+            modifier = Modifier.weight(1f),
+        )
         Spacer(Modifier.size(12.dp))
         Text(
             row.value,
@@ -823,7 +846,8 @@ private fun InfoRow(row: ReportRow, modifier: Modifier = Modifier) {
                 ReportRow.Level.WARN -> Color(0xFFFFB74D)
                 ReportRow.Level.INFO -> colors.onSurface
             },
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.unbrokenWords(),
+            softWrap = true,
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
             modifier = Modifier.weight(1.2f),
         )

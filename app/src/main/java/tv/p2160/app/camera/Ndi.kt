@@ -18,12 +18,12 @@ import tv.p2160.app.BuildConfig
 import java.nio.ByteBuffer
 
 /**
- * NDI® — отправка в сеть для OBS (DistroAV), vMix и других NDI-приёмников. NDI® is a registered trademark of
+ * NDI® - отправка в сеть для OBS (DistroAV), vMix и других NDI-приёмников. NDI® is a registered trademark of
  * Vizrt NDI AB (https://ndi.video/).
  *
  * Библиотека NDI SDK (`libndi.so`, закрыта) входит в APK, только если SDK был при сборке ([BuildConfig.NDI]),
- * и загружается динамически (см. `cpp/ndi_bridge.cpp`). Кадры — сырые RGBX (GL отдаёт RGBA; перевод в NV12
- * на CPU был бы лишним проходом перед SpeedHQ), одна копия в native; звук — PCM 16 бит с микрофона.
+ * и загружается динамически (см. `cpp/ndi_bridge.cpp`). Кадры - сырые RGBX (GL отдаёт RGBA; перевод в NV12
+ * на CPU был бы лишним проходом перед SpeedHQ), одна копия в native; звук - PCM 16 бит с микрофона.
  */
 object Ndi {
     const val URL = "https://ndi.video/"
@@ -42,8 +42,8 @@ object Ndi {
     }.onFailure { Log.w(TAG, "NDI unavailable", it) }.getOrDefault(false)).also { loaded = it }
 
     /**
-     * Перед трансляцией: настройки NDI — имя машины и разрешённые адаптеры (только адреса локальной сети: Wi-Fi,
-     * Ethernet, точка доступа; мобильная сеть NDI не используется). false — локальной сети нет или NDI не запустился.
+     * Перед трансляцией: настройки NDI - имя машины и разрешённые адаптеры (только адреса локальной сети: Wi-Fi,
+     * Ethernet, точка доступа; мобильная сеть NDI не используется). false - локальной сети нет или NDI не запустился.
      */
     @Synchronized
     fun prepare(context: Context): Boolean {
@@ -54,7 +54,7 @@ object Ndi {
     }
 
     /**
-     * Имя «машины» в NDI. Android отдаёт hostname «localhost», и источник выглядел бы как «LOCALHOST (…)» — такие
+     * Имя «машины» в NDI. Android отдаёт hostname «localhost», и источник выглядел бы как «LOCALHOST (…)» - такие
      * источники приёмники путают с собственным компьютером. Берём имя устройства (латиница, цифры, дефис).
      */
     fun machineName(context: Context): String {
@@ -115,7 +115,7 @@ object Ndi {
 /**
  * «Поток» RootEncoder для NDI: камера/экран идут через тот же GL-конвейер (предпросмотр, зум, фокус).
  * После старта кодировщики H.264 и AAC останавливаются: их поверхность снимается, и [ImageReader] становится
- * единственным выходом GL. Сеть — у NDI. Звук — PCM с микрофона, не AAC.
+ * единственным выходом GL. Сеть - у NDI. Звук - PCM с микрофона, не AAC.
  */
 internal class NdiStream(
     context: Context,
@@ -144,7 +144,7 @@ internal class NdiStream(
         this.maxImages = StreamLatency.ndiImages(lowLatency)
     }
 
-    /** PCM с микрофона (из [GainMeterEffect]) — в NDI, с таймкодом от первого кадра. */
+    /** PCM с микрофона (из [GainMeterEffect]) - в NDI, с таймкодом от первого кадра. */
     fun onPcm(pcm: ByteArray, sampleRate: Int, channels: Int) {
         val tc = clock.onAudio(pcm.size, sampleRate, channels)
         sender?.sendAudio(pcm, sampleRate, channels, tc)
@@ -163,7 +163,7 @@ internal class NdiStream(
     }
 
     /**
-     * Подключить приёмник кадров — после startStream (GL уже работает). Кодировщик H.264 больше не нужен:
+     * Подключить приёмник кадров - после startStream (GL уже работает). Кодировщик H.264 больше не нужен:
      * снимаем его поверхность и отдаём [ImageReader] единственным выходом GL (один проход, не «кодирование + запись»).
      * [ImageReader.acquireLatestImage] оставляет только свежий кадр.
      */
@@ -256,7 +256,7 @@ internal class NdiStream(
     override fun getStreamClient(): StreamBaseClient = NdiStreamClient(this)
 }
 
-/** Клиент потока NDI: сетью управляет NDI, поэтому почти всё — пустые заглушки; «зрители» — подключения NDI. */
+/** Клиент потока NDI: сетью управляет NDI, поэтому почти всё - пустые заглушки; «зрители» - подключения NDI. */
 internal class NdiStreamClient(private val stream: NdiStream) : StreamBaseClient() {
     override fun setAuthorization(user: String?, password: String?) = Unit
     override fun reTry(delay: Long, reason: String, backupUrl: String?): Boolean = false

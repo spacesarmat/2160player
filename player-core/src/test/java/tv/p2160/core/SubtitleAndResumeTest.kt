@@ -60,7 +60,7 @@ class SubtitleAndResumeTest {
         assertFalse(ResumeStore.isFinished(0, 20_000))
         assertFalse(ResumeStore.isFinished(5_000, 20_000))
         assertTrue(ResumeStore.isFinished(19_500, 20_000))
-        // Длиннее 30 с: остаток меньше 30 с — досмотрено, даже если это ещё не 97 %.
+        // Длиннее 30 с: остаток меньше 30 с - досмотрено, даже если это ещё не 97 %.
         assertFalse(ResumeStore.isFinished(0, 40_000))
         assertTrue(ResumeStore.isFinished(15_000, 40_000))
     }

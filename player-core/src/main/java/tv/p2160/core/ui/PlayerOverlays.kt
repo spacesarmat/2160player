@@ -91,7 +91,7 @@ fun SpeedBoostBadge(theme: PlayerTheme, modifier: Modifier = Modifier) {
     }
 }
 
-/** Ввод цифрами с пульта: одна цифра — проценты (5 → 50 %), несколько — время (1230 → 12:30). */
+/** Ввод цифрами с пульта: одна цифра - проценты (5 → 50 %), несколько - время (1230 → 12:30). */
 @Composable
 fun DigitEntryOverlay(buffer: String, theme: PlayerTheme, modifier: Modifier = Modifier) {
     val text = if (buffer.length == 1) tr("player.percent", buffer.toInt() * 10)

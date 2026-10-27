@@ -73,7 +73,7 @@ data class SmbPath(val host: String, val share: String, val path: String) {
     }
 }
 
-/** Хранилище серверов. Пароль в настройках — шифротекст [FieldSecrets], в памяти — открытый. */
+/** Хранилище серверов. Пароль в настройках - шифротекст [FieldSecrets], в памяти - открытый. */
 class SmbServers private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("p2160_smb", Context.MODE_PRIVATE)
     private val _servers = MutableStateFlow(read())

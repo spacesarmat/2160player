@@ -4,9 +4,9 @@
 
 | Компонент | Версия |
 |---|---|
-| JDK | 21 (Gradle). Байткод модулей — toolchain 17. |
+| JDK | 21 (Gradle). Байткод модулей - toolchain 17. |
 | Android SDK | `compileSdk` 37 (`platforms;android-37` или `android-37.0`), Build-Tools 37. |
-| minSdk | 24. `targetSdk` приложения — 36. |
+| minSdk | 24. `targetSdk` приложения - 36. |
 
 `local.properties` (в git не входит):
 
@@ -42,12 +42,12 @@ APK: `app/build/outputs/apk/debug/`.
 adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ```
 
-Универсальный APK — `app-universal-debug.apk`. На ТВ без `adb` APK кладут на флешку или раздают
+Универсальный APK - `app-universal-debug.apk`. На ТВ без `adb` APK кладут на флешку или раздают
 с телефона: Настройки → О приложении → Поделиться приложением → «Раздать по Wi-Fi».
 
 ## Релиз
 
-Подпись — `keystore.properties` или переменные `P2160_KEYSTORE`, `P2160_KEYSTORE_PASSWORD`,
+Подпись - `keystore.properties` или переменные `P2160_KEYSTORE`, `P2160_KEYSTORE_PASSWORD`,
 `P2160_KEY_ALIAS`, `P2160_KEY_PASSWORD`. Без ключа release собирается неподписанным.
 
 ```sh
@@ -55,7 +55,7 @@ adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 ./gradlew :app:assembleRelease -Pp2160.versionName=0.2.0 -Pp2160.versionCode=3 -Pp2160.abi=arm
 ```
 
-`-Pp2160.abi=arm` — один APK с `arm64-v8a` и `armeabi-v7a`. Тег релиза — `v<versionName>`.
+`-Pp2160.abi=arm` - один APK с `arm64-v8a` и `armeabi-v7a`. Тег релиза - `v<versionName>`.
 `versionCode` каждого релиза больше предыдущего. Автообновление берёт с GitHub Releases APK
 с `-arm-` в имени на ARM, иначе APK под ABI устройства, иначе `universal`. Если `api.github.com`
 отвечает 403/429, тег читается из редиректа `releases/latest`, а файл проверяется `HEAD` по
@@ -65,11 +65,11 @@ adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 
 Два независимых слоя:
 
-1. **Пользователь** — экран «Настройки», `PlayerSettings` / `Settings`, файл `p2160_settings`.
+1. **Пользователь** - экран «Настройки», `PlayerSettings` / `Settings`, файл `p2160_settings`.
    См. [Настройки](Settings.md).
-2. **Движок для встраивания** — `Player2160.config = PlayerConfig(...)` до создания плеера:
-   предел буфера (`AUTO` — 24–128 МБ по памяти устройства), тайм-ауты HTTP, чтение глав,
+2. **Движок для встраивания** - `Player2160.config = PlayerConfig(...)` до создания плеера:
+   предел буфера (`AUTO` - 24–128 МБ по памяти устройства), тайм-ауты HTTP, чтение глав,
    поиск вступлений, запись и чтение истории. Пользователь это не меняет.
 
 Запуск из кода библиотеки: `Player2160.play(context, PlaybackRequest.single(uri, title))`.
-Без библиотеки — [Intent API](Intent-API.md).
+Без библиотеки - [Intent API](Intent-API.md).

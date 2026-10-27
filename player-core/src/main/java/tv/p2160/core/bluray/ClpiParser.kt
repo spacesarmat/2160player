@@ -30,7 +30,7 @@ data class ClipInfo(
     val streams: List<BlurayStream>,
     val epMaps: List<EpMap>,
 ) {
-    /** EP_map первого видеопотока — для перемотки по времени. */
+    /** EP_map первого видеопотока - для перемотки по времени. */
     val videoEpMap: EpMap?
         get() = epMaps.firstOrNull { m -> streams.any { it.pid == m.pid && it.kind == StreamKind.VIDEO } }
             ?: epMaps.firstOrNull()

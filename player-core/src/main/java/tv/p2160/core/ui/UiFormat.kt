@@ -7,8 +7,8 @@ import kotlin.math.abs
 import kotlin.math.round
 
 /**
- * Числа в интерфейсе: один формат на плеер и приложение, десятичный разделитель — из локали
- * (в русской — запятая). Группы разрядов не ставим: скорости и зум короткие.
+ * Числа в интерфейсе: один формат на плеер и приложение, десятичный разделитель - из локали
+ * (в русской - запятая). Группы разрядов не ставим: скорости и зум короткие.
  */
 object UiFormat {
     fun decimal(value: Float, fractionDigits: Int, locale: Locale = Locale.getDefault()): String {
@@ -39,16 +39,23 @@ object UiFormat {
     fun zoom(value: Float, locale: Locale = Locale.getDefault()): String = decimal(value, 1, locale)
 }
 
-/** Ширина боковой панели плеера, dp: 42 % экрана, но не уже 300 и не шире 420. */
+/**
+ * Ширина боковой панели, dp.
+ * Узкий портрет (короче 600 dp, как 360 dp у S21 Ultra при высокой плотности) - почти на весь экран,
+ * не уже 320 dp, если ширина позволяет. Альбом и широкий экран - доля ширины, от 320 до 520 dp.
+ */
 fun sidePanelWidthDp(availableDp: Float): Float {
     if (availableDp <= 0f) return availableDp
-    return (availableDp * 0.42f).coerceIn(300f, 420f).coerceAtMost(availableDp)
+    if (availableDp < 600f) {
+        return (availableDp * 0.92f).coerceAtLeast(320f).coerceAtMost(availableDp)
+    }
+    return (availableDp * 0.46f).coerceIn(320f, 520f).coerceAtMost(availableDp)
 }
 
 /**
  * Отступ сверху боковой панели, dp: панель начинается под верхней полосой кнопок,
  * иначе на широком телефоне она накрывает иконки меню. 8+48+8; в узком портрете
- * кнопки во втором ряду — ещё 48. Вызывающий добавляет сверху safeDrawing обычным
+ * кнопки во втором ряду - ещё 48. Вызывающий добавляет сверху safeDrawing обычным
  * padding, не windowInsetsPadding: вместе со сдвигом в measure это заново измеряло
  * кадр на каждом кадре анимации (0.2.10).
  */

@@ -7,7 +7,7 @@ import java.io.IOException
  * Чтение UDF-образа (ISO Blu-ray): UDF 1.02–2.60, включая метаданные в «*UDF Metadata Partition».
  * Только чтение и только то, что нужно для BD-ROM: без VAT, без таблиц переназначения секторов.
  *
- * Файл отдаётся как список экстентов поверх [source] — без копирования данных.
+ * Файл отдаётся как список экстентов поверх [source] - без копирования данных.
  * Закрывает [source] при закрытии, если [closeSource].
  */
 class UdfFileSystem(
@@ -23,7 +23,7 @@ class UdfFileSystem(
     /** Адрес в логическом томе: номер карты разделов + номер логического блока. */
     private data class LbAddr(val partRef: Int, val lbn: Long)
 
-    /** Дескриптор размещения: тип 0 — записан, 1/2 — не записан (читается нулями). */
+    /** Дескриптор размещения: тип 0 - записан, 1/2 - не записан (читается нулями). */
     private class Ad(val partRef: Int, val lbn: Long, val length: Long, val type: Int)
 
     private class Node(
@@ -252,7 +252,7 @@ class UdfFileSystem(
             pos += step
             if (len == 0L) break // конец списка
             if (type == 3) {
-                // Продолжение — Allocation Extent Descriptor (тег 258).
+                // Продолжение - Allocation Extent Descriptor (тег 258).
                 if (++hops > MAX_AD_HOPS) throw IOException("Too many allocation extents")
                 buf = readBlock(LbAddr(ad.partRef, ad.lbn))
                 if (tagId(buf) != TAG_AED) throw IOException("Bad allocation extent")
@@ -288,7 +288,7 @@ class UdfFileSystem(
             }
             result += mapRange(ref, ad.lbn, len)
         }
-        if (left > 0) result += DiscExtent(-1, left) // хвост без дескрипторов — нули
+        if (left > 0) result += DiscExtent(-1, left) // хвост без дескрипторов - нули
         return result
     }
 
@@ -373,7 +373,7 @@ class UdfFileSystem(
         return LbAddr(u16le(b, o + 8), u32le(b, o + 4))
     }
 
-    /** Идентификатор тега с проверкой контрольной суммы; -1 — не тег. */
+    /** Идентификатор тега с проверкой контрольной суммы; -1 - не тег. */
     private fun tagId(b: ByteArray, o: Int = 0): Int {
         if (o + 16 > b.size) return -1
         var sum = 0
@@ -382,7 +382,7 @@ class UdfFileSystem(
         return u16le(b, o)
     }
 
-    /** dstring: последний байт — длина записанной части. */
+    /** dstring: последний байт - длина записанной части. */
     private fun dstring(b: ByteArray, o: Int, size: Int): String {
         val len = u8(b, o + size - 1)
         return if (len in 1 until size) decodeCs0(b, o, len) else ""
@@ -414,7 +414,7 @@ class UdfFileSystem(
         private const val MAX_ADS = 100_000
         private const val MAX_DIR_SIZE = 16L * 1024 * 1024
 
-        /** Имя в OSTA CS0: 8 — по байту на символ, 16 — UTF-16BE. */
+        /** Имя в OSTA CS0: 8 - по байту на символ, 16 - UTF-16BE. */
         internal fun decodeCs0(b: ByteArray, o: Int, len: Int): String {
             if (len < 1 || o + len > b.size) return ""
             return when (u8(b, o)) {

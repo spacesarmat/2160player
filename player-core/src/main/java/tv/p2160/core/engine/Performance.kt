@@ -50,7 +50,7 @@ data class PlaybackStats(
     val bufferMs: Long = 0,
     val bufferBytes: Long = 0,
     val bufferTargetBytes: Long = 0,
-    /** Оценка скорости сети, бит/с (0 — нет данных). */
+    /** Оценка скорости сети, бит/с (0 - нет данных). */
     val bandwidthBps: Long = 0,
     /** Загрузка процессора процессом плеера, % одного ядра. */
     val cpuPercent: Float = 0f,
@@ -61,7 +61,7 @@ data class PlaybackStats(
 )
 
 /**
- * Частота кадров по меткам времени кадров — для контейнеров, где её нет в заголовке (часто MKV).
+ * Частота кадров по меткам времени кадров - для контейнеров, где её нет в заголовке (часто MKV).
  * Медиана интервалов первых кадров, приведённая к стандартной частоте (23,976, 25, 29,97…).
  */
 @OptIn(UnstableApi::class)
@@ -71,7 +71,7 @@ internal class FrameRateProbe(private val onDetected: (Float) -> Unit) : android
     private var last = -1L
     @Volatile private var done = false
 
-    /** Новый файл или перемотка — начать заново. */
+    /** Новый файл или перемотка - начать заново. */
     fun reset() {
         count = 0
         last = -1L
@@ -84,13 +84,13 @@ internal class FrameRateProbe(private val onDetected: (Float) -> Unit) : android
         last = presentationTimeUs
         if (prev < 0) return
         val d = presentationTimeUs - prev
-        // Разрывы (перемотка, пропуск) и мусор — мимо: 10–100 fps.
+        // Разрывы (перемотка, пропуск) и мусор - мимо: 10–100 fps.
         if (d !in 10_000..100_000) return
         deltas[count++] = d
         if (count < SAMPLES) return
         done = true
-        // Медиана отсекает пропуски кадров (двойной интервал), а среднее соседних с ней — округление меток
-        // в MKV до 1 мс (23,976 fps — то 41, то 42 мс).
+        // Медиана отсекает пропуски кадров (двойной интервал), а среднее соседних с ней - округление меток
+        // в MKV до 1 мс (23,976 fps - то 41, то 42 мс).
         deltas.sort()
         val median = deltas[SAMPLES / 2]
         val near = deltas.filter { abs(it - median) <= 1_500 }
@@ -119,7 +119,7 @@ internal fun offloadPreferences(enabled: Boolean): AudioOffloadPreferences =
 
 /**
  * Сбор статистики: декодеры, кадры, буфер, сеть, процессор и память. Работает, только пока включён
- * ([start]/[stop]) — опрос памяти не бесплатен.
+ * ([start]/[stop]) - опрос памяти не бесплатен.
  */
 @OptIn(UnstableApi::class)
 internal class StatsCollector(
@@ -204,11 +204,11 @@ internal class StatsCollector(
         )
     }
 
-    /** utime + stime процесса в тиках (поля 14 и 15 из /proc/self/stat); -1 — недоступно. */
+    /** utime + stime процесса в тиках (поля 14 и 15 из /proc/self/stat); -1 - недоступно. */
     private fun cpuTicks(): Long = runCatching {
         val stat = File("/proc/self/stat").readText()
         val fields = stat.substringAfterLast(')').trim().split(' ')
-        // После «(имя)»: поле 3 — индекс 0, значит utime (14) — индекс 11, stime (15) — 12.
+        // После «(имя)»: поле 3 - индекс 0, значит utime (14) - индекс 11, stime (15) - 12.
         fields[11].toLong() + fields[12].toLong()
     }.getOrDefault(-1)
 
@@ -229,7 +229,7 @@ internal class StatsCollector(
 
 /**
  * Частота экрана под видео (как в Kodi/Nova): ТВ переключается в режим с тем же разрешением и частотой,
- * кратной частоте кадров (23,976 → 23,976/47,952 Гц, 25 → 50 Гц…), — пропадает дёрганье на панорамах.
+ * кратной частоте кадров (23,976 → 23,976/47,952 Гц, 25 → 50 Гц…), - пропадает дёрганье на панорамах.
  * На время переключения (HDMI пересинхронизируется 1–3 с) воспроизведение ставится на паузу.
  */
 @OptIn(UnstableApi::class)
@@ -250,7 +250,7 @@ object FrameRateMatcher {
     }
 
     /**
-     * Переключить режим окна [activity] под [fps]. Пока дисплей переключается — пауза, потом
+     * Переключить режим окна [activity] под [fps]. Пока дисплей переключается - пауза, потом
      * воспроизведение продолжается, если шло.
      */
     suspend fun apply(activity: Activity, player: Player, fps: Float, onSwitching: () -> Unit = {}) {

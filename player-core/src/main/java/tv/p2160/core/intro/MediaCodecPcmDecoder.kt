@@ -19,11 +19,11 @@ import java.util.Locale
  *
  * Источники: smb:// (прокси-дескриптор [SeekableFiles], Android 8+), content://, file://, http(s) с заголовками.
  * Выбирается первая дорожка, для которой есть декодер (AAC/AC-3/E-AC-3/Opus… предпочтительнее DTS/TrueHD,
- * для которых декодеров в системе обычно нет). Нет подходящей — [open] вернёт null.
+ * для которых декодеров в системе обычно нет). Нет подходящей - [open] вернёт null.
  *
  * Важно про сеть: MediaExtractor читает контейнер подряд, поэтому для отрезка в N минут по сети
  * приходится тянуть весь перемежающийся поток (видео тоже) за эти N минут, если контейнер не позволяет
- * пропускать чужие блоки. Для 4K-ремукса (~60 Мбит/с) 10 минут — это до ~4.5 ГБ, поэтому окна держим короткими.
+ * пропускать чужие блоки. Для 4K-ремукса (~60 Мбит/с) 10 минут - это до ~4.5 ГБ, поэтому окна держим короткими.
  */
 class MediaCodecPcmDecoder private constructor(
     private val extractor: MediaExtractor,
@@ -79,7 +79,7 @@ class MediaCodecPcmDecoder private constructor(
                     }
                 }
                 val out = codec.dequeueOutputBuffer(info, 5_000)
-                // Декодер замолчал после конца входа (бывает у некоторых реализаций) — выходим.
+                // Декодер замолчал после конца входа (бывает у некоторых реализаций) - выходим.
                 if (out == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     if (inputDone && ++idle > 400) break
                 } else {
@@ -147,7 +147,7 @@ class MediaCodecPcmDecoder private constructor(
     companion object {
         private const val TAG = "p2160.intro"
 
-        /** null — источник не открылся или нет декодируемой звуковой дорожки. */
+        /** null - источник не открылся или нет декодируемой звуковой дорожки. */
         fun open(
             context: Context,
             uri: Uri,
@@ -158,7 +158,12 @@ class MediaCodecPcmDecoder private constructor(
             var pfd: ParcelFileDescriptor? = null
             try {
                 when (uri.scheme?.lowercase()) {
-                    "http", "https" -> extractor.setDataSource(uri.toString(), headers)
+                    "http", "https" -> {
+                        if (!IntroStart.openExtractor(uri.scheme, httpEndpointAnswers(uri, headers))) {
+                            return fail(extractor, null)
+                        }
+                        extractor.setDataSource(uri.toString(), headers)
+                    }
                     "smb" -> {
                         pfd = SeekableFiles.open(context, uri) ?: return fail(extractor, null)
                         extractor.setDataSource(pfd.fileDescriptor)
@@ -212,7 +217,7 @@ class MediaCodecPcmDecoder private constructor(
             return s - index
         }
 
-        /** «ru» и «rus» — один язык. */
+        /** «ru» и «rus» - один язык. */
         internal fun sameLanguage(a: String?, b: String?): Boolean {
             if (a.isNullOrBlank() || b.isNullOrBlank()) return false
             if (a.equals(b, ignoreCase = true)) return true

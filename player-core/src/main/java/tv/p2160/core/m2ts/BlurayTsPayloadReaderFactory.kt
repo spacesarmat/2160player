@@ -12,7 +12,7 @@ import androidx.media3.extractor.ts.PesReader
 import androidx.media3.extractor.ts.TsPayloadReader
 
 /**
- * Фабрика читателей ES для Blu-ray: добавляет типы потоков BDMV, остальное — [DefaultTsPayloadReaderFactory].
+ * Фабрика читателей ES для Blu-ray: добавляет типы потоков BDMV, остальное - [DefaultTsPayloadReaderFactory].
  *
  * | stream_type | что это (BD)                | читатель                         |
  * |-------------|-----------------------------|----------------------------------|
@@ -27,12 +27,12 @@ import androidx.media3.extractor.ts.TsPayloadReader
  * | 0x90        | PGS                         | [PgsReader]                      |
  *
  * DtsReader создаётся так же, как Media3 делает для 0x88 (DTS-HD): максимальный заголовок ExSS
- * 4096 байт → ядро + расширение идут одним сэмплом, MIME — AUDIO_DTS_HD/AUDIO_DTS_EXPRESS по ExSS.
+ * 4096 байт → ядро + расширение идут одним сэмплом, MIME - AUDIO_DTS_HD/AUDIO_DTS_EXPRESS по ExSS.
  *
- * @param hdmv трактовать неоднозначные типы по-блюрейному: 0x80 — LPCM (а не DigiCipher II видео),
- *   0x82 — DTS (а не SCTE-27), 0x86 — DTS-HD MA (а не SCTE-35). Для M2TS — всегда true.
- * @param languageForPid язык дорожки по PID (из STN-таблицы MPLS); null — оставить из PMT.
- * @param labelForPid подпись дорожки по PID; null — без подписи.
+ * @param hdmv трактовать неоднозначные типы по-блюрейному: 0x80 - LPCM (а не DigiCipher II видео),
+ *   0x82 - DTS (а не SCTE-27), 0x86 - DTS-HD MA (а не SCTE-35). Для M2TS - всегда true.
+ * @param languageForPid язык дорожки по PID (из STN-таблицы MPLS); null - оставить из PMT.
+ * @param labelForPid подпись дорожки по PID; null - без подписи.
  * @param exposeTrueHdAc3Core выводить AC-3 ядро TrueHD отдельной дорожкой (id = PID + 0x2000).
  */
 @OptIn(UnstableApi::class)

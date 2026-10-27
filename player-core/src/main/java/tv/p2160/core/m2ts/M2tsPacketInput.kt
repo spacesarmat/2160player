@@ -13,12 +13,12 @@ import kotlin.math.min
  * (4 байта TP_extra_header + 188 байт TS) наружу отдаются только 188 байт TS.
  *
  * Логическая позиция L ↔ физическая P: пакет k = L / 188, смещение o = L % 188,
- * P = phase + 192·k + o, где phase — физическое смещение sync-байта (обычно 4).
+ * P = phase + 192·k + o, где phase - физическое смещение sync-байта (обычно 4).
  * Байты заголовков и всё, что до первого пакета, просто выбрасываются.
  *
  * Физику читаем крупными блоками и складываем «очищенные» байты в собственный буфер:
  * так нет 188-байтных системных вызовов, а peek (нужен TsDurationReader и бинарному поиску)
- * работает поверх того же буфера. Физический ввод при этом может убежать вперёд —
+ * работает поверх того же буфера. Физический ввод при этом может убежать вперёд -
  * это безопасно, т.к. продолжение загрузки (новый ExtractorInput с той же физической позиции)
  * распознаётся в [bind], а любой seek сбрасывает буфер.
  */
@@ -56,7 +56,7 @@ internal class M2tsPacketInput(private val phase: Int) : ExtractorInput {
         invalidated = false
     }
 
-    /** Следующий read() придёт с новым вводом (seek) — буфер недействителен. */
+    /** Следующий read() придёт с новым вводом (seek) - буфер недействителен. */
     fun invalidate() {
         invalidated = true
     }
@@ -83,7 +83,7 @@ internal class M2tsPacketInput(private val phase: Int) : ExtractorInput {
 
     private val available get() = bufferEnd - bufferStart
 
-    /** Дочитать физику, пока в буфере не станет [required] логических байт. false — конец ввода. */
+    /** Дочитать физику, пока в буфере не станет [required] логических байт. false - конец ввода. */
     private fun fill(required: Int): Boolean {
         val src = checkNotNull(source)
         while (available < required) {
@@ -224,8 +224,8 @@ internal class M2tsPacketInput(private val phase: Int) : ExtractorInput {
     }
 
     /**
-     * Семантика DefaultExtractorInput: если за [consumedBefore] нет ни байта и allowEndOfInput — false,
-     * если данные оборвались на середине — EOFException.
+     * Семантика DefaultExtractorInput: если за [consumedBefore] нет ни байта и allowEndOfInput - false,
+     * если данные оборвались на середине - EOFException.
      */
     private fun fillFully(total: Int, allowEndOfInput: Boolean, consumedBefore: Int): Boolean {
         if (fill(total)) return true

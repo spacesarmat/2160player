@@ -37,11 +37,14 @@ class UiFormatTest {
 
     @Test
     fun sidePanelIsFractionClampedToRange() {
-        assertEquals(358.26f, sidePanelWidthDp(853f), 0.01f)
-        assertEquals(420f, sidePanelWidthDp(1200f), 0.01f)
-        assertEquals(300f, sidePanelWidthDp(700f), 0.01f)
+        assertEquals(331.2f, sidePanelWidthDp(360f), 0.01f)
+        assertEquals(392.38f, sidePanelWidthDp(853f), 0.01f)
+        assertEquals(520f, sidePanelWidthDp(1200f), 0.01f)
+        assertEquals(322f, sidePanelWidthDp(700f), 0.01f)
         assertEquals(280f, sidePanelWidthDp(280f), 0.01f)
         assertEquals(0f, sidePanelWidthDp(0f), 0.01f)
+        assertTrue(sidePanelWidthDp(360f) >= 320f)
+        assertTrue(sidePanelWidthDp(800f) in 320f..520f)
     }
 
     @Test

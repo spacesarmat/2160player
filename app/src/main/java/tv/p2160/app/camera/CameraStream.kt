@@ -36,13 +36,13 @@ data class CameraInfo(
     val id: String,
     /** [CameraCharacteristics.LENS_FACING_BACK] / `FRONT` / `EXTERNAL`. */
     val facing: Int,
-    /** Фокусное расстояние, которым подписана камера, мм (меньше — шире угол). */
+    /** Фокусное расстояние, которым подписана камера, мм (меньше - шире угол). */
     val focalLength: Float,
     /** Подпись для чипа: сторона, роль объектива, зум или номер, если имена совпали. */
     val name: CameraLabels.Name,
     /** Режимы, которые умеют и эта камера, и кодировщик устройства (от меньшего к большему). */
     val modes: List<StreamMode> = emptyList(),
-    /** Есть вспышка — можно включить фонарик. */
+    /** Есть вспышка - можно включить фонарик. */
     val hasFlash: Boolean = false,
 )
 
@@ -52,7 +52,7 @@ data class CameraInfo(
  * аппаратный кодировщик H.264.
  */
 data class StreamMode(val width: Int, val height: Int, val fps: Int) {
-    /** Битрейт видео: ~0,08 бит на пиксель кадра (1080p·30 — 5 Мбит/с, 4K·30 — 20 Мбит/с). */
+    /** Битрейт видео: ~0,08 бит на пиксель кадра (1080p·30 - 5 Мбит/с, 4K·30 - 20 Мбит/с). */
     val bitrateKbps: Int get() = (width.toLong() * height * fps * 8 / 100 / 1000).toInt().coerceIn(1_000, 40_000)
     val label: String get() = "${if (height >= 2160) "4K" else "${height}p"} · $fps fps"
 
@@ -78,12 +78,12 @@ enum class ScreenAudio {
 data class MicInfo(val id: Int, val labelKey: String, val name: String)
 
 /**
- * Усиление микрофона и замер уровня одним эффектом (у микрофона RootEncoder — один эффект).
+ * Усиление микрофона и замер уровня одним эффектом (у микрофона RootEncoder - один эффект).
  * PCM 16 бит: умножаем с ограничением и считаем пик ~10 раз в секунду.
  */
 class GainMeterEffect : com.pedro.encoder.input.audio.CustomAudioEffect() {
     @Volatile var gain: Float = 1f
-    /** PCM после усиления — для NDI (44,1 кГц, стерео, 16 бит). */
+    /** PCM после усиления - для NDI (44,1 кГц, стерео, 16 бит). */
     @Volatile var pcmListener: ((ByteArray) -> Unit)? = null
     private val _level = MutableStateFlow(0f)
     /** Уровень звука 0..1 (пик за последние ~0,1 с, после усиления). */
@@ -135,15 +135,15 @@ enum class StreamProtocol {
 }
 
 data class CameraStreamConfig(
-    /** id камеры из [CameraStream.cameras]; null — основная задняя. */
+    /** id камеры из [CameraStream.cameras]; null - основная задняя. */
     val cameraId: String? = null,
-    /** По умолчанию 1080p·30; если камера его не умеет — экран выберет ближайший (720p·30 — запасной [StreamMode.DEFAULT]). */
+    /** По умолчанию 1080p·30; если камера его не умеет - экран выберет ближайший (720p·30 - запасной [StreamMode.DEFAULT]). */
     val quality: StreamMode = StreamMode(1920, 1080, 30),
     /** Звук с микрофона. */
     val audio: Boolean = true,
     val port: Int = CameraStream.DEFAULT_PORT,
     val protocol: StreamProtocol = StreamProtocol.RTSP,
-    /** Куда слать SRT: `srt://IP-компьютера:9000` (параметры `?…` — по желанию). */
+    /** Куда слать SRT: `srt://IP-компьютера:9000` (параметры `?…` - по желанию). */
     val srtUrl: String = "",
     /** Сервер RTMP (`rtmp://a.rtmp.youtube.com/live2`) и ключ трансляции (хранится только на устройстве). */
     val rtmpUrl: String = "",
@@ -151,7 +151,7 @@ data class CameraStreamConfig(
     val source: StreamSource = StreamSource.CAMERA,
     /** Звук при трансляции экрана (если включён [audio]). */
     val screenAudio: ScreenAudio = ScreenAudio.MIC,
-    /** Микрофон ([MicInfo.id]); null — выбирает система. */
+    /** Микрофон ([MicInfo.id]); null - выбирает система. */
     val micId: Int? = null,
     /** Усиление микрофона, 0,5–4. */
     val micGain: Float = 1f,
@@ -166,8 +166,8 @@ sealed interface CameraStreamState {
     /** Нет трансляции (может идти предпросмотр). */
     data object Idle : CameraStreamState
     /**
-     * Трансляция идёт. RTSP: сервер слушает [url], [clients] — зрителей. SRT/RTMP: [url] — куда отправляем
-     * (без ключа), [connected] — соединение установлено (до этого — подключение/повтор).
+     * Трансляция идёт. RTSP: сервер слушает [url], [clients] - зрителей. SRT/RTMP: [url] - куда отправляем
+     * (без ключа), [connected] - соединение установлено (до этого - подключение/повтор).
      */
     data class Streaming(
         val url: String,
@@ -175,29 +175,29 @@ sealed interface CameraStreamState {
         val bitrateKbps: Int,
         val protocol: StreamProtocol = StreamProtocol.RTSP,
         val connected: Boolean = true,
-        /** RTSP с защитой: пароль (логин [CameraStream.RTSP_USER]); null — поток открыт. */
+        /** RTSP с защитой: пароль (логин [CameraStream.RTSP_USER]); null - поток открыт. */
         val password: String? = null,
     ) : CameraStreamState {
-        /** Адрес с логином и паролем — для OBS/VLC и сопряжённых плееров. */
+        /** Адрес с логином и паролем - для OBS/VLC и сопряжённых плееров. */
         val urlWithAuth: String
             get() = if (password == null || !url.startsWith("rtsp://")) url
             else "rtsp://${CameraStream.RTSP_USER}:$password@" + url.removePrefix("rtsp://")
     }
-    /** [message] — ключ строки (`camera.err_*`) или текст ошибки соединения. */
+    /** [message] - ключ строки (`camera.err_*`) или текст ошибки соединения. */
     data class Error(val message: String) : CameraStreamState
 }
 
 /**
  * Трансляция камеры телефона в сеть: RTSP-сервер на устройстве (`rtsp://<IP>:8554/`), видео H.264
- * (аппаратный кодировщик) и звук AAC с микрофона. Смотреть — в OBS («Источник медиа»), VLC или в другом
- * 2160 Player. Захват и кодирование — RootEncoder, сервер — RTSP-Server (pedroSG94, Apache-2.0).
+ * (аппаратный кодировщик) и звук AAC с микрофона. Смотреть - в OBS («Источник медиа»), VLC или в другом
+ * 2160 Player. Захват и кодирование - RootEncoder, сервер - RTSP-Server (pedroSG94, Apache-2.0).
  *
  * Предпросмотр работает и без трансляции (выбрать камеру и кадр). Сама трансляция идёт в
  * [CameraStreamService] (сервис переднего плана): экран можно закрыть или свернуть приложение.
  */
 object CameraStream {
     const val DEFAULT_PORT = 8554
-    /** Логин RTSP при защите. Пароль — случайный на каждую трансляцию, не PIN сопряжения. */
+    /** Логин RTSP при защите. Пароль - случайный на каждую трансляцию, не PIN сопряжения. */
     const val RTSP_USER = "2160"
     /** QR `/watch` живёт столько, потом нужен новый с экрана трансляции. */
     private const val WATCH_TTL_MS = 15 * 60 * 1000L
@@ -205,7 +205,7 @@ object CameraStream {
     private const val STALE_DROP_INTERVAL_MS = 2_000L
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
     private var authJob: kotlinx.coroutines.Job? = null
-    /** Пароль текущего RTSP-сеанса. null — защита выключена или трансляция не идёт. */
+    /** Пароль текущего RTSP-сеанса. null - защита выключена или трансляция не идёт. */
     private var streamPassword: String? = null
     private var watchKey: String? = null
     private var watchKeyUntil = 0L
@@ -227,7 +227,7 @@ object CameraStream {
     val torch: StateFlow<Boolean> = _torch.asStateFlow()
 
     private val _zoom = MutableStateFlow(1f)
-    /** Текущий зум (1 — без увеличения). */
+    /** Текущий зум (1 - без увеличения). */
     val zoom: StateFlow<Float> = _zoom.asStateFlow()
 
     /** Диапазон зума работающей камеры (у широкоугольной может начинаться ниже 1). */
@@ -243,7 +243,7 @@ object CameraStream {
         _zoom.value = runCatching { source.getZoom() }.getOrDefault(level)
     }
 
-    /** Жест на предпросмотре: два пальца — зум щипком. */
+    /** Жест на предпросмотре: два пальца - зум щипком. */
     fun onPreviewTouch(view: android.view.View, event: android.view.MotionEvent) {
         val source = stream?.videoSource as? Camera2Source ?: return
         if (event.pointerCount >= 2) {
@@ -263,7 +263,7 @@ object CameraStream {
         (stream?.videoSource as? Camera2Source)?.let { runCatching { it.enableAutoFocus() } }
     }
 
-    /** Включить/выключить фонарик — только у камеры со вспышкой, пока камера работает. */
+    /** Включить/выключить фонарик - только у камеры со вспышкой, пока камера работает. */
     fun setTorch(on: Boolean) {
         val source = stream?.videoSource as? Camera2Source ?: return
         runCatching { if (on) source.enableLantern() else source.disableLantern() }
@@ -279,7 +279,7 @@ object CameraStream {
 
     val isStreaming: Boolean get() = stream?.isStreaming == true && _state.value is CameraStreamState.Streaming
 
-    /** Идёт трансляция через RTSP-сервер на этом устройстве — её можно смотреть с других (`/camera`, mDNS `cam=1`). */
+    /** Идёт трансляция через RTSP-сервер на этом устройстве - её можно смотреть с других (`/camera`, mDNS `cam=1`). */
     val isServing: Boolean get() = isStreaming && (_state.value as? CameraStreamState.Streaming)?.protocol == StreamProtocol.RTSP
 
     private fun prefs(context: Context) = context.getSharedPreferences("p2160_camera", Context.MODE_PRIVATE)
@@ -334,7 +334,7 @@ object CameraStream {
             Log.w(TAG, "connection failed: $reason")
             val s = stream ?: return
             if (s is RtspServerStream) return
-            // SRT/RTMP: сеть моргнула или приёмник ещё не запущен — повторяем; кончились попытки — ошибка.
+            // SRT/RTMP: сеть моргнула или приёмник ещё не запущен - повторяем; кончились попытки - ошибка.
             _state.update { if (it is CameraStreamState.Streaming) it.copy(connected = false) else it }
             if (!s.getStreamClient().reTry(5_000, reason)) {
                 appContext?.let { stop(it) }
@@ -366,8 +366,8 @@ object CameraStream {
     }
 
     /**
-     * Камеры устройства. Задние первыми, среди них — основная (первая задняя в списке системы).
-     * Имя — по стороне и фокусному относительно основной той же стороны. Логическая камера
+     * Камеры устройства. Задние первыми, среди них - основная (первая задняя в списке системы).
+     * Имя - по стороне и фокусному относительно основной той же стороны. Логическая камера
      * и кадрирование того же сенсора в ряд не попадают.
      */
     fun cameras(context: Context): List<CameraInfo> {
@@ -429,7 +429,7 @@ object CameraStream {
 
     /**
      * Режимы камеры: кадры 16:9 из стандартного ряда (720p…4K), которые камера отдаёт на поверхность, × частоты
-     * автоэкспозиции, которые она держит при этом размере (по минимальной длительности кадра), — и только те,
+     * автоэкспозиции, которые она держит при этом размере (по минимальной длительности кадра), - и только те,
      * что потянет аппаратный кодировщик H.264 (в любой ориентации).
      */
     private fun modesFor(c: CameraCharacteristics, encoder: List<android.media.MediaCodecInfo.VideoCapabilities>): List<StreamMode> {
@@ -452,7 +452,7 @@ object CameraStream {
     private fun android.media.MediaCodecInfo.VideoCapabilities.supports(w: Int, h: Int, fps: Int): Boolean =
         runCatching { areSizeAndRateSupported(w, h, fps.toDouble()) }.getOrDefault(false)
 
-    /** Возможности аппаратных кодировщиков H.264 (программные — только если других нет). */
+    /** Возможности аппаратных кодировщиков H.264 (программные - только если других нет). */
     private fun encoderCapabilities(): List<android.media.MediaCodecInfo.VideoCapabilities> {
         val all = runCatching {
             android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos
@@ -469,7 +469,7 @@ object CameraStream {
     private val STANDARD_FPS = setOf(24, 25, 30, 48, 50, 60, 90, 120)
 
     /**
-     * Сменить настройки. Камеру можно переключить и во время трансляции; качество и звук — только без
+     * Сменить настройки. Камеру можно переключить и во время трансляции; качество и звук - только без
      * неё (кодировщик пересоздаётся).
      */
     fun update(context: Context, transform: (CameraStreamConfig) -> CameraStreamConfig) {
@@ -480,11 +480,11 @@ object CameraStream {
                 next.source != old.source || next.screenAudio != old.screenAudio)) return
         _config.value = next
         save(context, next)
-        // Усиление и микрофон — на лету, без пересоздания кодировщиков.
+        // Усиление и микрофон - на лету, без пересоздания кодировщиков.
         gainMeter.gain = next.micGain
         if (next.micId != old.micId) applyMic(context, next.micId)
         if (next.lowLatency != old.lowLatency) stream?.let { applyTransportLatency(it, next) }
-        // Адрес, ключ и профиль задержки на камеру не влияют — кодировщики не пересоздаём.
+        // Адрес, ключ и профиль задержки на камеру не влияют - кодировщики не пересоздаём.
         if (next.copy(
                 srtUrl = old.srtUrl, rtmpUrl = old.rtmpUrl, rtmpKey = old.rtmpKey,
                 micId = old.micId, micGain = old.micGain, lowLatency = old.lowLatency,
@@ -508,7 +508,7 @@ object CameraStream {
         }
     }
 
-    /** Камера и кодировщики готовы для этих настроек (адрес и ключ не в счёт — они нужны только при старте). */
+    /** Камера и кодировщики готовы для этих настроек (адрес и ключ не в счёт - они нужны только при старте). */
     private fun sameEncoder(a: CameraStreamConfig?, b: CameraStreamConfig) =
         a != null && a.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f, lowLatency = false) ==
             b.copy(srtUrl = "", rtmpUrl = "", rtmpKey = "", micId = null, micGain = 1f, lowLatency = false)
@@ -516,14 +516,14 @@ object CameraStream {
     /** Разрешение на запись экрана (MediaProjection) для трансляции экрана; живёт до остановки трансляции. */
     private var projection: android.media.projection.MediaProjection? = null
 
-    /** Пользователь остановил запись экрана системной кнопкой — останавливаем трансляцию. */
+    /** Пользователь остановил запись экрана системной кнопкой - останавливаем трансляцию. */
     private val projectionCallback = object : android.media.projection.MediaProjection.Callback() {
         override fun onStop() {
             scope.launch { appContext?.let { stop(it) } }
         }
     }
 
-    /** Сервис получил разрешение на запись экрана — дальше [startStreaming] возьмёт экран вместо камеры. */
+    /** Сервис получил разрешение на запись экрана - дальше [startStreaming] возьмёт экран вместо камеры. */
     internal fun setProjection(p: android.media.projection.MediaProjection?) {
         projection?.takeIf { it !== p }?.let { runCatching { it.stop() } }
         projection = p
@@ -541,7 +541,7 @@ object CameraStream {
     private fun ensurePrepared(context: Context): StreamBase? {
         val cfg = _config.value
         val portrait = isPortrait(context)
-        // Ориентация кадра — как держат телефон; повернули до старта — готовим заново (во время трансляции не трогаем).
+        // Ориентация кадра - как держат телефон; повернули до старта - готовим заново (во время трансляции не трогаем).
         stream?.takeIf { sameEncoder(preparedFor, cfg) && (it.isStreaming || preparedPortrait == portrait) }?.let {
             if (it is NdiStream) ndiConfigure(it, cfg, portrait)
             applyTransportLatency(it, cfg)
@@ -582,8 +582,8 @@ object CameraStream {
         // Экран отдаёт кадр, только когда картинка меняется: без повтора поток «застывает», и плееры уходят
         // в буферизацию. Повторяем последний кадр не реже 15 раз в секунду (как в примере RootEncoder).
         if (screen != null) s.getGlInterface().setForceRender(true, 15)
-        // Ориентация кадра — как у телефона при запуске: вертикально — вертикальный кадр (720×1280), и зрители
-        // видят его вертикальным; горизонтально — 16:9. Поворот во время трансляции кадр не меняет.
+        // Ориентация кадра - как у телефона при запуске: вертикально - вертикальный кадр (720×1280), и зрители
+        // видят его вертикальным; горизонтально - 16:9. Поворот во время трансляции кадр не меняет.
         val rotation = if (portrait) 90 else 0
         val q = cfg.quality
         val ok = runCatching {
@@ -600,17 +600,17 @@ object CameraStream {
         }
         if (s is RtspServerStream) {
             s.getStreamClient().setClientListener(clients)
-            // Защита как у «Передачи между устройствами»: включена — поток по логину 2160 и текущему коду.
+            // Защита как у «Передачи между устройствами»: включена - поток по логину 2160 и текущему коду.
             s.getStreamClient().setAuthorization(RTSP_USER.takeIf { streamPassword != null }, streamPassword)
-            // Адрес в ответах сервера (Content-Base) — IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
+            // Адрес в ответах сервера (Content-Base) - IPv4: по нему OBS/ffmpeg шлют SETUP, а подключаются по IPv4.
             s.getStreamClient().forceIpType(com.pedro.rtspserver.server.IpType.IPv4)
         } else {
-            // Приёмник (OBS, сервис) может быть ещё не запущен или сеть моргнуть — повторяем подключение.
+            // Приёмник (OBS, сервис) может быть ещё не запущен или сеть моргнуть - повторяем подключение.
             s.getStreamClient().setReTries(10)
         }
-        // Библиотека по умолчанию пишет в лог каждый пакет — это лишняя нагрузка на процессор.
+        // Библиотека по умолчанию пишет в лог каждый пакет - это лишняя нагрузка на процессор.
         s.getStreamClient().setLogs(false)
-        // NDI кодировщик остановит сам. Для RTSP/SRT/RTMP — низкая задержка кодека до старта (GOP остаётся 1 с).
+        // NDI кодировщик остановит сам. Для RTSP/SRT/RTMP - низкая задержка кодека до старта (GOP остаётся 1 с).
         if (cfg.protocol != StreamProtocol.NDI) EncoderLatency.tune(s, q.fps)
         applyTransportLatency(s, cfg)
         stream = s
@@ -652,7 +652,7 @@ object CameraStream {
         ContextCompat.startForegroundService(context, Intent(context, CameraStreamService::class.java))
     }
 
-    /** Начать трансляцию экрана: [resultCode]/[data] — ответ на системный запрос записи экрана. */
+    /** Начать трансляцию экрана: [resultCode]/[data] - ответ на системный запрос записи экрана. */
     fun startScreen(context: Context, resultCode: Int, data: Intent) {
         ContextCompat.startForegroundService(
             context,
@@ -697,10 +697,10 @@ object CameraStream {
         if (s is RtspServerStream) {
             s.getStreamClient().setAuthorization(RTSP_USER.takeIf { streamPassword != null }, streamPassword)
         }
-        // Подготовили заново (телефон повернули) — вернуть предпросмотр.
+        // Подготовили заново (телефон повернули) - вернуть предпросмотр.
         previewSurface?.let { surface -> if (!s.isOnPreview && _config.value.source == StreamSource.CAMERA) runCatching { s.startPreview(surface) } }
         return runCatching {
-            // Состояние — до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
+            // Состояние - до старта: SRT/RTMP могут сообщить «подключено» раньше, чем вернётся startStream.
             _state.value = when (cfg.protocol) {
                 StreamProtocol.RTSP -> CameraStreamState.Streaming(url(context), clients = 0, bitrateKbps = 0, password = streamPassword)
                 // Ключ RTMP на экран и в уведомление не выводим.
@@ -715,7 +715,7 @@ object CameraStream {
             }
             applyCaptureHints(s, cfg)
             cfg.cameraId?.let { id -> (s.videoSource as? Camera2Source)?.takeIf { it.getCurrentCameraId() != id }?.openCameraId(id) }
-            // RTSP: объявить в сети «у меня камера» — другие 2160 Player покажут её на главном экране.
+            // RTSP: объявить в сети «у меня камера» - другие 2160 Player покажут её на главном экране.
             Handoff.reannounce()
             if (s is RtspServerStream) watchSecrets(s)
             adaptBitrate(s, cfg.quality.bitrateKbps * 1000)
@@ -734,7 +734,7 @@ object CameraStream {
         stopStreaming()
     }
 
-    /** Усиление и уровень микрофона ([GainMeterEffect.level] — для индикатора). */
+    /** Усиление и уровень микрофона ([GainMeterEffect.level] - для индикатора). */
     val gainMeter = GainMeterEffect()
 
     /** Микрофоны устройства: встроенный, гарнитура, USB, Bluetooth (без дублей по типу и имени). */
@@ -759,7 +759,7 @@ object CameraStream {
         return am.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.id == id }
     }
 
-    /** Сменить микрофон на лету (у работающей записи — сразу). */
+    /** Сменить микрофон на лету (у работающей записи - сразу). */
     private fun applyMic(context: Context, id: Int?) {
         if (android.os.Build.VERSION.SDK_INT < 23) return
         val source = stream?.audioSource as? MicrophoneSource ?: return
@@ -767,8 +767,8 @@ object CameraStream {
     }
 
     /**
-     * Ссылка для QR-кода: страница `/watch` этого устройства (камера телефона откроет её, кнопка — 2160 Player
-     * или установка). null — нет сети Wi-Fi.
+     * Ссылка для QR-кода: страница `/watch` этого устройства (камера телефона откроет её, кнопка - 2160 Player
+     * или установка). null - нет сети Wi-Fi.
      */
     fun watchUrl(s: CameraStreamState.Streaming): String? {
         if (s.protocol != StreamProtocol.RTSP) return null
@@ -779,7 +779,7 @@ object CameraStream {
 
     /**
      * Ключ страницы `/watch` на 15 минут. Пустой, если защита выключена.
-     * Истёкший ключ здесь выпускается заново — так QR на экране обновляется.
+     * Истёкший ключ здесь выпускается заново - так QR на экране обновляется.
      */
     private fun currentWatchKey(): String? {
         if (!HandoffAuth.required) return null
@@ -792,7 +792,7 @@ object CameraStream {
         return watchKey
     }
 
-    /** Сверка `k` без выпуска нового ключа. Защита выключена — страница открыта. */
+    /** Сверка `k` без выпуска нового ключа. Защита выключена - страница открыта. */
     internal fun watchKeyMatches(presented: String?): Boolean {
         if (!HandoffAuth.required) return true
         val key = watchKey ?: return false
@@ -807,8 +807,8 @@ object CameraStream {
     }
 
     /**
-     * Очередь, задержка SRT и буфер RTSP. Без «Минимальной задержки» очередь 120 кадров (~1–1,5 с) и SRT 120 мс —
-     * как раньше. С ней — 30 кадров и SRT 80 мс. Буфер TCP ужимается только в этом режиме; Nagle выключен всегда.
+     * Очередь, задержка SRT и буфер RTSP. Без «Минимальной задержки» очередь 120 кадров (~1–1,5 с) и SRT 120 мс -
+     * как раньше. С ней - 30 кадров и SRT 80 мс. Буфер TCP ужимается только в этом режиме; Nagle выключен всегда.
      */
     private fun applyTransportLatency(s: StreamBase, cfg: CameraStreamConfig) {
         runCatching { s.getStreamClient().setDelay(0) }
@@ -817,7 +817,7 @@ object CameraStream {
         if (s is RtspServerStream) s.setSendBufferSize(StreamLatency.rtspSendBuffer(cfg.lowLatency) ?: 0)
     }
 
-    /** Со следующего запуска камеры: фиксированный fps и без шумодава/резкости — они добавляют кадры задержки. */
+    /** Со следующего запуска камеры: фиксированный fps и без шумодава/резкости - они добавляют кадры задержки. */
     private fun applyCaptureHints(s: StreamBase, cfg: CameraStreamConfig) {
         if (!cfg.lowLatency || cfg.source != StreamSource.CAMERA) return
         val cam = s.videoSource as? Camera2Source ?: return
@@ -835,7 +835,7 @@ object CameraStream {
     private var bitrateJob: kotlinx.coroutines.Job? = null
     private var lastStaleDropMs = 0L
 
-    /** Очередь забита — выбросить её и попросить ключевой кадр, а не копить секунды. */
+    /** Очередь забита - выбросить её и попросить ключевой кадр, а не копить секунды. */
     private fun dropStale(s: StreamBase) {
         val items = runCatching { s.getStreamClient().getItemsInCache() }.getOrDefault(0)
         val size = runCatching { s.getStreamClient().getCacheSize() }.getOrDefault(0)
@@ -848,8 +848,8 @@ object CameraStream {
     }
 
     /**
-     * Битрейт под сеть: очередь отправки заполнена больше чем на треть — снижаем видео на 20 % (до 30 % от
-     * выбранного), сеть свободна — плавно возвращаем по 10 % в секунду.
+     * Битрейт под сеть: очередь отправки заполнена больше чем на треть - снижаем видео на 20 % (до 30 % от
+     * выбранного), сеть свободна - плавно возвращаем по 10 % в секунду.
      */
     private fun adaptBitrate(s: StreamBase, target: Int) {
         bitrateJob?.cancel()
@@ -858,7 +858,7 @@ object CameraStream {
             while (true) {
                 kotlinx.coroutines.delay(1_000)
                 if (_state.value !is CameraStreamState.Streaming) return@launch
-                // NDI: «зрители» — подключённые приёмники; битрейт NDI регулирует сам.
+                // NDI: «зрители» - подключённые приёмники; битрейт NDI регулирует сам.
                 if (s is NdiStream) {
                     val n = (s.getStreamClient() as NdiStreamClient).connections()
                     _state.update { if (it is CameraStreamState.Streaming) it.copy(clients = n) else it }
@@ -875,7 +875,7 @@ object CameraStream {
         }
     }
 
-    /** Полное имя источника NDI — так его увидят OBS/vMix: «ИМЯ-УСТРОЙСТВА (2160 Player)». */
+    /** Полное имя источника NDI - так его увидят OBS/vMix: «ИМЯ-УСТРОЙСТВА (2160 Player)». */
     fun ndiName(context: Context): String = Ndi.machineName(context) + " (" + Ndi.SOURCE_NAME + ")"
 
     /** Пароль сеанса не крутится сам. Меняется только если защиту включили или выключили во время трансляции. */
@@ -916,7 +916,7 @@ object CameraStream {
         bitrateJob = null
         lastStaleDropMs = 0L
         gainMeter.pcmListener = null
-        // Экран: трансляция кончилась — разрешение на запись больше не держим.
+        // Экран: трансляция кончилась - разрешение на запись больше не держим.
         if (_config.value.source == StreamSource.SCREEN) {
             stream?.let { s -> runCatching { if (s.isStreaming) s.stopStream() } }
             release()
@@ -948,8 +948,8 @@ object CameraStream {
     }
 
     /**
-     * Полный адрес RTMP: сервер + ключ (`rtmp://a.rtmp.youtube.com/live2/<ключ>`). null — сервер не rtmp(s)://
-     * или нет ключа (у своего сервера ключ может быть уже в адресе — тогда ключ необязателен).
+     * Полный адрес RTMP: сервер + ключ (`rtmp://a.rtmp.youtube.com/live2/<ключ>`). null - сервер не rtmp(s)://
+     * или нет ключа (у своего сервера ключ может быть уже в адресе - тогда ключ необязателен).
      */
     fun rtmpEndpoint(server: String, key: String): String? {
         val s = server.trim().trimEnd('/')
@@ -957,12 +957,12 @@ object CameraStream {
         val k = key.trim()
         return when {
             k.isNotEmpty() -> "$s/$k"
-            s.count { it == '/' } >= 4 -> s // rtmp://host/app/stream — ключ уже в адресе
+            s.count { it == '/' } >= 4 -> s // rtmp://host/app/stream - ключ уже в адресе
             else -> null
         }
     }
 
-    /** Адрес для зрителей: IPv4 в локальной сети (как у передачи между устройствами), иначе — что сообщит сервер. */
+    /** Адрес для зрителей: IPv4 в локальной сети (как у передачи между устройствами), иначе - что сообщит сервер. */
     private fun url(context: Context): String {
         val host = Handoff.baseUrl()?.let { Uri.parse(it).host } ?: Lan.ipv4(context) ?: "?"
         return "rtsp://$host:${_config.value.port}/"
@@ -973,8 +973,8 @@ object CameraStream {
 
     /**
      * Готовит отправку только по локальной сети. RTSP/NDI: нужен адрес Wi-Fi/Ethernet/точки доступа, зрители
-     * через мобильный интерфейс отклоняются. SRT/RTMP: сокеты привязываются к Wi-Fi/Ethernet (без него — только
-     * если адрес назначения в подсети точки доступа телефона). false — локальной сети нет, трансляцию не начинаем.
+     * через мобильный интерфейс отклоняются. SRT/RTMP: сокеты привязываются к Wi-Fi/Ethernet (без него - только
+     * если адрес назначения в подсети точки доступа телефона). false - локальной сети нет, трансляцию не начинаем.
      */
     private fun useLan(context: Context, protocol: StreamProtocol, target: String): Boolean {
         val app = context.applicationContext

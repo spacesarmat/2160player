@@ -12,7 +12,7 @@ val signing = Properties().apply {
 fun signingValue(key: String, env: String): String? = signing.getProperty(key) ?: System.getenv(env)
 
 // NDI® SDK (закрытый, в git не кладём): ndi.sdk.dir в local.properties, NDI_SDK_DIR или путь установки по умолчанию.
-// Нет SDK — приложение собирается без NDI (пункт не показывается). Заголовки — third-party/ndi/include (MIT).
+// Нет SDK - приложение собирается без NDI (пункт не показывается). Заголовки - third-party/ndi/include (MIT).
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
@@ -32,8 +32,8 @@ android {
         applicationId = "tv.p2160.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 24
-        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.12"
+        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 25
+        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.13"
         buildConfigField("boolean", "NDI", (ndiSdkDir != null).toString())
         if (ndiSdkDir != null) {
             externalNativeBuild {
@@ -42,7 +42,7 @@ android {
         }
     }
 
-    // Мост к NDI (C++) и сама libndi.so — только если SDK найден.
+    // Мост к NDI (C++) и сама libndi.so - только если SDK найден.
     if (ndiSdkDir != null) {
         ndkVersion = "28.2.13676358"
         externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
@@ -73,7 +73,7 @@ android {
     }
 
     // Отдельные APK под архитектуры: FFmpeg занимает ~8 МБ на каждую ABI.
-    // Обычная сборка — APK под каждую архитектуру + universal. С -Pp2160.abi=arm — один APK сразу под
+    // Обычная сборка - APK под каждую архитектуру + universal. С -Pp2160.abi=arm - один APK сразу под
     // arm64-v8a и armeabi-v7a (~31 МБ): ставится на любой телефон и ТВ, поэтому годится для «Поделиться».
     val armOnly = findProperty("p2160.abi") == "arm"
     if (armOnly) defaultConfig.ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -86,7 +86,7 @@ android {
         }
     }
 
-    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg — берём одну копию.
+    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg - берём одну копию.
     packaging {
         // Нативные библиотеки (FFmpeg, libtorrent) храним сжатыми: APK меньше примерно на 10 МБ на ABI.
         jniLibs.useLegacyPackaging = true
@@ -117,7 +117,7 @@ val copyNdi = tasks.register<Copy>("copyNdiLibs") {
     if (ndiSdkDir != null) from(File(ndiSdkDir, "Lib")) { include("*/libndi.so") }
     into(ndiJniDir)
 }
-// Лицензии компонентов libndi — в APK рядом с библиотекой (показываются в «О приложении»).
+// Лицензии компонентов libndi - в APK рядом с библиотекой (показываются в «О приложении»).
 val copyNdiLicenses = tasks.register<Copy>("copyNdiLicenses") {
     if (ndiSdkDir != null) from(File(ndiSdkDir, "Lib/arm64-v8a")) { include("*.txt") }
     into(ndiAssetsDir.map { it.dir("ndi") })
@@ -135,7 +135,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)   // QR-код для «Поделиться по Wi-Fi»
     // Трансляция камеры: захват Camera2, аппаратное кодирование H.264/H.265/AAC, RTSP-сервер / SRT / RTMP (Apache-2.0).
-    // WHIP (WebRTC) не используем: он тянет BouncyCastle jdk15to18, а у SMB (smbj) — jdk18on с теми же классами.
+    // WHIP (WebRTC) не используем: он тянет BouncyCastle jdk15to18, а у SMB (smbj) - jdk18on с теми же классами.
     implementation(libs.rootencoder.library) {
         exclude(group = "com.github.pedroSG94.RootEncoder", module = "whip")
         exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")

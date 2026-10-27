@@ -151,7 +151,7 @@ class ResumeStore private constructor(context: Context) :
 
         /**
          * Ключ `http`/`https` без query и фрагмента: хост, нестандартный порт и путь.
-         * Порты 80 и 443 не входят в ключ. IPv6 берётся в скобках. null — хоста нет.
+         * Порты 80 и 443 не входят в ключ. IPv6 берётся в скобках. null - хоста нет.
          */
         internal fun networkKey(scheme: String, host: String?, port: Int, path: String?): String? {
             if (host.isNullOrEmpty()) return null

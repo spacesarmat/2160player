@@ -109,7 +109,7 @@
                 <data android:scheme="https" />
                 <data android:mimeType="application/x-bittorrent" />
             </intent-filter>
-            <!-- Файловые менеджеры часто не знают MIME .torrent — ловим по расширению -->
+            <!-- Файловые менеджеры часто не знают MIME .torrent - ловим по расширению -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

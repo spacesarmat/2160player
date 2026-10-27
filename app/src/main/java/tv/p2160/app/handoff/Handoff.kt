@@ -25,21 +25,21 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
-/** Другой экземпляр 2160 Player в локальной сети. [locked] — на нём включена защита кодом. */
+/** Другой экземпляр 2160 Player в локальной сети. [locked] - на нём включена защита кодом. */
 data class Peer(
     val id: String,
     val name: String,
     val host: String,
     val port: Int,
     val locked: Boolean = false,
-    /** Сейчас транслирует камеру (TXT `cam=1`): видно и без сопряжения, адрес — после него. */
+    /** Сейчас транслирует камеру (TXT `cam=1`): видно и без сопряжения, адрес - после него. */
     val camera: Boolean = false,
 )
 
 /** Камера, которую сейчас транслирует другое устройство с 2160 Player ([tv.p2160.app.camera.CameraStream]). */
 data class RemoteCamera(
     val peer: Peer,
-    /** Адрес потока; null — нужен код/разрешение ([Handoff.needsCode]), адрес узнаем после сопряжения. */
+    /** Адрес потока; null - нужен код/разрешение ([Handoff.needsCode]), адрес узнаем после сопряжения. */
     val uri: Uri?,
     val viewers: Int,
 )
@@ -47,7 +47,7 @@ data class RemoteCamera(
 /** Итог отправки просмотра на другое устройство. */
 enum class PushResult { OK, NEED_CODE, FAILED }
 
-/** Запрос подключения: [nonce] — для кода и опроса ответа; [denied] — хозяин недавно отклонил нас. */
+/** Запрос подключения: [nonce] - для кода и опроса ответа; [denied] - хозяин недавно отклонил нас. */
 data class PairRequest(val nonce: String?, val denied: Boolean = false)
 
 /** Что играет (или стояло на паузе) на другом устройстве. */
@@ -65,18 +65,18 @@ data class RemoteSession(
  * «Продолжить на другом устройстве» без облака.
  *
  * Каждый запущенный плеер поднимает маленький HTTP-сервер и объявляет себя по mDNS (`_p2160._tcp`):
- * - `GET /now` — что сейчас играет (URI, доступный другим устройствам, и позиция);
- * - `POST /play` — предложение продолжить просмотр здесь (показываем диалог подтверждения);
- * - `GET /camera` — адрес трансляции камеры этого устройства (`rtsp://…`), 204 — камера не транслируется;
- * - `GET /watch?k=ключ` — страница «Смотреть трансляцию» для QR-кода (камера телефона откроет её в браузере,
- *   кнопка — 2160 Player или скачивание APK); `k` — отдельный короткий ключ трансляции, не PIN сопряжения
+ * - `GET /now` - что сейчас играет (URI, доступный другим устройствам, и позиция);
+ * - `POST /play` - предложение продолжить просмотр здесь (показываем диалог подтверждения);
+ * - `GET /camera` - адрес трансляции камеры этого устройства (`rtsp://…`), 204 - камера не транслируется;
+ * - `GET /watch?k=ключ` - страница «Смотреть трансляцию» для QR-кода (камера телефона откроет её в браузере,
+ *   кнопка - 2160 Player или скачивание APK); `k` - отдельный короткий ключ трансляции, не PIN сопряжения
  *   (без защиты не нужен);
- * - `GET /hello?id&name&port&auth&cam` — «я тоже здесь»: найдя устройство по mDNS, плеер сообщает о себе
+ * - `GET /hello?id&name&port&auth&cam` - «я тоже здесь»: найдя устройство по mDNS, плеер сообщает о себе
  *   напрямую. Так обнаружение работает и там, где роутер пропускает multicast только в одну сторону
  *   (Wi-Fi ↔ провод): записи без «привета» и mDNS дольше [HELLO_TTL_MS] удаляются;
- * - `GET /stream/<token>` — раздача локального файла (content://, file://) с поддержкой Range,
+ * - `GET /stream/<token>` - раздача локального файла (content://, file://) с поддержкой Range,
  *   чтобы ТВ мог досмотреть видео, лежащее в памяти телефона;
- * - `GET /pair/challenge`, `GET /pair/status`, `POST /pair` — сопряжение: хозяин отвечает в уведомлении
+ * - `GET /pair/challenge`, `GET /pair/status`, `POST /pair` - сопряжение: хозяин отвечает в уведомлении
  *   «Разрешить/Отклонить» ([PairRequests]) или клиент вводит код ([HandoffAuth]); при включённой защите
  *   `/now`, `/play` и `/camera` требуют заголовок `X-P2160-Token`, иначе 401.
  *   Сервер слушает только частные адреса локальных интерфейсов (не 0.0.0.0).
@@ -107,7 +107,7 @@ object Handoff {
     private const val HELLO_INTERVAL_MS = 60_000L
     private const val HELLO_TTL_MS = 3 * 60_000L
     @Volatile private var helloLoop: java.util.concurrent.Future<*>? = null
-    /** Неверные коды на `/watch`: после 5 подряд — минута ожидания (перебор 6 цифр по сети). */
+    /** Неверные коды на `/watch`: после 5 подряд - минута ожидания (перебор 6 цифр по сети). */
     private var watchFailures = 0
     private var watchLockedUntil = 0L
     private var nsd: NsdManager? = null
@@ -139,7 +139,7 @@ object Handoff {
         nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
         register(socket.localPort, deviceName(ctx))
         discover()
-        // Раз в минуту — «привет» всем известным и чистка тех, кого давно не слышно.
+        // Раз в минуту - «привет» всем известным и чистка тех, кого давно не слышно.
         helloLoop = pool.submit {
             while (server === socket && !socket.isClosed) {
                 runCatching { Thread.sleep(HELLO_INTERVAL_MS) }.onFailure { return@submit }
@@ -150,7 +150,7 @@ object Handoff {
         }
     }
 
-    /** По одному сокету на частный адрес локального интерфейса. Порт берётся у первого, остальные — тот же. */
+    /** По одному сокету на частный адрес локального интерфейса. Порт берётся у первого, остальные - тот же. */
     private fun bindPrivate(ctx: Context): List<ServerSocket> {
         val opened = ArrayList<ServerSocket>()
         for (addr in Lan.bindable(ctx)) {
@@ -190,7 +190,7 @@ object Handoff {
         runCatching { registration?.let { nsd?.unregisterService(it) } }
         registration = null
         register(port, deviceName(ctx))
-        // Тем, до кого не доходит наш multicast, — напрямую.
+        // Тем, до кого не доходит наш multicast, - напрямую.
         _peers.value.forEach { peer -> pool.execute { hello(peer) } }
     }
 
@@ -218,12 +218,12 @@ object Handoff {
         _peers.value = _peers.value.filterNot { it.id == peer.id } + peer
     }
 
-    /** Список камер в сети: у сопряжённых — с адресом, у остальных — только «есть камера» (адрес после сопряжения). */
+    /** Список камер в сети: у сопряжённых - с адресом, у остальных - только «есть камера» (адрес после сопряжения). */
     fun fetchCameras(): List<RemoteCamera> = _peers.value.filter { it.camera }.mapNotNull { peer ->
         if (needsCode(peer)) RemoteCamera(peer, null, 0) else fetchCamera(peer)
     }
 
-    /** Перезапуск объявления (например, после смены режима защиты — меняется TXT `auth`). */
+    /** Перезапуск объявления (например, после смены режима защиты - меняется TXT `auth`). */
     fun restart(context: Context) {
         val running = synchronized(this) { server != null }
         if (!running) return
@@ -243,7 +243,7 @@ object Handoff {
             HandoffAuth.tokenFor(peer.id)?.let { setRequestProperty(TOKEN_HEADER, it) }
         }
 
-    /** Что играет на [peer]. Блокирующий вызов. null — ничего или нет доступа (нужен код). */
+    /** Что играет на [peer]. Блокирующий вызов. null - ничего или нет доступа (нужен код). */
     fun fetchSession(peer: Peer): RemoteSession? = runCatching {
         if (needsCode(peer)) return null
         val conn = connect(peer, "/now")
@@ -256,7 +256,7 @@ object Handoff {
         }
     }.getOrNull()
 
-    /** Трансляция камеры на [peer]. Блокирующий вызов. null — не транслирует или нет доступа (нужен код). */
+    /** Трансляция камеры на [peer]. Блокирующий вызов. null - не транслирует или нет доступа (нужен код). */
     fun fetchCamera(peer: Peer): RemoteCamera? = runCatching {
         if (needsCode(peer)) return null
         val conn = connect(peer, "/camera")
@@ -291,7 +291,7 @@ object Handoff {
 
 /**
      * Запрос подключения к [peer]: на нём появится уведомление «Разрешить / Отклонить».
-     * Возвращает nonce запроса; null — не удалось или [peer] недавно отклонил нас (тогда [denied] = true).
+     * Возвращает nonce запроса; null - не удалось или [peer] недавно отклонил нас (тогда [denied] = true).
      */
     fun requestPairing(context: Context, peer: Peer): PairRequest = runCatching {
         val name = Uri.encode(deviceName(context))
@@ -307,7 +307,7 @@ object Handoff {
         }
     }.getOrDefault(PairRequest(null))
 
-    /** Ответил ли хозяин [peer] на запрос: APPROVED — токен уже сохранён. null — запрос истёк или потерян. */
+    /** Ответил ли хозяин [peer] на запрос: APPROVED - токен уже сохранён. null - запрос истёк или потерян. */
     fun pairStatus(peer: Peer, nonce: String): HandoffAuth.Decision? = runCatching {
         val conn = connect(peer, "/pair/status?nonce=$nonce")
         try {
@@ -550,7 +550,7 @@ object Handoff {
 
     /**
      * URI, по которому другое устройство сможет открыть то же видео:
-     * сетевые ссылки — как есть, локальные файлы — через наш /stream.
+     * сетевые ссылки - как есть, локальные файлы - через наш /stream.
      */
     private fun shareable(context: Context, now: NowPlaying): NowPlaying? = when (now.uri.scheme?.lowercase()) {
         "smb", "http", "https", "rtsp" -> now
@@ -633,7 +633,7 @@ object Handoff {
                             val camera = helloCamera[id] ?: (r.attributes["cam"]?.let { String(it) } == "1")
                             val peer = Peer(id, r.serviceName, host, r.port, locked, camera)
                             upsertPeer(peer)
-                            // Нашли (или оно перезапустилось на новом порту) — сразу «привет»: вдруг наш multicast до него не доходит.
+                            // Нашли (или оно перезапустилось на новом порту) - сразу «привет»: вдруг наш multicast до него не доходит.
                             pool.execute { hello(peer) }
                         }
                         override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit

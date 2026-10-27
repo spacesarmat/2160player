@@ -1,6 +1,6 @@
 """
 Иконки отладочной сборки (tv.p2160.player.debug) с полосой «ТЕСТ», чтобы на телефоне и ТВ
-отличать её от обычной версии. Кладёт файлы в app/src/debug/res — они перекрывают main только в debug.
+отличать её от обычной версии. Кладёт файлы в app/src/debug/res - они перекрывают main только в debug.
 
 Запуск из корня проекта:  python design/debug-badge/make_debug_icons.py
 """
@@ -46,7 +46,7 @@ def save(img, rel):
 
 for density in ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]:
     folder = "mipmap-" + density
-    # Адаптивная иконка: передний план 108 dp, видимая зона — центральные 72 dp (с 18 до 90).
+    # Адаптивная иконка: передний план 108 dp, видимая зона - центральные 72 dp (с 18 до 90).
     fg = Image.open(os.path.join(MAIN, folder, "ic_launcher_foreground.png")).convert("RGBA")
     w, h = fg.size
     badge(fg, (int(w * 0.22), int(h * 0.64), int(w * 0.78), int(h * 0.76)))
@@ -60,7 +60,7 @@ for density in ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]:
     r, g, b, _ = layer.split()
     cut = Image.merge("RGBA", (r, g, b, alpha))
     mono.alpha_composite(cut)
-    # текст — прозрачный (монохром использует только альфу)
+    # текст - прозрачный (монохром использует только альфу)
     px = mono.load()
     lp = layer.load()
     for y in range(h):

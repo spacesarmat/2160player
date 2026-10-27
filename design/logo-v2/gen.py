@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""2160 Player — logo v2 (cinematic monument wordmarks). Writes SVGs + preview.html."""
+"""2160 Player - logo v2 (cinematic monument wordmarks). Writes SVGs + preview.html."""
 import math, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine import *
@@ -52,7 +52,7 @@ def text_flat(word, H, x_center, y_base, fill, gap=26, W=62, s=19, c=12, extra='
 
 
 # =====================================================================================
-# CONCEPT 1 — "Монумент": gold block numerals on a two-step obsidian pedestal,
+# CONCEPT 1 - "Монумент": gold block numerals on a two-step obsidian pedestal,
 #              PLAYER cast on the plinth, a crown of searchlights behind.
 # =====================================================================================
 S1 = dict(W=70, s=24, c=16, ci=5, gap=15, W1=52, yri=0.56, term=10, yB=60, wt=0.86, base1=True)

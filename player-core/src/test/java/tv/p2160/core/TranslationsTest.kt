@@ -7,7 +7,7 @@ import java.io.File
 
 /**
  * Проверяет встроенные языковые пакеты всех модулей: одинаковый набор ключей
- * и одинаковые плейсхолдеры (%1$s, %2$d…) — иначе перевод упадёт на форматировании.
+ * и одинаковые плейсхолдеры (%1$s, %2$d…) - иначе перевод упадёт на форматировании.
  */
 class TranslationsTest {
 
@@ -48,6 +48,23 @@ class TranslationsTest {
                         placeholder.findAll(other.getValue(key)).map { it.value }.sorted().toList(),
                     )
                 }
+            }
+        }
+    }
+
+    @Test
+    fun stringsAndResourcesDoNotUseEmDash() {
+        val em = "\u2014"
+        packDirs.forEach { dir ->
+            dir.walkTopDown().filter { it.isFile && it.extension == "json" }.forEach { file ->
+                assertTrue("${file.path} contains an em dash", em !in file.readText())
+            }
+        }
+        listOf("player-core", "app", "source-torrent", "samples/embed-demo").forEach { module ->
+            val res = File(root, "$module/src/main/res")
+            if (!res.isDirectory) return@forEach
+            res.walkTopDown().filter { it.isFile && it.extension == "xml" }.forEach { file ->
+                assertTrue("${file.path} contains an em dash", em !in file.readText())
             }
         }
     }

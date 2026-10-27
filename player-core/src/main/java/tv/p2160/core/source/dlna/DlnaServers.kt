@@ -20,7 +20,7 @@ data class KnownDlnaServer(val server: DlnaServer, val manual: Boolean)
 
 /**
  * Реестр медиасерверов DLNA: результаты поиска (в памяти) и добавленные вручную (сохраняются).
- * Один экземпляр на процесс — экран обзора находит сервер по [DlnaServer.udn].
+ * Один экземпляр на процесс - экран обзора находит сервер по [DlnaServer.udn].
  */
 class DlnaServers private constructor(context: Context) {
     private val lock = AndroidMulticastLock(context)
@@ -37,7 +37,7 @@ class DlnaServers private constructor(context: Context) {
 
     private var job: Job? = null
 
-    /** Новый цикл поиска (если уже идёт — ничего не делает). */
+    /** Новый цикл поиска (если уже идёт - ничего не делает). */
     fun refresh(timeoutMs: Long = 5000) {
         if (job?.isActive == true) return
         _searching.value = true

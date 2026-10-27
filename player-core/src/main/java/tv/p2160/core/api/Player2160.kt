@@ -39,7 +39,7 @@ object Player2160 {
     fun settings(context: Context): PlayerSettings = PlayerSettings.get(context)
 
     /**
-     * Что играет сейчас. null — плеер в этом процессе ещё не запускался; после закрытия остаётся
+     * Что играет сейчас. null - плеер в этом процессе ещё не запускался; после закрытия остаётся
      * последний снимок с isPlaying = false. Обновляется примерно раз в секунду.
      */
     val nowPlaying: StateFlow<NowPlaying?> get() = PlayerExtensions.nowPlaying
@@ -63,7 +63,7 @@ object Player2160 {
         get() = PlayerExtensions.config
         set(value) { PlayerExtensions.config = value }
 
-    /** Свой телегид для эфирных запросов ([PlaybackRequest.liveTv]); null — встроенный IPTV. */
+    /** Свой телегид для эфирных запросов ([PlaybackRequest.liveTv]); null - встроенный IPTV. */
     fun setLiveGuide(guide: LiveGuide?) {
         PlayerExtensions.liveGuide = guide
     }

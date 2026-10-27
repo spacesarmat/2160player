@@ -6,19 +6,19 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Приёмник моно PCM 16 бит. Буфер переиспользуется — копировать, если нужно хранить. */
+/** Приёмник моно PCM 16 бит. Буфер переиспользуется - копировать, если нужно хранить. */
 fun interface PcmSink {
     fun accept(samples: ShortArray, count: Int)
 }
 
 /** Источник звука файла: моно 16 бит на заданной частоте, произвольный отрезок времени. */
 interface PcmSource : Closeable {
-    /** Длительность файла, мс; −1 — неизвестна. */
+    /** Длительность файла, мс; −1 - неизвестна. */
     val durationMs: Long
 
     /**
      * Отдаёт отрезок [startMs, startMs + lengthMs) в [sink] на частоте [outRate].
-     * @return число отданных сэмплов; меньше ожидаемого — конец файла, ошибка или отмена.
+     * @return число отданных сэмплов; меньше ожидаемого - конец файла, ошибка или отмена.
      */
     fun read(startMs: Long, lengthMs: Long, outRate: Int, sink: PcmSink, cancelled: () -> Boolean): Long
 }
@@ -57,7 +57,7 @@ class Resampler(private val inRate: Int, private val outRate: Int) {
     /** Входные сэмплы: [order] сэмплов истории + новые. */
     private var buf = FloatArray(order + 8192)
     private var len = order
-    /** Позиция следующего выходного сэмпла в координатах buf; +order/2 — компенсация задержки фильтра. */
+    /** Позиция следующего выходного сэмпла в координатах buf; +order/2 - компенсация задержки фильтра. */
     private var pos = order * 1.5
     private val out = ShortArray(4096)
 

@@ -29,7 +29,7 @@ data class SsdpMessage(
     /** `uuid:...` из USN (`uuid:xxx::urn:...`). */
     val udn: String? get() = usn?.substringBefore("::")?.trim()?.takeIf { it.startsWith("uuid:", true) }
 
-    /** Похоже на медиасервер по ST/NT — без загрузки описания. */
+    /** Похоже на медиасервер по ST/NT - без загрузки описания. */
     val looksLikeMediaServer: Boolean
         get() = type?.let { it.contains(":MediaServer:", true) || it.contains(":ContentDirectory:", true) } == true
 
@@ -72,8 +72,8 @@ data class SsdpMessage(
 }
 
 /**
- * Захват ресурсов платформы на время поиска. На Android — `WifiManager.MulticastLock`
- * (без него многие устройства отбрасывают входящий multicast), на JVM — ничего.
+ * Захват ресурсов платформы на время поиска. На Android - `WifiManager.MulticastLock`
+ * (без него многие устройства отбрасывают входящий multicast), на JVM - ничего.
  */
 fun interface MulticastLockProvider {
     /** Захватывает блокировку; возвращает действие освобождения. */
@@ -128,7 +128,7 @@ class SsdpDiscovery(
                 }.getOrNull()?.let(sockets::add)
             }
             if (sockets.isEmpty()) runCatching { MulticastSocket(0).apply { timeToLive = 4 } }.getOrNull()?.let(sockets::add)
-            // Слушатель NOTIFY на 1900 — порт может быть занят системной службой, тогда работаем без него.
+            // Слушатель NOTIFY на 1900 - порт может быть занят системной службой, тогда работаем без него.
             val notify = runCatching {
                 MulticastSocket(null).apply {
                     reuseAddress = true

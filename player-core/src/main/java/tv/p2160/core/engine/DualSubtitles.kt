@@ -24,11 +24,11 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * ExoPlayer выводит одну текстовую дорожку на рендерер, поэтому добавляем второй TextRenderer.
  * Он стоит перед основным и «умеет» только выбранную вторую дорожку: так при распределении дорожек
- * по рендерерам она достаётся ему, а все остальные — основному.
+ * по рендерерам она достаётся ему, а все остальные - основному.
  */
 @OptIn(UnstableApi::class)
 class SecondarySubtitles {
-    /** Format.id дорожки, которую показывает второй рендерер; null — вторых субтитров нет. */
+    /** Format.id дорожки, которую показывает второй рендерер; null - вторых субтитров нет. */
     @Volatile var formatId: String? = null
 
     private val _cues = MutableStateFlow<List<Cue>>(emptyList())
@@ -85,7 +85,7 @@ internal class DualTextRenderersFactory(
         extensionRendererMode: Int,
         out: ArrayList<Renderer>,
     ) {
-        // Второй рендерер — первым: при равной поддержке дорожка достаётся первому по списку.
+        // Второй рендерер - первым: при равной поддержке дорожка достаётся первому по списку.
         val renderer = SecondaryTextRenderer(TextRenderer(secondary.output, outputLooper), secondary)
         secondary.renderer = renderer
         out.add(renderer)

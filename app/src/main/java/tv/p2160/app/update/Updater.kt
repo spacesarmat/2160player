@@ -19,7 +19,7 @@ import java.net.URL
 
 /**
  * Квота неавторизованного api.github.com исчерпана (60 запросов в час на IP).
- * [resetEpochSeconds] — `X-RateLimit-Reset`, [retryAfterSeconds] — числовой `Retry-After`.
+ * [resetEpochSeconds] - `X-RateLimit-Reset`, [retryAfterSeconds] - числовой `Retry-After`.
  */
 internal class GitHubRateLimit(
     val resetEpochSeconds: Long?,
@@ -102,8 +102,8 @@ object Updater {
     }
 
     suspend fun download(context: Context, info: UpdateInfo) {
-        // Отладочная сборка (tv.p2160.player.debug) — другой пакет: Android не поставит релиз поверх неё
-        // (INSTALL_FAILED_INVALID_APK). Открываем страницу релиза — релиз ставится отдельным приложением.
+        // Отладочная сборка (tv.p2160.player.debug) - другой пакет: Android не поставит релиз поверх неё
+        // (INSTALL_FAILED_INVALID_APK). Открываем страницу релиза - релиз ставится отдельным приложением.
         if (context.packageName != RELEASE_PACKAGE) {
             _state.value = UpdateState.Idle
             runCatching {
@@ -162,7 +162,7 @@ object Updater {
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
-            // Если приложение само себя ставило — обновление пройдёт без лишнего диалога.
+            // Если приложение само себя ставило - обновление пройдёт без лишнего диалога.
             if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         }
         val sessionId = installer.createSession(params)
@@ -300,7 +300,7 @@ object Updater {
         return tagFromLatestLocation(response.location)
     }
 
-    /** Первый существующий файл: HEAD, без скачивания. Имена — в порядке [assetProbeNames] / [pickAsset]. */
+    /** Первый существующий файл: HEAD, без скачивания. Имена - в порядке [assetProbeNames] / [pickAsset]. */
     private fun firstExistingAsset(version: String, names: List<String>): Pair<String, Long>? {
         for (name in names) {
             val url = releaseAssetUrl(version, name)
@@ -428,7 +428,7 @@ object Updater {
 
     /**
      * Минуты до `X-RateLimit-Reset` (или до конца `Retry-After`).
-     * Без заголовков — час, окно неавторизованной квоты. Минимум одна минута.
+     * Без заголовков - час, окно неавторизованной квоты. Минимум одна минута.
      */
     fun retryMinutes(resetEpochSeconds: Long?, retryAfterSeconds: Long?, nowEpochSeconds: Long): Int {
         val until = when {
@@ -451,7 +451,7 @@ object Updater {
 
     /** APK под первую поддерживаемую ABI устройства, иначе универсальный. */
     fun pickAsset(names: List<String>, abis: List<String>): String? =
-        // ARM-устройствам — общий ARM-APK: установленный файл потом подойдёт и для «Поделиться» на любой телефон/ТВ.
+        // ARM-устройствам - общий ARM-APK: установленный файл потом подойдёт и для «Поделиться» на любой телефон/ТВ.
         names.firstOrNull { "-arm-" in it }?.takeIf { abis.any { it.startsWith("arm") } }
             ?: abis.firstNotNullOfOrNull { abi -> names.firstOrNull { "-$abi-" in it } }
             ?: names.firstOrNull { "universal" in it }
@@ -467,7 +467,7 @@ object Updater {
         )
 
     /**
-     * 403/429 api.github.com — квота (обычно `X-RateLimit-Remaining: 0` или `Retry-After`).
+     * 403/429 api.github.com - квота (обычно `X-RateLimit-Remaining: 0` или `Retry-After`).
      * Для скачивания APK тот же код без этих заголовков остаётся обычной ошибкой HTTP.
      */
     private fun rateLimitOrNull(code: Int, remaining: String?, reset: String?, retryAfter: String?): GitHubRateLimit? {

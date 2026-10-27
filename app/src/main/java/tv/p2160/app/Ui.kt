@@ -40,14 +40,14 @@ import kotlin.math.min
 
 /**
  * Потолок колонки на обычном экране, dp. На широком кадре (телефон лёжа, ТВ) он ещё
- * ограничивается долей ширины: 720 dp на плотности 600 — это почти весь экран.
+ * ограничивается долей ширины: 720 dp на плотности 600 - это почти весь экран.
  */
 const val ReadableContentMaxDp = 720f
 
 /**
  * Ширина колонки настроек и таких же экранов, dp.
  * Широкий кадр (ширина ≥ 1,5 высоты): не шире 60 % экрана и не шире 720 dp.
- * Иначе — до 720 dp, но не шире самого экрана. Портрет телефона остаётся на всю ширину.
+ * Иначе - до 720 dp, но не шире самого экрана. Портрет телефона остаётся на всю ширину.
  */
 fun readableContentMaxDp(widthDp: Float, heightDp: Float): Float {
     if (widthDp <= 0f) return 0f
@@ -124,7 +124,7 @@ fun FocusCard(
             .background(background)
             .border(if (focused) 3.dp else 0.dp, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
             // semantics снаружи toggleable. Иначе mergeDescendants оказывается внутренним узлом
-            // с текстом, а Role.Switch остаётся на родителе без текста — TalkBack видит checkable=false
+            // с текстом, а Role.Switch остаётся на родителе без текста - TalkBack видит checkable=false
             // (так было у «Минимальная задержка»: у строки нет дочернего Switch, в отличие от настроек).
             .semantics(mergeDescendants = merge) {
                 if (contentDescription != null) this.contentDescription = contentDescription

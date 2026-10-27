@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""2160 Player — One UI-style icon concepts. Pure SVG, no fonts, no filters in icon assets."""
+"""2160 Player - One UI-style icon concepts. Pure SVG, no fonts, no filters in icon assets."""
 import math, os, re, sys
 from shapely.geometry import LineString, Polygon, Point
 from shapely.ops import unary_union
@@ -278,13 +278,13 @@ def C_mono():
 CONCEPTS = {
     'A': dict(slug='layers', name='Слои', bg=A_bg, glyph=A_glyph, mono=A_mono,
               desc='Три полупрозрачных «стеклянных» треугольника Play, наложенных друг на друга, как кадры при перемотке, '
-                   'на тёплом градиенте амбер → коралл. Внизу справа — тёмно-синий бейдж «2160». Самый «самсунговский»: '
+                   'на тёплом градиенте амбер → коралл. Внизу справа - тёмно-синий бейдж «2160». Самый «самсунговский»: '
                    'простая дружелюбная форма, слои с глубиной, мягкие тени.'),
     'B': dict(slug='monogram', name='Монограмма 21/60', bg=B_bg, glyph=B_glyph, mono=B_mono,
               desc='Крупные округлые цифры 21 / 60 в две строки на стеклянной карточке поверх градиента амбер → оранжевый. '
                    'Прямо называет бренд и отлично читается на 48 px; продолжает идею монограммы из v2, но в мягком стиле One UI.'),
     'C': dict(slug='screen', name='Экран', bg=C_bg, glyph=C_glyph, mono=C_mono,
-              desc='Стеклянный экран с янтарным Play на глубоком фиолетово-синем фоне, снизу — подставка и тёплое свечение. '
+              desc='Стеклянный экран с янтарным Play на глубоком фиолетово-синем фоне, снизу - подставка и тёплое свечение. '
                    'Контрастный, «кинотеатральный» вариант, который выделяется среди светлых иконок.'),
 }
 
@@ -468,7 +468,7 @@ def preview(files):
         hd, hw, hh = header(key, True); hl, lw, lh = header(key, False)
         secs.append('''
 <section>
- <h2>Концепт %s — «%s»</h2><p class="desc">%s</p>
+ <h2>Концепт %s - «%s»</h2><p class="desc">%s</p>
  <div class="row top"><div class="big">%s</div>
   <div class="col">
    <div class="row">%s</div>
@@ -481,7 +481,7 @@ def preview(files):
 </section>''' % (key, c['name'], c['desc'], inst(fi, 300), sizes, masks, th,
                  home_row(key, True), home_row(key, False),
                  inst(hd, int(hw * 0.6), int(hh * 0.6)), inst(hl, int(lw * 0.6), int(lh * 0.6)), inst(banner(key), 320, 180)))
-    html = '''<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>2160 Player — иконка в стиле One UI</title>
+    html = '''<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>2160 Player - иконка в стиле One UI</title>
 <style>
 body{margin:0;background:#0E0E10;color:#F2F2F2;font:15px/1.5 "Segoe UI",system-ui,sans-serif}
 header{padding:26px 40px 4px}h1{margin:0;font-size:25px}header p{color:#9a9aa2;margin:6px 0 0;max-width:1100px}
@@ -498,8 +498,8 @@ h2{margin:0 0 4px;color:#FFB020;font-size:22px}h3{margin:20px 0 10px;font-size:1
 .wdark .app{color:#fff}.wlight .app{color:#222}
 .hdr{padding:18px 24px;border-radius:14px}.hdr.dark{background:#0E0E10;border:1px solid #2a2a2e}.hdr.light{background:#F7F7F9}
 </style></head><body>
-<header><h1>2160 Player — иконка в стиле One UI</h1>
-<p>Сквиркл, одна крупная дружелюбная форма, мягкие многоцветные градиенты, полупрозрачные «стеклянные» слои и мягкие тени вместо фасок. Всё построено из собственных контуров (без шрифтов); в иконках нет фильтров — их можно перевести в VectorDrawable.</p></header>
+<header><h1>2160 Player - иконка в стиле One UI</h1>
+<p>Сквиркл, одна крупная дружелюбная форма, мягкие многоцветные градиенты, полупрозрачные «стеклянные» слои и мягкие тени вместо фасок. Всё построено из собственных контуров (без шрифтов); в иконках нет фильтров - их можно перевести в VectorDrawable.</p></header>
 __SECS__</body></html>'''.replace('__SECS__', ''.join(secs))
     with open(os.path.join(OUT, 'preview.html'), 'w', encoding='utf-8') as f: f.write(html)
 

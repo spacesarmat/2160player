@@ -1,12 +1,12 @@
-# 2160 Player — справочник API
+# 2160 Player - справочник API
 
 Документ описывает публичный API модуля `player-core` (пакет `tv.p2160.core`) и Intent API отдельного
 приложения 2160 Player. Все сигнатуры сверены с исходниками; если что-то в коде объявлено `public`,
-но здесь помечено как «внутреннее», — не опирайтесь на это: такие классы могут измениться без
+но здесь помечено как «внутреннее», - не опирайтесь на это: такие классы могут измениться без
 предупреждения.
 
-Быстрый старт за 5 минут — в [EMBEDDING.md](EMBEDDING.md). Те же темы по страницам для GitHub Wiki —
-в [wiki/Home.md](wiki/Home.md). Рабочий пример — модуль
+Быстрый старт за 5 минут - в [EMBEDDING.md](EMBEDDING.md). Те же темы по страницам для GitHub Wiki -
+в [wiki/Home.md](wiki/Home.md). Рабочий пример - модуль
 [`samples/embed-demo`](../samples/embed-demo).
 
 ## Содержание
@@ -25,7 +25,7 @@
 12. [Главы и пропускаемые отрезки](#12-главы-и-пропускаемые-отрезки)
 13. [Локализация](#13-локализация)
 14. [Blu-ray: ISO и BDMV](#14-blu-ray-iso-и-bdmv)
-15. [Потоки, жизненный цикл, ошибки, ограничения](#15-потоки-жизненный-цикл-ошибки-ограничения) (15.7 — производительность)
+15. [Потоки, жизненный цикл, ошибки, ограничения](#15-потоки-жизненный-цикл-ошибки-ограничения) (15.7 - производительность)
 16. [Ночной звук](#16-ночной-звук)
 17. [Умный выбор дорожек](#17-умный-выбор-дорожек)
 18. [Поиск вступлений по звуку и сводка по файлу](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)
@@ -39,7 +39,7 @@
 
 ## 1. Обзор и возможности
 
-`player-core` — Android-библиотека (minSdk 24, compileSdk 37) с готовым полноэкранным плеером на
+`player-core` - Android-библиотека (minSdk 24, compileSdk 37) с готовым полноэкранным плеером на
 Jetpack Compose и Media3/ExoPlayer. Её можно использовать тремя способами: запустить готовую
 `Player2160Activity`, встроить Compose-экран `PlayerScreen` в свою Activity или вызвать отдельное
 приложение 2160 Player через Intent, вообще не подключая библиотеку.
@@ -62,7 +62,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | UI | Телефон и Android TV (D-pad, пульт, цифровой ввод времени), жесты, PiP, превью кадров при перемотке, 6 тем оформления. |
 | Локализация | JSON-пакеты в assets, импорт/экспорт пользовательских переводов. Встроены `en`, `ru`. |
 | Производительность | Буфер по памяти устройства, offload звука, частота экрана под видео, туннельный режим, статистика поверх видео ([§15.7](#157-производительность-буфер-частота-экрана-статистика)). |
-| Живые потоки | `rtsp://`, `udp://` (MPEG-TS) с низкой задержкой; в приложении — трансляция камеры/экрана и «Камеры в сети» (§22.7). |
+| Живые потоки | `rtsp://`, `udp://` (MPEG-TS) с низкой задержкой; в приложении - трансляция камеры/экрана и «Камеры в сети» (§22.7). |
 
 ---
 
@@ -70,7 +70,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Путь | Нужна библиотека? | Когда выбирать |
 |---|---|---|
-| **(a) Intent API** | Нет | Ваше приложение (медиацентр, IPTV, клиент медиасервера) просто открывает видео во внешнем плеере. Совместимо с MX Player/VLC — если вы уже их поддерживаете, достаточно добавить пакет `tv.p2160.player`. |
+| **(a) Intent API** | Нет | Ваше приложение (медиацентр, IPTV, клиент медиасервера) просто открывает видео во внешнем плеере. Совместимо с MX Player/VLC - если вы уже их поддерживаете, достаточно добавить пакет `tv.p2160.player`. |
 | **(b)+(c) Библиотека + готовая Activity** | Да | Плеер должен быть частью вашего APK; достаточно `Player2160.play(...)`. |
 | **(d) Библиотека + свой экран** | Да | Нужно разместить плеер внутри своей Activity/навигации, управлять жизненным циклом и PiP самостоятельно. |
 
@@ -100,26 +100,26 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `android.intent.action.VIEW` (+ `BROWSABLE`) | `rtsp` | без MIME |
 
 > `ACTION_VIEW` с `http(s)`-ссылкой **без MIME-типа** под фильтры не попадает (иначе плеер
-> перехватывал бы все веб-ссылки) — указывайте тип (`video/*`) или явный компонент.
+> перехватывал бы все веб-ссылки) - указывайте тип (`video/*`) или явный компонент.
 > Схемы `smb://` в фильтрах нет: для SMB используйте явный компонент (см. 3.5).
 
 ### 3.3. Входные extras
 
-Обязательное поле одно — `data` (URI текущего файла). Все extras необязательны.
+Обязательное поле одно - `data` (URI текущего файла). Все extras необязательны.
 
 **Совместимые с MX Player**
 
 | Ключ | Тип | Значение |
 |---|---|---|
 | `title` | `String` | Заголовок текущего файла. |
-| `position` | `Int` или `Long` (мс); строка тоже читается | Позиция старта. Если не задана — продолжение с сохранённого места (если включено «Продолжать просмотр»). |
-| `from_start` | `Boolean` | `true` — начать с нуля, игнорируя сохранённую позицию и `position` (ключ VLC, у MX аналогичное поведение). |
+| `position` | `Int` или `Long` (мс); строка тоже читается | Позиция старта. Если не задана - продолжение с сохранённого места (если включено «Продолжать просмотр»). |
+| `from_start` | `Boolean` | `true` - начать с нуля, игнорируя сохранённую позицию и `position` (ключ VLC, у MX аналогичное поведение). |
 | `headers` | `String[]` | HTTP-заголовки парами: `["User-Agent", "App/1.0", "Referer", "https://…"]`. `User-Agent` заменяет стандартный `2160Player/1.0 (Linux; Android) ExoPlayerLib`. Применяются ко всем элементам плейлиста и к внешним субтитрам. |
 | `return_result` | `Boolean` | Вернуть результат (см. 3.4). При вызове через `startActivityForResult` результат возвращается и без этого флага. |
 | `subs` | `Parcelable[]` (`Uri[]`) | Внешние субтитры для текущего файла. |
 | `subs.name` | `String[]` | Отображаемые имена субтитров (по индексу `subs`). |
 | `subs.enable` | `Parcelable[]` (`Uri[]`) | Какие из `subs` включить сразу. |
-| `video_list` | `Parcelable[]` (`Uri[]`) | Плейлист. Стартовый элемент — тот, что совпадает с `data` (иначе первый). |
+| `video_list` | `Parcelable[]` (`Uri[]`) | Плейлист. Стартовый элемент - тот, что совпадает с `data` (иначе первый). |
 | `video_list.name` | `String[]` | Заголовки элементов плейлиста. |
 
 **Совместимые с VLC**
@@ -133,7 +133,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Ключ | Тип | Значение |
 |---|---|---|
-| `tv.p2160.extra.PLAYLIST` | `String[]` | Плейлист строками URI — альтернатива `video_list` (Parcelable[]), удобная из adb (`--esa`), веб-оболочек и скриптов. `data` Intent'а задаёт стартовый элемент. |
+| `tv.p2160.extra.PLAYLIST` | `String[]` | Плейлист строками URI - альтернатива `video_list` (Parcelable[]), удобная из adb (`--esa`), веб-оболочек и скриптов. `data` Intent'а задаёт стартовый элемент. |
 | `tv.p2160.extra.TITLES` | `String[]` | Заголовки плейлиста (используется, если нет `video_list.name`). |
 | `tv.p2160.extra.MIME_TYPES` | `String[]` | MIME по элементам плейлиста. Нужен для HLS/DASH без расширения в URL (`application/x-mpegURL`, `application/dash+xml`, `application/vnd.ms-sstr+xml`). Для текущего файла без плейлиста используется `Intent.type`. |
 | `tv.p2160.extra.SEGMENTS` | `String` | Пропускаемые отрезки текущего файла: `intro:0-90000;credits:1320000-` (см. [§12](#12-главы-и-пропускаемые-отрезки)). |
@@ -141,8 +141,8 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.INTRO_END` | `Int`/`Long` (мс) | Конец вступления. |
 | `tv.p2160.extra.CREDITS_START` | `Int`/`Long` (мс) | Начало финальных титров (до конца файла). |
 | `tv.p2160.extra.ARTWORK` | `String` (URI) | Обложка текущего файла (`MediaEntry.artworkUri`). |
-| `tv.p2160.extra.ARTWORKS` | `String[]` | Обложки элементов плейлиста по порядку; пустая строка — нет. |
-| `tv.p2160.extra.LIVE` | `Boolean` | Плейлист — телеканалы (`PlaybackRequest.liveTv`): без продолжения с места и истории, «Эфир» вместо полосы перемотки, стрелки вверх/вниз (и CH+/CH−, цифры) переключают каналы по кругу. |
+| `tv.p2160.extra.ARTWORKS` | `String[]` | Обложки элементов плейлиста по порядку; пустая строка - нет. |
+| `tv.p2160.extra.LIVE` | `Boolean` | Плейлист - телеканалы (`PlaybackRequest.liveTv`): без продолжения с места и истории, «Эфир» вместо полосы перемотки, стрелки вверх/вниз (и CH+/CH−, цифры) переключают каналы по кругу. |
 
 Субтитры, MIME из `Intent.type` и отрезки относятся только к **стартовому** элементу плейлиста.
 
@@ -154,10 +154,10 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Ключ | Тип | Значение |
 |---|---|---|
-| `data` | `Uri` | URI элемента, на котором остановились (в плейлисте — текущий). |
+| `data` | `Uri` | URI элемента, на котором остановились (в плейлисте - текущий). |
 | `position` | `Int` (мс) | Позиция остановки (MX Player). |
 | `duration` | `Int` (мс) | Длительность (MX Player). |
-| `end_by` | `String` | `"user"` — закрыл пользователь, `"playback_completion"` — досмотрено до конца. |
+| `end_by` | `String` | `"user"` - закрыл пользователь, `"playback_completion"` - досмотрено до конца. |
 | `extra_position` | `Long` (мс) | Позиция (VLC). |
 | `extra_duration` | `Long` (мс) | Длительность (VLC). |
 
@@ -184,8 +184,8 @@ val launcher = registerForActivityResult(ActivityResultContracts.StartActivityFo
 
 val play = Intent("tv.p2160.action.PLAY")
     .setDataAndType(Uri.parse("https://cdn.example.com/show/s01e02.m3u8"), "application/x-mpegURL")
-    .setPackage("tv.p2160.player")                        // или setComponent(...) — см. ниже
-    .putExtra("title", "Сериал — S01E02")
+    .setPackage("tv.p2160.player")                        // или setComponent(...) - см. ниже
+    .putExtra("title", "Сериал - S01E02")
     .putExtra("position", 125_000)                        // мс
     .putExtra("headers", arrayOf("User-Agent", "MyApp/2.0", "Authorization", "Bearer …"))
     .putExtra("subs", arrayOf(Uri.parse("https://cdn.example.com/s01e02.ru.srt")))
@@ -214,7 +214,7 @@ startActivity(
 
 **Chooser или явный пакет?**
 `Intent.createChooser` показывает все подходящие плееры и не гарантирует возврат результата
-(часть лаунчеров его теряет). Если нужна позиция остановки — задайте пакет (`setPackage`) или
+(часть лаунчеров его теряет). Если нужна позиция остановки - задайте пакет (`setPackage`) или
 компонент (`setComponent`) и запускайте через `startActivityForResult`/`ActivityResultLauncher`.
 На Android 11+ для проверки, установлен ли плеер (`getPackageInfo`, `resolveActivity`), объявите
 в манифесте `<queries><package android:name="tv.p2160.player"/></queries>`. Сам запуск
@@ -225,7 +225,7 @@ startActivity(
 ### 3.6. Примеры `adb shell am start`
 
 ```sh
-# Ссылка с заголовком и позицией (Long через --el, Int через --ei — читаются оба)
+# Ссылка с заголовком и позицией (Long через --el, Int через --ei - читаются оба)
 adb shell am start -a android.intent.action.VIEW \
   -n tv.p2160.player/tv.p2160.core.Player2160Activity \
   -d "https://example.com/movie.mkv" -t "video/*" \
@@ -251,14 +251,14 @@ adb shell am start -a android.intent.action.VIEW \
   -d "smb://nas/Movies/Film.iso"
 ```
 
-`am start` не умеет передавать массивы `Uri` — `subs`, `subs.enable` и `video_list` доступны только
+`am start` не умеет передавать массивы `Uri` - `subs`, `subs.enable` и `video_list` доступны только
 из кода.
 
 ---
 
 ## 4. Подключение библиотеки
 
-Подробные варианты (модуль, `includeBuild`, `mavenLocal`, GitHub Packages) — в
+Подробные варианты (модуль, `includeBuild`, `mavenLocal`, GitHub Packages) - в
 [EMBEDDING.md](EMBEDDING.md#1-подключение). Кратко:
 
 ```kotlin
@@ -281,8 +281,8 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.12")
-    // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) — Compose-плагин в вашем модуле
+    implementation("tv.p2160:player-core:0.2.13")
+    // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) - Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
 ```
@@ -294,7 +294,7 @@ dependencies {
 | `api` (видны вашему коду) | `media3-exoplayer`, `activity-compose`, `kotlinx-coroutines-android`, Compose BOM, `compose-ui`, `material3` |
 | `implementation` (только runtime) | Media3 HLS/DASH/SmoothStreaming/RTSP/UI, nextlib (FFmpeg + mediainfo), smbj, dcerpc, `core-ktx`, `lifecycle-runtime-compose`, `material-icons-extended` |
 
-FFmpeg добавляет ~8 МБ на каждую ABI — используйте `splits { abi { … } }` или App Bundle.
+FFmpeg добавляет ~8 МБ на каждую ABI - используйте `splits { abi { … } }` или App Bundle.
 
 ### 4.2. Манифест
 
@@ -303,10 +303,10 @@ FFmpeg добавляет ~8 МБ на каждую ABI — используйт
 - разрешения `INTERNET`, `ACCESS_NETWORK_STATE` и `CHANGE_WIFI_MULTICAST_STATE` (поиск DLNA-серверов
   по SSDP, `WifiManager.MulticastLock`);
 - `android:usesCleartextTraffic="true"` на `<application>` (IPTV и домашние серверы часто без HTTPS);
-- Activity `tv.p2160.core.Player2160Activity` — `exported="false"`, `singleTop`,
+- Activity `tv.p2160.core.Player2160Activity` - `exported="false"`, `singleTop`,
   `supportsPictureInPicture="true"`, тема `@style/Theme.P2160.Player`;
 - сервис `tv.p2160.core.engine.PlaybackService` (`MediaSessionService`, `foregroundServiceType="mediaPlayback"`)
-  и разрешения `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` — уведомление с управлением
+  и разрешения `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` - уведомление с управлением
   и фоновое воспроизведение (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)).
 
 Внутри вашего приложения Activity доступна без изменений. Чтобы **другие** приложения могли
@@ -381,13 +381,13 @@ data class PlaybackRequest(
 | Параметр | Описание |
 |---|---|
 | `items` | Плейлист, минимум один элемент (иначе `IllegalArgumentException`). |
-| `liveTv` | Элементы — телеканалы (IPTV). Позиции не сохраняются, вместо полосы перемотки — «Эфир», стрелки вверх/вниз при скрытой панели переключают канал, под названием — текущая передача из `LiveGuide` (`Player2160.setLiveGuide`; по умолчанию — EPG плейлистов `tv.p2160.core.iptv.IptvStore`). |
+| `liveTv` | Элементы - телеканалы (IPTV). Позиции не сохраняются, вместо полосы перемотки - «Эфир», стрелки вверх/вниз при скрытой панели переключают канал, под названием - текущая передача из `LiveGuide` (`Player2160.setLiveGuide`; по умолчанию - EPG плейлистов `tv.p2160.core.iptv.IptvStore`). |
 | `startIndex` | С какого элемента начать (приводится к допустимому диапазону). |
-| `startPositionMs` | Позиция старта для `startIndex`. `null` — продолжить с сохранённой позиции (если включено `Settings.autoResume` и сохранено > 5 с); `0` — строго с начала. |
+| `startPositionMs` | Позиция старта для `startIndex`. `null` - продолжить с сохранённой позиции (если включено `Settings.autoResume` и сохранено > 5 с); `0` - строго с начала. |
 | `headers` | HTTP-заголовки для всех сетевых запросов (видео, субтитры, ISO по HTTP). |
 | `returnResult` | Вернуть `PlaybackResult` вызывающей Activity при закрытии. |
 
-`PlaybackRequest.single(uri: Uri, title: String? = null)` — короткая форма для одного файла.
+`PlaybackRequest.single(uri: Uri, title: String? = null)` - короткая форма для одного файла.
 
 ```kotlin
 data class MediaEntry(
@@ -402,27 +402,27 @@ data class MediaEntry(
 | Параметр | Описание |
 |---|---|
 | `uri` | `http(s)`, `rtsp`, `file`, `content`, `smb`; путь к `.iso` или папке `BDMV`. |
-| `title` | Заголовок. По умолчанию — имя файла без расширения (или название диска Blu-ray). |
+| `title` | Заголовок. По умолчанию - имя файла без расширения (или название диска Blu-ray). |
 | `subtitles` | Внешние субтитры. |
 | `mimeType` | Нужен для адаптивных потоков без расширения: значение, содержащее `mpegurl` → HLS, `dash` → DASH, `vnd.ms-sstr` → SmoothStreaming. Для остального игнорируется. URL с `.m3u8` распознаётся и без него. |
 | `segments` | Известные пропускаемые отрезки (имеют приоритет над найденными по главам). |
-| `artworkUri` | Обложка/постер (`http(s)`, `smb`, `file`, `content`) для «Продолжить просмотр» и истории (§10.1). Не задана — плеер ищет сам. |
+| `artworkUri` | Обложка/постер (`http(s)`, `smb`, `file`, `content`) для «Продолжить просмотр» и истории (§10.1). Не задана - плеер ищет сам. |
 
 ```kotlin
 data class ExternalSubtitle(
     val uri: Uri,
     val name: String? = null,
-    val language: String? = null,   // ISO 639, например "ru"; по умолчанию — из имени файла (Movie.ru.srt)
+    val language: String? = null,   // ISO 639, например "ru"; по умолчанию - из имени файла (Movie.ru.srt)
     val select: Boolean = false,    // включить сразу после старта
 )
 ```
 
-### 5.2. `Player2160` — фасад
+### 5.2. `Player2160` - фасад
 
 | Член | Описание |
 |---|---|
 | `fun play(context: Context, request: PlaybackRequest)` | Запускает `Player2160Activity`. Из не-Activity контекста добавляет `FLAG_ACTIVITY_NEW_TASK`. |
-| `fun intent(context: Context, request: PlaybackRequest): Intent` | Готовый явный Intent (action `tv.p2160.action.PLAY`, `FLAG_GRANT_READ_URI_PERMISSION`) — например, для `PendingIntent` или своих флагов. |
+| `fun intent(context: Context, request: PlaybackRequest): Intent` | Готовый явный Intent (action `tv.p2160.action.PLAY`, `FLAG_GRANT_READ_URI_PERMISSION`) - например, для `PendingIntent` или своих флагов. |
 | `class PlayContract : ActivityResultContract<PlaybackRequest, PlaybackResult?>` | Запуск с результатом; сам выставляет `returnResult = true`. |
 | `val nowPlaying: StateFlow<NowPlaying?>` | Что играет сейчас (см. [§7](#7-наблюдение-за-воспроизведением)). |
 | `fun registerAction(action: PlayerAction)` / `fun unregisterAction(id: String)` | Свои кнопки в плеере (см. [§8](#8-свои-кнопки-в-плеере-playeraction)). |
@@ -430,7 +430,7 @@ data class ExternalSubtitle(
 | `fun resumeStore(context: Context): ResumeStore` | История (см. [§10](#10-история-и-позиции-остановки)). |
 | `var config: PlayerConfig` | Настройка движка для новых плееров: буфер, тайм-ауты, фоновая работа (см. [§15.6](#156-настройка-движка-playerconfig)). |
 | `fun pause()` | Пауза активного плеера с любого потока (например, после передачи просмотра на другое устройство). Без открытого плеера ничего не делает. |
-| `fun setLiveGuide(guide: LiveGuide?)` | Свой телегид для `liveTv`-запросов; `null` — встроенный `IptvStore` (см. [§20](#20-iptv-m3u-xmltv-режим-эфира)). |
+| `fun setLiveGuide(guide: LiveGuide?)` | Свой телегид для `liveTv`-запросов; `null` - встроенный `IptvStore` (см. [§20](#20-iptv-m3u-xmltv-режим-эфира)). |
 
 ```kotlin
 // Простой запуск
@@ -472,9 +472,9 @@ data class PlaybackResult(
 )
 ```
 
-`null` в колбэке `PlayContract` — плеер закрыт без `RESULT_OK` (см. 3.4).
+`null` в колбэке `PlayContract` - плеер закрыт без `RESULT_OK` (см. 3.4).
 
-### 5.3. `IntentApi` — разбор и сборка Intent'ов
+### 5.3. `IntentApi` - разбор и сборка Intent'ов
 
 Полезно, если вы сами принимаете Intent'ы от других приложений или вызываете внешний плеер.
 
@@ -489,12 +489,12 @@ data class PlaybackResult(
 `EXTRA_RETURN_RESULT`, `EXTRA_SUBS`, `EXTRA_SUBS_NAME`, `EXTRA_SUBS_ENABLE`, `EXTRA_VLC_SUBTITLE`,
 `EXTRA_VIDEO_LIST`, `EXTRA_VIDEO_LIST_NAME`, `EXTRA_TITLES`, `EXTRA_PLAYLIST`, `EXTRA_MIME_TYPES`,
 `EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_ARTWORK`, `EXTRA_ARTWORKS`, `EXTRA_LIVE`, `RESULT_ACTION`, `RESULT_POSITION`,
-`RESULT_DURATION`, `RESULT_END_BY`, `END_BY_USER`, `END_BY_COMPLETION` — значения в таблицах §3.
+`RESULT_DURATION`, `RESULT_END_BY`, `END_BY_USER`, `END_BY_COMPLETION` - значения в таблицах §3.
 
 ### 5.4. `Player2160Activity`
 
 Полноэкранная Activity библиотеки: скрывает системные панели, на телефоне поворачивает экран по
-пропорциям видео (на ТВ — нет), уходит в PiP по кнопке «Домой» во время воспроизведения видео,
+пропорциям видео (на ТВ - нет), уходит в PiP по кнопке «Домой» во время воспроизведения видео,
 ставит на паузу и сохраняет позицию в `onStop`. `singleTop`: новый Intent в уже открытый плеер
 заменяет текущее воспроизведение. Контроллер хранится в `PlayerViewModel` и переживает повороты.
 
@@ -517,22 +517,22 @@ fun PlayerScreen(
 |---|---|
 | `controller` | Движок воспроизведения. Создаёте и освобождаете вы. |
 | `settingsStore` | Обычно `Player2160.settings(context)`. Экран читает тему, стиль субтитров, шаг перемотки, режим масштаба и пишет изменения, сделанные пользователем в панелях. |
-| `onBack` | Кнопка «Назад» в панели и системный Back (если открыта боковая панель — сначала закрывается она). Здесь закрывают экран и/или возвращают результат. |
+| `onBack` | Кнопка «Назад» в панели и системный Back (если открыта боковая панель - сначала закрывается она). Здесь закрывают экран и/или возвращают результат. |
 | `onPickSubtitle` | Пункт «Загрузить из файла…» в панели субтитров. Откройте выбор файла и передайте URI в `controller.addExternalSubtitle(uri)`. |
-| `inPictureInPicture` | `true` — скрыть все элементы управления (режим PiP). |
+| `inPictureInPicture` | `true` - скрыть все элементы управления (режим PiP). |
 
 Экран занимает всё доступное место (`fillMaxSize`), рисует свою тему (`P2160Theme`) и строки
 (`LocalStrings`), обрабатывает жесты, клавиши пульта и `BackHandler`. Системные панели, ориентацию,
-PiP и паузу при уходе в фон он **не** трогает — это задача Activity.
+PiP и паузу при уходе в фон он **не** трогает - это задача Activity.
 
-Жесты `PlayerScreen`: тап — показать/скрыть управление (ждёт 300 мс, чтобы не столкнуться с двойным тапом: центр — пауза, края — перемотка), двойной тап по краям — перемотка, удержание — 2×,
-горизонтальный свайп — перемотка, щипок — масштаб. Свайп, начатый в зоне системного жеста у края экрана
-(`WindowInsets.systemGestures`, при жестовой навигации), перемоткой не считается — это системный «Назад».
+Жесты `PlayerScreen`: тап - показать/скрыть управление (ждёт 300 мс, чтобы не столкнуться с двойным тапом: центр - пауза, края - перемотка), двойной тап по краям - перемотка, удержание - 2×,
+горизонтальный свайп - перемотка, щипок - масштаб. Свайп, начатый в зоне системного жеста у края экрана
+(`WindowInsets.systemGestures`, при жестовой навигации), перемоткой не считается - это системный «Назад».
 
 Тик прогресса (примерно два раза в секунду) обновляет `PlayerUiState.positionMs` и `bufferedMs`, но не
 пересобирает боковую панель, кнопки и полосу. Время рисуется табличными цифрами в своём слое, прогресс
-полосы — в своём: тик не измеряет родителя. Ширина подписи — формат текущей длительности (`m:ss`,
-`mm:ss` или `h:mm:ss`), её меняет только новая длительность. Прошедшее прижато к началу полосы, остаток —
+полосы - в своём: тик не измеряет родителя. Ширина подписи - формат текущей длительности (`m:ss`,
+`mm:ss` или `h:mm:ss`), её меняет только новая длительность. Прошедшее прижато к началу полосы, остаток -
 к концу. Пока ползунок тянут, те же слои показывают позицию пальца. Пока кнопки скрыты, тик в эти слои
 не пишется. Скрытие кнопок меняет альфу их слоя. Открытая панель сдвигает субтитры тем же правым
 отступом, что и полосу, одним `padding`.
@@ -540,39 +540,40 @@ PiP и паузу при уходе в фон он **не** трогает — �
 в русской локали `1,25`, раньше всегда была точка (`Locale.US`). Поле `PlayerUiState` не менялось.
 
 Боковая панель (звук, субтитры, скорость и остальные) начинается под верхней полосой кнопок
-(`sidePanelTopClearanceDp`: 64 dp, в портрете уже 600 dp — 112 dp, плюс верхний `safeDrawing` обычным
+(`sidePanelTopClearanceDp`: 64 dp, в портрете уже 600 dp - 112 dp, плюс верхний `safeDrawing` обычным
 `padding`). Иконки меню остаются нажимаемыми и в порядке фокуса пульта; нажатие другой иконки
-переключает панель. Выезд — один `graphicsLayer` (`CompositingStrategy.Auto`, скругление на слое): `translationX`
+переключает панель. Выезд - один `graphicsLayer` (`CompositingStrategy.Auto`, скругление на слое): `translationX`
 читается в лямбде, не в композиции. Панель остаётся измеренной и размещённой; закрытая сдвинута за край и не ловит касания.
-Открытие и закрытие не передают «открыта» в строки и не меняют цепочку модификаторов списка: иначе он измерялся заново. Фокус и доступность панели — снаружи слоя.
+Открытие и закрытие не передают «открыта» в строки и не меняют цепочку модификаторов списка: иначе он измерялся заново. Фокус и доступность панели - снаружи слоя.
 В 0.2.10 сдвиг читался в `measure` (`slideInHorizontally` + `windowInsetsPadding`). Полоса перемотки, оставшееся время и
 центральные кнопки сдвигаются влево одним `padding`, только пока панель открыта (`panelReservesSpace` / `transportEndInsetDp`),
 в том же кадре, когда начинается выезд, без анимации ширины,
-и ещё на 12 dp (`sidePanelTransportGapDp`), чтобы время не липло к краю панели. Состав панели после закрытия может остаться —
+и ещё на 12 dp (`sidePanelTransportGapDp`), чтобы время не липло к краю панели. Состав панели после закрытия может остаться -
 это не держит отступ.
 Тем же отступом, и только пока панель открыта, сдвигается подсказка «Продолжено с … · С начала».
-Список обрезается под заголовком (`clipToBounds`), заголовок непрозрачный, под ним разделитель — прокрутка не заходит на название.
+Список обрезается под заголовком (`clipToBounds`), заголовок непрозрачный, под ним разделитель - прокрутка не заходит на название.
 Список кончается над нижним `safeDrawing`. Закрытие только анимирует `translationX`, затем панель остаётся за краем:
 состав не пересобирается, прокрутка в этот кадр не сбрасывается и список не измеряется заново. Сброс в ноль
-(`scrollTo(0)` / `scrollToItem(0)`) — отдельный кадр простоя, и только если смещение не ноль. Открытие сразу начинает выезд.
+(`scrollTo(0)` / `scrollToItem(0)`) - отдельный кадр простоя, и только если смещение не ноль. Открытие сразу начинает выезд.
 «Аудио» и «Скорость» собираются после затухания кнопок, по одной на кадр, один раз за экран.
-В панели скорости «Точно» и пресет 1× помещаются вместе: шаговый регулятор — одна строка, пресеты ниже обычных.
-«Ночной звук» и «По расписанию» — `Switch`, не галочка. Ширина по-прежнему 42 % экрана в пределах 300–420 dp
-(`sidePanelWidthDp` от `screenWidthDp`, без `BoxWithConstraints`), подписи не рвутся посреди слова.
-До 16 строк панель — `Column` + `verticalScroll`, не `LazyColumn`: список не собирается вложенной композицией внутри measure.
+В панели скорости «Точно» и пресет 1× помещаются вместе: шаговый регулятор - одна строка, пресеты ниже обычных.
+«Ночной звук» и «По расписанию» - `Switch`, не галочка. Ширина панели (`sidePanelWidthDp`): в узком портрете
+(короче 600 dp) почти на весь экран и не уже 320 dp, если экран позволяет; в альбоме - 46 % ширины, от 320 до 520 dp.
+Подписи переносятся по словам (`Hyphens.None`), значение степпера стоит строкой ниже.
+До 16 строк панель - `Column` + `verticalScroll`, не `LazyColumn`: список не собирается вложенной композицией внутри measure.
 Длинный список остаётся ленивым. «Аудио» и «Скорость» собираются по одной на кадр простоя и остаются
 в композиции за краем экрана: повторное открытие не пересобирает строки, а только двигает свой `graphicsLayer`.
 Другая панель остаётся, пока выезжает, и снимается после закрытия.
 Кнопки управления после затухания остаются в композиции. Цепочка одна: `graphicsLayer` с `Auto`, альфа в лямбде,
 размер и место те же. Скрытие не пересобирает `PlayerScreen`: флаг читают затухание, фокус и мелкие отступы.
-Фокус пульта и TalkBack — свойства узла снаружи слоя, чтобы не перезаписывать его содержимое. Действия кнопок
+Фокус пульта и TalkBack - свойства узла снаружи слоя, чтобы не перезаписывать его содержимое. Действия кнопок
 читают флаг и не срабатывают, пока кнопки скрыты. После затухания слой сдвинут на свою ширину. Слой на весь экран не является
 целью касания: тап, который не попал в кнопку или полосу, доходит до жестов видео и пока кнопки видны (спрятать управление,
 закрыть панель тапом снаружи, двойной тап по краю). Системный Back по-прежнему сначала закрывает панель.
 Кнопка с рамкой (`player.video_menu`, «Масштаб и качество») открывает панель «Видео». Картинку она не меняет:
-масштаб — пункт панели или щипок (развести — `ZOOM`, свести — `FIT`).
+масштаб - пункт панели или щипок (развести - `ZOOM`, свести - `FIT`).
 Открытие панели не пересобирает весь `PlayerScreen`: флаг читают кнопки, отступ полосы, подсказка продолжения и хост панелей.
-`PlayerView` заново не верстает субтитры, пока не сменился стиль. Подъём субтитров над кнопками — отдельная установка отступа, не `setStyle`. Слой кнопок не ставит `shadowElevation`:
+`PlayerView` заново не верстает субтитры, пока не сменился стиль. Подъём субтитров над кнопками - отдельная установка отступа, не `setStyle`. Слой кнопок не ставит `shadowElevation`:
 нулевая тень держала бы контур на каждом кадре. Отступ полосы по-прежнему один `padding` в кадре открытия, не на каждом кадре выезда, и не помечает слой кнопок отдельно. Фокус панели снаружи её слоя: приезд и парковка не перезаписывают содержимое.
 
 ### 6.1. `PlayerController`
@@ -581,7 +582,7 @@ PiP и паузу при уходе в фон он **не** трогает — �
 class PlayerController(
     context: Context,
     request: PlaybackRequest,
-    config: PlayerConfig = Player2160.config,   // буфер, тайм-ауты, фоновая работа — §15.6
+    config: PlayerConfig = Player2160.config,   // буфер, тайм-ауты, фоновая работа - §15.6
 )
 ```
 
@@ -594,34 +595,34 @@ class PlayerController(
 | Член | Описание |
 |---|---|
 | `val state: StateFlow<PlayerUiState>` | Состояние для UI (обновляется ~2 раза в секунду и по событиям). |
-| `val player: ExoPlayer` | Исходный ExoPlayer — для `pause()`, слушателей, `MediaSession` и т.п. Не вызывайте на нём `release()`. |
+| `val player: ExoPlayer` | Исходный ExoPlayer - для `pause()`, слушателей, `MediaSession` и т.п. Не вызывайте на нём `release()`. |
 | `val secondaryCues: StateFlow<List<Cue>>` | Реплики вторых субтитров (их рисует `PlayerScreen`). |
-| `fun playPause()` | Пауза/продолжить; после конца — с начала; после ошибки — `prepare()`. |
+| `fun playPause()` | Пауза/продолжить; после конца - с начала; после ошибки - `prepare()`. |
 | `fun seekTo(positionMs: Long)` / `fun seekBy(deltaMs: Long)` | Перемотка (ограничивается длительностью). |
-| `fun next()` / `fun previous()` | Следующий/предыдущий элемент плейлиста. `previous()` после 5 с — к началу текущего. Для `liveTv` — то же, что `switchChannel(±1)`. |
+| `fun next()` / `fun previous()` | Следующий/предыдущий элемент плейлиста. `previous()` после 5 с - к началу текущего. Для `liveTv` - то же, что `switchChannel(±1)`. |
 | `fun switchChannel(delta: Int)` | Переключить канал по кругу (для `liveTv`; при одном элементе ничего не делает). |
 | `fun setSpeed(speed: Float)` | Скорость 0.25–4. |
 | `fun setSpeedBoost(enabled: Boolean)` | Временное ×2 (удержание пальца); выключение возвращает прежнюю скорость. |
 | `fun select(option: TrackOption)` | Выбрать аудио/видео/текстовую дорожку из `state.*Tracks`. |
 | `fun autoVideo()` | Вернуть автоматический выбор качества (HLS/DASH). |
 | `fun disableSubtitles()` | Выключить субтитры. |
-| `fun setSecondarySubtitle(option: TrackOption?)` | Вторые субтитры (сверху); `null` — выключить. |
+| `fun setSecondarySubtitle(option: TrackOption?)` | Вторые субтитры (сверху); `null` - выключить. |
 | `fun setSubtitleDelay(ms: Long)` | Задержка субтитров. |
 | `fun addExternalSubtitle(uri: Uri, name: String? = null)` | Подключить файл субтитров к текущему элементу и сразу включить. |
 | `fun nextChapter()` / `fun previousChapter()` / `fun seekToChapter(chapter: Chapter)` | Главы. `previousChapter()` в первые 3 с главы переходит к предыдущей. |
-| `fun skip(segment: SkipSegment)` | Пропустить отрезок; титры до конца файла при наличии следующего элемента — переход к нему. |
-| `fun markIntroStart()` / `fun markIntroEnd()` / `fun markCreditsStart()` / `fun clearMarks()` | Ручные отметки по текущей позиции (для сериала — на все серии). |
+| `fun skip(segment: SkipSegment)` | Пропустить отрезок; титры до конца файла при наличии следующего элемента - переход к нему. |
+| `fun markIntroStart()` / `fun markIntroEnd()` / `fun markCreditsStart()` / `fun clearMarks()` | Ручные отметки по текущей позиции (для сериала - на все серии). |
 | `suspend fun frameAt(positionMs: Long): Bitmap?` | Кадр для превью; `null`, если источник не позволяет. |
 | `fun setNightMode(enabled: Boolean)` | «Ночной звук» на лету для этого контроллера: включение переводит звук на декодирование, выключение возвращает passthrough на ресивер и многоканал (ручное переключение отменяет расписание до `onNightScheduleChanged()`); `Settings` не меняет. См. [§16](#16-ночной-звук). |
 | `fun onNightScheduleChanged()` | Вызвать после изменения `nightAuto`/`nightStart/EndMinute`: сбрасывает ручное переключение и сразу применяет расписание. |
 | `fun dismissSmartHint()` | Скрыть подсказку `state.smartHint` («дорожки выбраны по привычке»). |
 | `fun report(): MediaReport` | Сводка по текущему файлу (см. [§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). |
 | `fun dismissWarnings()` | Очистить `state.warnings`. |
-| `val stats: StateFlow<PlaybackStats?>` / `fun setStatsEnabled(enabled: Boolean)` | Живая статистика (§15.7): собирается, только пока включена (`null` — выключена). |
+| `val stats: StateFlow<PlaybackStats?>` / `fun setStatsEnabled(enabled: Boolean)` | Живая статистика (§15.7): собирается, только пока включена (`null` - выключена). |
 | `fun onDisplaySwitching()` | Сообщить, что сейчас меняется режим экрана: ближайшие 12 с сбои открытия звука на ресивер считаются временными. Смену режима плеер замечает и сам (`DisplayManager`). |
 | `fun setInBackground(background: Boolean)` | Плеер ушёл с экрана, но звук продолжается: `true` отключает декодирование видео, `false` возвращает его (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)). |
-| `fun setAudioDelay(ms: Int)` | Задержка звука относительно картинки, мс (> 0 — звук позже, < 0 — раньше; предел ±`AUDIO_DELAY_LIMIT_MS` = 2000). Сдвигает аудиочасы, по которым синхронизируется видео; работает и для PCM, и для passthrough. Сохраняется в `Settings.audioDelayMs` — общая для всех файлов. |
-| `fun setSleepTimer(minutes: Int?)` | Таймер сна: через N минут звук за 8 с затихает и плеер встаёт на паузу; `null`/`0` — выключить. Остаток — в `state.sleepRemainingMs`. |
+| `fun setAudioDelay(ms: Int)` | Задержка звука относительно картинки, мс (> 0 - звук позже, < 0 - раньше; предел ±`AUDIO_DELAY_LIMIT_MS` = 2000). Сдвигает аудиочасы, по которым синхронизируется видео; работает и для PCM, и для passthrough. Сохраняется в `Settings.audioDelayMs` - общая для всех файлов. |
+| `fun setSleepTimer(minutes: Int?)` | Таймер сна: через N минут звук за 8 с затихает и плеер встаёт на паузу; `null`/`0` - выключить. Остаток - в `state.sleepRemainingMs`. |
 | `fun setSleepAtEndOfItem()` | Таймер «в конце серии»: пауза, когда закончится текущий файл (без автоперехода к следующему). |
 | `fun cancelSleepTimer()` | Выключить таймер сна (громкость и автопереход возвращаются). |
 | `fun retry()` | Повторить после ошибки. |
@@ -632,7 +633,7 @@ class PlayerController(
 
 ### 6.2. Полный пример Activity
 
-Тот же код — в `samples/embed-demo/.../EmbeddedPlayerActivity.kt`.
+Тот же код - в `samples/embed-demo/.../EmbeddedPlayerActivity.kt`.
 
 ```kotlin
 /** Контроллер живёт в ViewModel, чтобы пережить поворот экрана. */
@@ -713,7 +714,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         controller.saveProgress()
         if (isFinishing) { controller.player.pause(); return }
         if (inPip && !isChangingConfigurations) return            // в PiP играем дальше
-        // Аудио — если «Музыка и аудио в фоне», видео — если «Видео в фоне»; иначе пауза.
+        // Аудио - если «Музыка и аудио в фоне», видео - если «Видео в фоне»; иначе пауза.
         val s = controller.state.value
         val settings = Player2160.settings(this).current
         val background = controller.player.playWhenReady &&
@@ -735,16 +736,16 @@ class EmbeddedPlayerActivity : ComponentActivity() {
     android:theme="@style/Theme.P2160.Player" />
 ```
 
-`@style/Theme.P2160.Player` — тема библиотеки (чёрный фон, без ActionBar, прозрачные системные
+`@style/Theme.P2160.Player` - тема библиотеки (чёрный фон, без ActionBar, прозрачные системные
 панели). Готовый `tv.p2160.core.PlayerViewModel` (используется `Player2160Activity`) тоже можно
 взять вместо своей ViewModel: `open(request)`, `controller`, `request`.
 
 **Правила жизненного цикла**
 
-- Один `PlayerController` — на один показ. Для нового видео создайте новый (`open()` выше
+- Один `PlayerController` - на один показ. Для нового видео создайте новый (`open()` выше
   освобождает старый). Повторно использовать контроллер после `release()` нельзя.
 - `configChanges` избавляет от пересоздания при повороте; ViewModel страхует остальные случаи.
-- Пауза в `onStop` — ваша ответственность (иначе звук продолжится в фоне).
+- Пауза в `onStop` - ваша ответственность (иначе звук продолжится в фоне).
 - Если нужен возврат результата, в `onBack` вызовите `controller.saveProgress()`, затем
   `setResult(RESULT_OK, IntentApi.buildResult(controller.result()))` и `finish()`.
 - В Navigation Compose можно создавать контроллер через `remember` + `DisposableEffect { onDispose { release() } }`,
@@ -758,7 +759,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
 
 ```kotlin
 data class NowPlaying(
-    val uri: Uri,                    // URI из запроса (для дисков — путь к ISO/папке)
+    val uri: Uri,                    // URI из запроса (для дисков - путь к ISO/папке)
     val title: String,
     val positionMs: Long,
     val durationMs: Long,
@@ -769,9 +770,9 @@ data class NowPlaying(
 ```
 
 Глобальный `StateFlow` процесса. Обновляется примерно раз в секунду любым живым `PlayerController`
-(и `Player2160Activity`, и вашими экранами). До первого воспроизведения — `null`. После
+(и `Player2160Activity`, и вашими экранами). До первого воспроизведения - `null`. После
 `release()` значение **остаётся** последним снимком с `isPlaying = false` (в `null` не
-сбрасывается). Воспроизведение в отдельном приложении 2160 Player (Intent API) сюда не попадает —
+сбрасывается). Воспроизведение в отдельном приложении 2160 Player (Intent API) сюда не попадает -
 это другой процесс.
 
 ```kotlin
@@ -784,7 +785,7 @@ lifecycleScope.launch {
 val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 ```
 
-### 7.2. `PlayerController.state` — `PlayerUiState`
+### 7.2. `PlayerController.state` - `PlayerUiState`
 
 | Поле | Тип | Описание |
 |---|---|---|
@@ -798,29 +799,29 @@ val np by Player2160.nowPlaying.collectAsStateWithLifecycle()
 | `textDisabled` | `Boolean` | Субтитры выключены. |
 | `subtitleDelayMs` | `Long` | Задержка субтитров. |
 | `hasVideo` | `Boolean` | Есть видео (иначе показывается обложка аудио). |
-| `videoAspect` | `Float` | Пропорции кадра с учётом PAR; 0 — неизвестно. |
+| `videoAspect` | `Float` | Пропорции кадра с учётом PAR; 0 - неизвестно. |
 | `hasNext` / `hasPrevious` | `Boolean` | Есть соседние элементы плейлиста. |
 | `playlistIndex` / `playlistSize` | `Int` | Позиция в плейлисте. |
-| `resumedFromMs` | `Long?` | С какой позиции продолжено (для подсказки); `null` — нет. |
+| `resumedFromMs` | `Long?` | С какой позиции продолжено (для подсказки); `null` - нет. |
 | `error` | `String?` | Локализованный текст ошибки воспроизведения. |
 | `chapters` | `List<Chapter>` | Главы. |
 | `chapterIndex` | `Int` | Текущая глава или -1. |
 | `segments` | `List<SkipSegment>` | Все отрезки текущего файла (из запроса, глав и ручных отметок). |
 | `activeSegment` | `SkipSegment?` | Отрезок под текущей позицией (если `skipMode != OFF`). |
-| `seriesName` | `String?` | Ключ сериала для ручных отметок; `null` — отметки только для файла. |
+| `seriesName` | `String?` | Ключ сериала для ручных отметок; `null` - отметки только для файла. |
 | `marks` | `ManualMarks` | Ручные отметки. |
 | `speedBoost` | `Boolean` | Включено временное ускорение. |
 | `secondaryTextId` | `String?` | `Format.id` вторых субтитров. |
 | `nightMode` | `Boolean` | Ночной звук сейчас включён. |
 | `smartHint` | `String?` | Локализованная подсказка «Как обычно: …», если дорожки выбраны по привычке (§17). |
 | `warnings` | `List<String>` | Важные предупреждения из `report()` (программное декодирование 4K, Dolby Vision без декодера, HDR на SDR-экране); заполняются через ~2 с воспроизведения. |
-| `isLive` | `Boolean` | Прямой эфир: поток помечен как live (или `liveTv` и длительность неизвестна). |
-| `liveTv` | `Boolean` | Запрос — телеканалы (`PlaybackRequest.liveTv`). |
-| `subtitle` | `String?` | Подпись под названием; для каналов — текущая передача из `LiveGuide`. |
+| `isLive` | `Boolean` | Прямой эфир: `Player.isCurrentMediaItemLive`, либо динамический элемент с `MediaItem.liveConfiguration`. Неизвестная длительность обычного файла сюда не входит: в транспорте тогда `--:--` или прошедшее время, без «ЭФИР» и без остатка. |
+| `liveTv` | `Boolean` | Запрос - телеканалы (`PlaybackRequest.liveTv`). |
+| `subtitle` | `String?` | Подпись под названием; для каналов - текущая передача из `LiveGuide`. |
 | `audioDelayMs` | `Int` | Текущая задержка звука, мс. |
-| `sleepRemainingMs` | `Long?` | Таймер сна: сколько осталось до паузы; `null` — выключен (или стоит «в конце серии»). |
+| `sleepRemainingMs` | `Long?` | Таймер сна: сколько осталось до паузы; `null` - выключен (или стоит «в конце серии»). |
 | `sleepAtEnd` | `Boolean` | Таймер сна «в конце серии». |
-| `videoFrameRate` | `Float` | Частота кадров видео (из заголовка или по меткам кадров); `-1` — неизвестна. Для частоты экрана (§15.7). |
+| `videoFrameRate` | `Float` | Частота кадров видео (из заголовка или по меткам кадров); `-1` - неизвестна. Для частоты экрана (§15.7). |
 
 ```kotlin
 data class TrackOption(
@@ -850,9 +851,9 @@ class PlayerAction(
 )
 ```
 
-Кнопки показываются в верхней панели плеера — справа от заголовка, перед стандартными кнопками
-(главы, аудио, субтитры, скорость, видео) — во всех экранах плеера процесса, в порядке регистрации.
-Повторная регистрация с тем же `id` заменяет кнопку. `context` — Activity плеера.
+Кнопки показываются в верхней панели плеера - справа от заголовка, перед стандартными кнопками
+(главы, аудио, субтитры, скорость, видео) - во всех экранах плеера процесса, в порядке регистрации.
+Повторная регистрация с тем же `id` заменяет кнопку. `context` - Activity плеера.
 
 ```kotlin
 class App : Application() {
@@ -872,7 +873,7 @@ class App : Application() {
 ```
 
 Список кнопок также доступен как `PlayerExtensions.actions: StateFlow<List<PlayerAction>>`
-(`PlayerExtensions.register/unregister` — то же, что методы `Player2160`).
+(`PlayerExtensions.register/unregister` - то же, что методы `Player2160`).
 
 ---
 
@@ -910,9 +911,9 @@ Player2160.settings(context).update {
 | `preferredAudioLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
 | `preferredSubtitleLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
 | `autoResume` | `Boolean` = `true` | При старте элемента |
-| `seekStepSeconds` | `Int` = `10` | Сразу (UI); шаг кнопок ExoPlayer — для следующего контроллера |
+| `seekStepSeconds` | `Int` = `10` | Сразу (UI); шаг кнопок ExoPlayer - для следующего контроллера |
 | `resizeMode` | `ResizeMode` = `FIT` | При открытии `PlayerScreen` |
-| `autoPlayNext` | `Boolean` = `true` | Переход к следующему элементу — для следующего контроллера; карточка «Следующая серия» — сразу |
+| `autoPlayNext` | `Boolean` = `true` | Переход к следующему элементу - для следующего контроллера; карточка «Следующая серия» - сразу |
 | `skipMode` | `SkipMode` = `BUTTON` | Сразу |
 | `nightMode` | `Boolean` = `false` | «Ночной звук» всегда (см. [§16](#16-ночной-звук)). При старте `PlayerController`; живой контроллер переключайте через `setNightMode()` |
 | `nightAuto` | `Boolean` = `false` | Включать ночной звук по расписанию `[nightStartMinute, nightEndMinute)`. Проверяется при старте и раз в минуту |
@@ -920,9 +921,9 @@ Player2160.settings(context).update {
 | `nightEndMinute` | `Int` = `600` (10:00) | Минуты от полуночи (конец не включается) |
 | `smartTracks` | `Boolean` = `true` | Запоминать ручной выбор дорожек и применять к похожим файлам (см. [§17](#17-умный-выбор-дорожек)). При старте элемента |
 | `backgroundPlayback` | `Boolean` = `false` | Продолжать видео (звуком, без декодирования картинки), когда плеер свёрнут или экран выключен (см. [§15.4](#154-фоновое-воспроизведение-и-mediasession)) |
-| `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` — пауза при сворачивании |
-| `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео — окно PiP (если устройство поддерживает); `false` — без PiP, дальше по `backgroundPlayback` |
-| `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 — звук позже картинки, < 0 — раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер — `setAudioDelay()` |
+| `backgroundAudio` | `Boolean` = `true` | Продолжать аудио без видео (музыку) в фоне; `false` - пауза при сворачивании |
+| `pictureInPicture` | `Boolean` = `true` | «Домой» во время видео - окно PiP (если устройство поддерживает); `false` - без PiP, дальше по `backgroundPlayback` |
+| `audioDelayMs` | `Int` = `0` | Задержка звука, мс (> 0 - звук позже картинки, < 0 - раньше: для Bluetooth-наушников и саундбаров). Общая для всех файлов. Живой контроллер - `setAudioDelay()` |
 | `frameRateMatching` | `Boolean` = `false` | Частота экрана под видео (§15.7): ТВ переключается в 23,976/24/25/50 Гц. Сразу. |
 | `tunneling` | `Boolean` = `false` | Туннельный режим вывода видео (Android TV). При ошибке декодера выключается сам и сохраняется `false`. Для следующего `PlayerController`. |
 | `audioOffload` | `Boolean` = `true` | Аудио offload для звука без видео (музыка, видео в фоне): декодирует аудиочип, только если он умеет менять скорость (`setIsSpeedChangeSupportRequired(true)`). Иначе Samsung `COMPRESS_OFFLOAD` отклоняет `setPlaybackParams`, и скорость не ставится. Не действует, пока включён ночной звук. Для следующего `PlayerController`. |
@@ -940,26 +941,26 @@ Player2160.settings(context).update {
 - настройка включена.
 
 Флаг снимается на паузе, в конце файла, при ошибке и когда композиция экрана уходит (выход, `onRelease`
-у `AndroidView` — view отсоединяется от окна). Музыка без картинки экран не держит. Свёрнутое приложение
+у `AndroidView` - view отсоединяется от окна). Музыка без картинки экран не держит. Свёрнутое приложение
 флаг не удерживает: он действует, только пока окно плеера видно (в том числе PiP). Отдельный WakeLock
 не берётся.
 
-`fun Settings.nightModeAt(minuteOfDay: Int): Boolean` — нужен ли ночной звук в эту минуту суток:
+`fun Settings.nightModeAt(minuteOfDay: Int): Boolean` - нужен ли ночной звук в эту минуту суток:
 `nightMode || (nightAuto && NightSchedule.contains(nightStartMinute, nightEndMinute, minuteOfDay))`.
 
 `object NightSchedule` (`tv.p2160.core.settings`):
 
 | Член | Описание |
 |---|---|
-| `fun contains(start: Int, end: Int, minute: Int): Boolean` | Попадает ли минута в интервал; `start == end` — пустой интервал, `start > end` — через полночь (23:00–10:00). |
+| `fun contains(start: Int, end: Int, minute: Int): Boolean` | Попадает ли минута в интервал; `start == end` - пустой интервал, `start > end` - через полночь (23:00–10:00). |
 | `fun nowMinute(): Int` | Текущая минута суток (`HOUR_OF_DAY * 60 + MINUTE`). |
 | `fun format(minute: Int): String` | `"23:00"`. |
 
 Перечисления:
 
-- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` — аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg.
-- `ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }` — целиком / по ширине / по высоте / заполнить экран с обрезкой / растянуть. В плеере: панель «Видео» (кнопка-рамка, TalkBack «Масштаб и качество»; само нажатие режим не крутит) и щипок двумя пальцами (развести — `ZOOM`, свести — `FIT`).
-- `SkipMode { OFF, BUTTON, AUTO }` — не показывать / кнопка «Пропустить» / автоматически (титры с переходом к следующей серии — всегда через обратный отсчёт).
+- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` - аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg.
+- `ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }` - целиком / по ширине / по высоте / заполнить экран с обрезкой / растянуть. В плеере: панель «Видео» (кнопка-рамка, TalkBack «Масштаб и качество»; само нажатие режим не крутит) и щипок двумя пальцами (развести - `ZOOM`, свести - `FIT`).
+- `SkipMode { OFF, BUTTON, AUTO }` - не показывать / кнопка «Пропустить» / автоматически (титры с переходом к следующей серии - всегда через обратный отсчёт).
 - `SubtitleEdge { NONE, OUTLINE, SHADOW }`.
 
 ```kotlin
@@ -998,7 +999,7 @@ data class PlayerTheme(
 
 ## 10. История и позиции остановки
 
-`ResumeStore` — SQLite (`p2160_resume.db`), без Room. Записывает его `PlayerController`.
+`ResumeStore` - SQLite (`p2160_resume.db`), без Room. Записывает его `PlayerController`.
 В поле `speed` попадает скорость, выбранная пользователем или восстановленная при старте файла.
 Временное ускорение 2× (удержание пальца) и догон живого края (×1,1 / ×1,25 у `rtsp`/`udp`/`srt`)
 в историю не записываются.
@@ -1011,8 +1012,8 @@ data class PlayerTheme(
 | `fun save(entry: ResumeEntry)` | Записать/заменить. |
 | `fun delete(key: String)` / `fun clear()` | Удалить запись / всю историю (вместе с обложками). |
 | `fun cover(key: String): File?` | Сохранённая обложка записи (§10.1) или `null`. |
-| `val changes: StateFlow<Long>` | Счётчик изменений — для обновления списка в UI. |
-| `companion fun keyFor(uri: Uri): String` | Ключ файла. Для `http(s)` — схема, хост, нестандартный порт и путь, без query и фрагмента (одноразовые токены не ломают продолжение). Порты 80/443 в ключ не входят. IPv6 — в квадратных скобках. Иначе `uri.toString()`. |
+| `val changes: StateFlow<Long>` | Счётчик изменений - для обновления списка в UI. |
+| `companion fun keyFor(uri: Uri): String` | Ключ файла. Для `http(s)` - схема, хост, нестандартный порт и путь, без query и фрагмента (одноразовые токены не ломают продолжение). Порты 80/443 в ключ не входят. IPv6 - в квадратных скобках. Иначе `uri.toString()`. |
 | `companion fun isFinished(positionMs: Long, durationMs: Long): Boolean` | Досмотрено, если позиция > 0 и (пройдено > 97 % **или** у ролика длиннее 30 с осталось < 30 с). Короткие ролики с начала не помечаются досмотренными. |
 
 ```kotlin
@@ -1036,24 +1037,24 @@ items.forEach { e -> println("${e.title}: ${(e.progress * 100).toInt()}%") }
 val entry = store.get(ResumeStore.keyFor(uri))
 ```
 
-Методы обращаются к SQLite синхронно — вызывайте их с фонового потока (одиночный `get` на главном
+Методы обращаются к SQLite синхронно - вызывайте их с фонового потока (одиночный `get` на главном
 допустим, но не рекомендуется). `ResumeStore` наследует `SQLiteOpenHelper`; его методы
-(`readableDatabase`, `onCreate`…) публичны технически, но схема таблицы — не часть API.
+(`readableDatabase`, `onCreate`…) публичны технически, но схема таблицы - не часть API.
 
 ### 10.1. Обложки (`tv.p2160.core.resume.Covers`)
 
-Для «Продолжить просмотр» и истории плеер сохраняет обложку каждого файла — уменьшенный (~480 px) JPEG в
+Для «Продолжить просмотр» и истории плеер сохраняет обложку каждого файла - уменьшенный (~480 px) JPEG в
 `filesDir/covers` по ключу записи. Через 10 с после старта (чтобы не мешать буферизации), один раз на
 запись, ищется по порядку:
 
-1. встроенная в файл — `MediaMetadata.artworkData` (обложка MP4, MP3, FLAC);
-2. `MediaEntry.artworkUri` (DLNA-сервер передаёт свой `albumArtURI`, встраивающее приложение — постер);
+1. встроенная в файл - `MediaMetadata.artworkData` (обложка MP4, MP3, FLAC);
+2. `MediaEntry.artworkUri` (DLNA-сервер передаёт свой `albumArtURI`, встраивающее приложение - постер);
 3. картинка рядом с файлом (`file`, `smb`, `http(s)`): `<имя>.jpg`, `<имя>-poster.jpg`, `<имя>-thumb.jpg`
    (Sonarr/Jellyfin/Kodi), `<имя>.png`, `poster.jpg`, `folder.jpg`, `cover.jpg`; если файл лежит в папке сезона
-   (`Season 1`, `Сезон 1`, `S01`), — ещё постер сериала папкой выше.
+   (`Season 1`, `Сезон 1`, `S01`), - ещё постер сериала папкой выше.
 
-Не ищется для телеканалов и при `PlayerConfig.saveHistory = false`. `Covers.get(context, key)` — файл или
-`null`; `Covers.changes` — `StateFlow` для перерисовки списков; `Covers.find(...)` — поиск вручную (блокирующий,
+Не ищется для телеканалов и при `PlayerConfig.saveHistory = false`. `Covers.get(context, key)` - файл или
+`null`; `Covers.changes` - `StateFlow` для перерисовки списков; `Covers.find(...)` - поиск вручную (блокирующий,
 с фонового потока). Обложки удаляются вместе с записью (`ResumeStore.delete`/`clear`).
 
 ---
@@ -1066,9 +1067,9 @@ val entry = store.get(ResumeStore.keyFor(uri))
 smb://<host>/<share>/<path/to/file.mkv>
 ```
 
-- `host` — имя или IP (`192.168.1.10`, `nas`). Порт и `user:pass@` в URI **не поддерживаются**.
+- `host` - имя или IP (`192.168.1.10`, `nas`). Порт и `user:pass@` в URI **не поддерживаются**.
 - Учётные данные берутся из сохранённых серверов `SmbServers` по `host` + `share`
-  (точное совпадение share важнее совпадения только по хосту), иначе — гостевой вход.
+  (точное совпадение share важнее совпадения только по хосту), иначе - гостевой вход.
 - `SmbPath.toUri()` строит URI с корректным экранированием сегментов.
 
 ### 11.2. Сохранённые серверы
@@ -1102,9 +1103,9 @@ data class SmbServer(
 
 Пароли хранятся в приватных SharedPreferences приложения (`p2160_smb`) **без шифрования**.
 
-### 11.3. Обзор папок — `SmbConnections`
+### 11.3. Обзор папок - `SmbConnections`
 
-Все методы **блокирующие** (сеть) — только `Dispatchers.IO`.
+Все методы **блокирующие** (сеть) - только `Dispatchers.IO`.
 
 | Член | Описание |
 |---|---|
@@ -1114,7 +1115,7 @@ data class SmbServer(
 | `fun closeAll()` | Закрыть все соединения. |
 
 `share(...)` и `openRead(...)` возвращают типы smbj (`DiskShare`, `File`), которые не входят в
-API-зависимости библиотеки, — используйте их, только если сами подключили `com.hierynomus:smbj`.
+API-зависимости библиотеки, - используйте их, только если сами подключили `com.hierynomus:smbj`.
 
 ```kotlin
 data class SmbPath(val host: String, val share: String, val path: String) {
@@ -1152,7 +1153,7 @@ Player2160.play(
 ```kotlin
 enum class SegmentType { INTRO, RECAP, CREDITS, PREVIEW }
 
-data class SkipSegment(val type: SegmentType, val startMs: Long, val endMs: Long?) {   // endMs = null — до конца файла
+data class SkipSegment(val type: SegmentType, val startMs: Long, val endMs: Long?) {   // endMs = null - до конца файла
     fun contains(positionMs: Long, durationMs: Long): Boolean
     companion object {
         fun parseList(raw: String?): List<SkipSegment>
@@ -1170,21 +1171,21 @@ data class Chapter(val title: String?, val startMs: Long, val endMs: Long)
 intro:0-90000;recap:90000-150000;credits:1320000-
 ```
 
-Тип — без учёта регистра (`intro`, `recap`, `credits`, `preview`). Неизвестные типы, нечисловые
+Тип - без учёта регистра (`intro`, `recap`, `credits`, `preview`). Неизвестные типы, нечисловые
 значения и отрезки с концом ≤ начала молча отбрасываются. `formatList` выдаёт обратный формат
 (`intro:0-90000;credits:1320000-`).
 
 **Откуда берутся отрезки (по приоритету)**
 
-1. Ручные отметки пользователя (`markIntroStart/End`, `markCreditsStart`) — заменяют отрезки того же типа. Для файлов вида `Show.S01E02`, `Show 1x02`, `Show - 05` сохраняются на весь сериал (`SegmentDetector.seriesKey`); титры хранятся «от конца».
+1. Ручные отметки пользователя (`markIntroStart/End`, `markCreditsStart`) - заменяют отрезки того же типа. Для файлов вида `Show.S01E02`, `Show 1x02`, `Show - 05` сохраняются на весь сериал (`SegmentDetector.seriesKey`); титры хранятся «от конца».
 2. `MediaEntry.segments` / extras Intent'а.
-3. Главы с говорящими названиями (`Intro`, `Opening`, `OP`, `Credits`, `Ending`, `Recap`, `Preview`, `Вступление`, `Титры`, …) — `SegmentDetector.fromChapters`.
+3. Главы с говорящими названиями (`Intro`, `Opening`, `OP`, `Credits`, `Ending`, `Recap`, `Preview`, `Вступление`, `Титры`, …) - `SegmentDetector.fromChapters`.
 
 Через Intent: `tv.p2160.extra.SEGMENTS` (строка), либо по отдельности `INTRO_START` (по умолчанию 0)
-+ `INTRO_END` и `CREDITS_START` (Int/Long, мс) — они добавляются к разобранным из строки.
++ `INTRO_END` и `CREDITS_START` (Int/Long, мс) - они добавляются к разобранным из строки.
 
-**Главы** читаются из контейнера через FFmpeg (MKV, MP4 и др.; для SMB — через временный
-дескриптор), для Blu-ray — из плейлиста диска. Доступны в `PlayerUiState.chapters`; управление —
+**Главы** читаются из контейнера через FFmpeg (MKV, MP4 и др.; для SMB - через временный
+дескриптор), для Blu-ray - из плейлиста диска. Доступны в `PlayerUiState.chapters`; управление -
 `nextChapter()`, `previousChapter()`, `seekToChapter()`. Кнопки «следующий/предыдущий» пульта
 при одном файле переключают главы.
 
@@ -1206,14 +1207,14 @@ intro:0-90000;recap:90000-150000;credits:1320000-
 }
 ```
 
-- Плоский объект `ключ → строка`; плейсхолдеры — `String.format` (`%1$s`, `%2$d`, `%1$.1f`).
-- `_meta.code` — код языка (`[a-z]{2,3}(-[a-z0-9]{2,8})?`), `name` — название в списке.
+- Плоский объект `ключ → строка`; плейсхолдеры - `String.format` (`%1$s`, `%2$d`, `%1$.1f`).
+- `_meta.code` - код языка (`[a-z]{2,3}(-[a-z0-9]{2,8})?`), `name` - название в списке.
 - Цепочка отката: выбранный пакет → английский (`en`) → сам ключ.
 
 ### 13.2. Встроенные пакеты: `assets/i18n/<модуль>/<код>.json`
 
 Каждый модуль кладёт свои строки в свою подпапку; при загрузке все файлы одного языка объединяются.
-Библиотека использует `assets/i18n/core/`, приложение 2160 Player — `assets/i18n/app/`.
+Библиотека использует `assets/i18n/core/`, приложение 2160 Player - `assets/i18n/app/`.
 
 Чтобы добавить строки или язык в своём приложении:
 
@@ -1223,8 +1224,8 @@ app/src/main/assets/i18n/myapp/ru.json
 app/src/main/assets/i18n/myapp/de.json   ← новый язык: переведите здесь и ключи ядра
 ```
 
-Не используйте имя папки `core` — при слиянии assets файл приложения заменит файл библиотеки
-целиком. Полный список ключей ядра — `player-core/src/main/assets/i18n/core/en.json`
+Не используйте имя папки `core` - при слиянии assets файл приложения заменит файл библиотеки
+целиком. Полный список ключей ядра - `player-core/src/main/assets/i18n/core/en.json`
 или `I18n.exportTemplate()`.
 
 ### 13.3. `I18n`
@@ -1258,7 +1259,7 @@ val template = i18n.exportTemplate()                            // записа�
 
 ## 14. Blu-ray: ISO и BDMV
 
-Ничего специального не нужно — передайте URI образа или папки:
+Ничего специального не нужно - передайте URI образа или папки:
 
 ```kotlin
 Player2160.play(context, PlaybackRequest.single(Uri.parse("smb://nas/Movies/Film.iso")))
@@ -1274,9 +1275,9 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 
 Кандидатом на диск считается URI, оканчивающийся на `.iso` или `BDMV`, а также `file://`/`smb://`
 без точки в последнем сегменте (папка). Выбирается основной фильм (самый длинный плейлист с
-защитой от плейлистов-обманок), главы — из плейлиста, языки дорожек — из таблицы STN, название —
+защитой от плейлистов-обманок), главы - из плейлиста, языки дорожек - из таблицы STN, название -
 из метаданных диска (если `title` не задан). Меню диска, BD-J, 3D и шифрование AACS/BD+ не
-поддерживаются — образ должен быть расшифрован.
+поддерживаются - образ должен быть расшифрован.
 
 Отдельные файлы `.m2ts`/`.mts` играются как обычное видео через собственный экстрактор
 (TrueHD, LPCM, DTS-HD, PGS).
@@ -1290,7 +1291,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 | API | Поток |
 |---|---|
 | `PlayerController` (создание и все методы), `PlayerScreen` | Главный |
-| `Player2160.play/intent`, `registerAction`, `nowPlaying` | Любой (`play` — из UI-контекста) |
+| `Player2160.play/intent`, `registerAction`, `nowPlaying` | Любой (`play` - из UI-контекста) |
 | `PlayerSettings.update` | Любой (запись в prefs асинхронная) |
 | `ResumeStore.*` | Желательно фоновый (SQLite) |
 | `SmbConnections.*` | **Только фоновый** (сеть) |
@@ -1306,29 +1307,29 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 
 - Ошибки воспроизведения не бросаются наружу: они приходят в `PlayerUiState.error` (локализованный
   текст: сеть, HTTP, файл не найден, нет доступа, контейнер, декодер, DRM, иначе код ошибки),
-  `PlayerScreen` показывает их с кнопками «Повторить»/«Закрыть». Подробности — через
+  `PlayerScreen` показывает их с кнопками «Повторить»/«Закрыть». Подробности - через
   `controller.player.addListener(object : Player.Listener { override fun onPlayerError(e: PlaybackException) … })`.
 - Выпадение из live-окна (`BEHIND_LIVE_WINDOW`) обрабатывается автоматически.
 - `PlaybackRequest(items = emptyList())` → `IllegalArgumentException`.
 - `Player2160Activity` без `data` в Intent сразу закрывается.
 - Если диск не удалось открыть, URI играется как обычный файл (и, скорее всего, даст ошибку контейнера).
-- `SmbConnections.*` бросают исключения smbj (`SMBApiException`, `IOException`…) — оборачивайте в `runCatching`.
+- `SmbConnections.*` бросают исключения smbj (`SMBApiException`, `IOException`…) - оборачивайте в `runCatching`.
 - `I18n.import` бросает `IllegalArgumentException` с понятным текстом.
 
 ### 15.3. Ограничения и известные особенности
 
 - `nowPlaying` после закрытия плеера не становится `null` (остаётся снимок с `isPlaying = false`).
 - Внешние субтитры из Intent и `Intent.type`, а также отрезки из Intent, относятся только к стартовому элементу. Через `PlaybackRequest` субтитры и отрезки задаются у каждого `MediaEntry`. Автопоиск файлов рядом с видео (`Movie.srt`, `Movie.ru.srt`, но не `Movie2.srt`) идёт для каждого пункта плейлиста, у которого список субтитров пуст.
-- Результат возвращается только при закрытии через «Назад»; позиция в результате MX-формата — `Int`.
-- Свою тему в `PlayerScreen` не добавить: `PlayerThemes.all` — фиксированный список.
+- Результат возвращается только при закрытии через «Назад»; позиция в результате MX-формата - `Int`.
+- Свою тему в `PlayerScreen` не добавить: `PlayerThemes.all` - фиксированный список.
 - `decoder`, предпочтительные языки, `autoPlayNext` применяются к следующему `PlayerController`.
 - SMB: учётные данные только через `SmbServers` (не из URI), пароли не шифруются; в intent-фильтрах приложения 2160 Player нет схемы `smb`.
-- Blu-ray: без меню, BD-J, 3D, AACS/BD+; папки BDMV — только `file://` и `smb://`.
-- Синглтоны (`PlayerSettings`, `ResumeStore`, `SmbServers`, `I18n`) и `PlayerExtensions` — общие на процесс; их SharedPreferences/БД имеют префикс `p2160_` и живут в данных вашего приложения.
-- `PlayerScreen` не принимает `Modifier` и всегда заполняет родителя — ограничивайте размер контейнером.
+- Blu-ray: без меню, BD-J, 3D, AACS/BD+; папки BDMV - только `file://` и `smb://`.
+- Синглтоны (`PlayerSettings`, `ResumeStore`, `SmbServers`, `I18n`) и `PlayerExtensions` - общие на процесс; их SharedPreferences/БД имеют префикс `p2160_` и живут в данных вашего приложения.
+- `PlayerScreen` не принимает `Modifier` и всегда заполняет родителя - ограничивайте размер контейнером.
 - Работа с несколькими `PlayerController` одновременно технически возможна, но `nowPlaying` будет показывать последний обновивший.
 - Ночной звук работает только с PCM: пока он включён, passthrough на ресивер отключён (AC-3/DTS/TrueHD декодируются на устройстве).
-- `TrackPreferences`, `IntroDetector`, `IptvStore`, `DlnaServers`, `TorrentEngine` — тоже синглтоны процесса (`p2160_track_prefs`, `filesDir/intro`, `p2160_iptv` + `filesDir/iptv`, `p2160_dlna`, `filesDir/torrents`).
+- `TrackPreferences`, `IntroDetector`, `IptvStore`, `DlnaServers`, `TorrentEngine` - тоже синглтоны процесса (`p2160_track_prefs`, `filesDir/intro`, `p2160_iptv` + `filesDir/iptv`, `p2160_dlna`, `filesDir/torrents`).
 
 ### 15.4. Фоновое воспроизведение и MediaSession
 
@@ -1338,7 +1339,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 - уведомление с управлением, карточку на экране блокировки, кнопки гарнитуры, Bluetooth и часов;
 - фоновое воспроизведение: при уходе `Player2160Activity` с экрана (кнопка «Домой», выключение экрана,
   переход в другое приложение, закрытие окна PiP) аудио без видео продолжает играть, если
-  `Settings.backgroundAudio = true` (по умолчанию), видео — если `Settings.backgroundPlayback = true`;
+  `Settings.backgroundAudio = true` (по умолчанию), видео - если `Settings.backgroundPlayback = true`;
   иначе пауза. При «Домой» во время видео сначала открывается PiP, если `Settings.pictureInPicture = true`.
   В фоне видеодорожка отключается (`PlayerController.setInBackground(true)`), при возврате включается снова;
 - нажатие на уведомление открывает `Player2160Activity`.
@@ -1349,26 +1350,26 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 
 ### 15.5. Dolby Vision без декодера
 
-Если устройство не умеет Dolby Vision файла (чаще всего профиль 7 — UHD Blu-ray-ремуксы; S21 и
+Если устройство не умеет Dolby Vision файла (чаще всего профиль 7 - UHD Blu-ray-ремуксы; S21 и
 большинство телефонов), Media3 отбросила бы видеодорожку. Плеер подменяет формат на совместимый
-базовый кодек (HEVC/AVC/AV1) прямо в экстракторе — играет базовый слой HDR10, а `report()` показывает
+базовый кодек (HEVC/AVC/AV1) прямо в экстракторе - играет базовый слой HDR10, а `report()` показывает
 «Dolby Vision (profile N)» с предупреждением. Профиль 5 (без совместимого слоя) не подменяется.
 
 ### 15.6. Настройка движка: `PlayerConfig`
 
 То, что пользователь в настройках не меняет, а встраивающему приложению может понадобиться.
-Задаётся глобально до создания плеера — `Player2160.config = PlayerConfig(...)` — или передаётся
+Задаётся глобально до создания плеера - `Player2160.config = PlayerConfig(...)` - или передаётся
 в конструктор `PlayerController(context, request, config)`.
 
 | Поле | По умолчанию | Что делает |
 |---|---|---|
-| `bufferTargetBytes` | `PlayerConfig.AUTO` | Предел буфера в байтах. Без него 4K-ремукс держит ~130 МБ — слабые ТВ падают от нехватки памяти. `AUTO` — по памяти устройства (`DeviceProfile.bufferTargetBytes`: четверть кучи Java, но не больше 1/24 всей памяти; 24–128 МБ, на low-RAM — до 32 МБ), `UNLIMITED` — правило Media3, число — свой предел. |
+| `bufferTargetBytes` | `PlayerConfig.AUTO` | Предел буфера в байтах. Без него 4K-ремукс держит ~130 МБ - слабые ТВ падают от нехватки памяти. `AUTO` - по памяти устройства (`DeviceProfile.bufferTargetBytes`: четверть кучи Java, но не больше 1/24 всей памяти; 24–128 МБ, на low-RAM - до 32 МБ), `UNLIMITED` - правило Media3, число - свой предел. |
 | `minBufferMs` / `maxBufferMs` | `50 000` / `50 000` | Сколько держать в буфере (пока позволяет предел в байтах). |
 | `bufferForPlaybackMs` / `bufferForPlaybackAfterRebufferMs` | `1 000` / `2 000` | Сколько набрать перед стартом и после подгрузки. |
 | `connectTimeoutMs` / `readTimeoutMs` | `30 000` / `60 000` | Тайм-ауты HTTP(S). У торрентов свой тайм-аут ожидания частей (`TorrentPrefs`). |
 | `introDetection` | `true` | Поиск вступления/титров по звуку: читает начало соседних серий по сети. |
 | `readChapters` | `true` | Читать главы файла через FFmpeg при старте (отдельное открытие файла). Главы дисков Blu-ray читаются всегда. |
-| `restoreFromHistory` | `true` | Брать из истории позицию, дорожки, скорость, задержку субтитров и выбор дорожек «по привычке». `false` — плеер сам дорожки не подменяет; явные `startPositionMs` и `select` у субтитров работают всегда. |
+| `restoreFromHistory` | `true` | Брать из истории позицию, дорожки, скорость, задержку субтитров и выбор дорожек «по привычке». `false` - плеер сам дорожки не подменяет; явные `startPositionMs` и `select` у субтитров работают всегда. |
 | `saveHistory` | `true` | Записывать прогресс в `ResumeStore`. |
 
 ```kotlin
@@ -1394,40 +1395,40 @@ class App : Application() {
 
 | Механизм | Как работает |
 |---|---|
-| Вывод видео | `SurfaceView` (`PlayerView`): кадры идут в аппаратный композитор без копий через GPU; HDR — сразу на дисплей. |
-| Декодеры | Аппаратные `MediaCodec` в приоритете, FFmpeg (nextlib) — только для того, что устройство не умеет. Программное декодирование видео видно в сводке и предупреждении при старте. |
+| Вывод видео | `SurfaceView` (`PlayerView`): кадры идут в аппаратный композитор без копий через GPU; HDR - сразу на дисплей. |
+| Декодеры | Аппаратные `MediaCodec` в приоритете, FFmpeg (nextlib) - только для того, что устройство не умеет. Программное декодирование видео видно в сводке и предупреждении при старте. |
 | Динамическое планирование | `ExoPlayer.Builder.experimentalSetDynamicSchedulingEnabled(true)`: цикл воспроизведения просыпается, только когда рендерерам есть работа. |
-| Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер — до 128 МБ. |
+| Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер - до 128 МБ. |
 | Видео в фоне | Видеодорожка отключается (`setInBackground`), звук без видео может уйти в offload. |
-| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, `setIsSpeedChangeSupportRequired(true)`). Samsung `COMPRESS_OFFLOAD` отклоняет `AudioTrack.setPlaybackParams` (`IllegalArgumentException: arguments out of range`), и скорость не применяется; offload остаётся только на устройствах, где смена скорости в этом режиме работает. Media3 включает offload только для звука без видео и для форматов, которые умеет отдавать на аудиочип (MP3, AAC, Opus, AC3/E-AC3/DTS; FLAC — нет, он декодируется аппаратным или программным декодером); ночной звук (обработка PCM) его выключает. |
-| Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле — режим выключается и сохраняется. |
-| Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана — без счёта; потом декодирует сам. |
+| Аудио offload | `Settings.audioOffload`: `AudioOffloadPreferences` (`AUDIO_OFFLOAD_MODE_ENABLED`, `setIsSpeedChangeSupportRequired(true)`). Samsung `COMPRESS_OFFLOAD` отклоняет `AudioTrack.setPlaybackParams` (`IllegalArgumentException: arguments out of range`), и скорость не применяется; offload остаётся только на устройствах, где смена скорости в этом режиме работает. Media3 включает offload только для звука без видео и для форматов, которые умеет отдавать на аудиочип (MP3, AAC, Opus, AC3/E-AC3/DTS; FLAC - нет, он декодируется аппаратным или программным декодером); ночной звук (обработка PCM) его выключает. |
+| Туннельный режим | `Settings.tunneling` → `DefaultTrackSelector.Parameters.setTunnelingEnabled`. Устройства без поддержки остаются в обычном режиме; ошибка декодера в туннеле - режим выключается и сохраняется. |
+| Передача звука на ресивер | Если выход не открылся (`AUDIO_TRACK_INIT_FAILED`, Realtek: `createTrack -38`), плеер повторяет до 3 раз через 2 с, а во время смены режима экрана - без счёта; потом декодирует сам. |
 
-`object DeviceProfile` (`tv.p2160.core.api`): `lowMemory(context)` — low-RAM или < 2 ГБ памяти; `totalMemoryMb(context)`;
-`heapLimitMb(context)` — предел кучи Java с учётом `android:largeHeap`; `isTv(context)`; `bufferTargetBytes(context)` —
+`object DeviceProfile` (`tv.p2160.core.api`): `lowMemory(context)` - low-RAM или < 2 ГБ памяти; `totalMemoryMb(context)`;
+`heapLimitMb(context)` - предел кучи Java с учётом `android:largeHeap`; `isTv(context)`; `bufferTargetBytes(context)` -
 min(куча/4, ОЗУ/24) в пределах 24–128 МБ, на слабых устройствах ≤ 32 МБ. Им пользуются плеер (`PlayerConfig.AUTO`) и
 модуль торрентов (лимиты для слабых устройств).
 
 **Частота экрана под видео** (`Settings.frameRateMatching`, `FrameRateMatcher`). Пока плеер на экране, окно
 просит режим дисплея с тем же разрешением и частотой, кратной частоте кадров (точное совпадение важнее
-кратности: для 23,976 — 23,976 или 47,952 Гц, иначе 24 Гц). На время переключения (HDMI пересинхронизируется
+кратности: для 23,976 - 23,976 или 47,952 Гц, иначе 24 Гц). На время переключения (HDMI пересинхронизируется
 1–3 с) воспроизведение на паузе. Если частоты нет в заголовке (часто MKV), она вычисляется по меткам первых
-48 кадров (`VideoFrameMetadataListener`) и приводится к стандартной. При выходе из плеера — режим по умолчанию.
+48 кадров (`VideoFrameMetadataListener`) и приводится к стандартной. При выходе из плеера - режим по умолчанию.
 `FrameRateMatcher.bestMode(modes, current, fps)` и `suspend apply(activity, player, fps, onSwitching = controller::onDisplaySwitching)` можно использовать и в своём
-экране. Media3 дополнительно сообщает частоту поверхности (`Surface.setFrameRate`, только бесшовно) — некоторые
+экране. Media3 дополнительно сообщает частоту поверхности (`Surface.setFrameRate`, только бесшовно) - некоторые
 ТВ (например, Dune) по ней переключаются сами.
 
 **Статистика** (`Settings.statsOverlay`, `PlayerController.stats`). `PlaybackStats`: видео- и аудиодекодер
 (аппаратный/программный), разрешение, кодек, частота кадров, показано/пропущено кадров, буфер (секунды, байты и
 предел), оценка скорости сети, passthrough/offload/туннель, загрузка процессора процессом (% одного ядра, из
-`/proc/self/stat`), память (PSS, куча Java, нативная куча). Сбор — раз в секунду (память — раз в 2 с) и только
+`/proc/self/stat`), память (PSS, куча Java, нативная куча). Сбор - раз в секунду (память - раз в 2 с) и только
 пока слой включён.
 
 **Замеры (Dune TV, 32-битный ARM, release-сборки, 60 с после 40 с прогрева).** Ремукс 1080p H.264 + DTS-HD 5.1
-на ресивер: процесс плеера ~22 % одного ядра (из 6), PSS ~140–160 МБ (у новой версии буфер больше — 96 МБ против
-64 МБ). Тест 720p: ~20 %. Если передача на ресивер срывается и DTS-HD декодируется программно — ~50 % ядра и
+на ресивер: процесс плеера ~22 % одного ядра (из 6), PSS ~140–160 МБ (у новой версии буфер больше - 96 МБ против
+64 МБ). Тест 720p: ~20 %. Если передача на ресивер срывается и DTS-HD декодируется программно - ~50 % ядра и
 пропуски кадров на 32-битных ТВ; поэтому повторы открытия выхода важны. Туннельный режим на этом ТВ не дал
-выигрыша (декодер Realtek его не поддерживает). Отладочные сборки в 2–3 раза тяжелее релизных — мерить нужно release.
+выигрыша (декодер Realtek его не поддерживает). Отладочные сборки в 2–3 раза тяжелее релизных - мерить нужно release.
 
 ---
 
@@ -1461,7 +1462,7 @@ min(куча/4, ОЗУ/24) в пределах 24–128 МБ, на слабых 
 Player2160.settings(context).update { it.copy(nightAuto = true, nightStartMinute = 22 * 60 + 30, nightEndMinute = 8 * 60) }
 controller.onNightScheduleChanged()
 
-// Состояние — в PlayerUiState
+// Состояние - в PlayerUiState
 val night = controller.state.value.nightMode
 ```
 
@@ -1475,14 +1476,14 @@ val night = controller.state.value.nightMode
 - автоматически при ошибке `PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED`: ТВ заявил
   поддержку AC-3/DTS «на выход», но открыть такой `AudioTrack` не смог. Первую такую ошибку контроллер
   считает кратковременной (Realtek сразу после переключения звука: прежний выход ещё не закрыт,
-  `createTrack -38`) — через секунду повторяет `prepare()` с прежним `playWhenReady`; повтор — не чаще
+  `createTrack -38`) - через секунду повторяет `prepare()` с прежним `playWhenReady`; повтор - не чаще
   раза в 10 с, так что срабатывает при любом переключении, в том числе при смене дорожки напрямую через
   `player.trackSelectionParameters`. Если повтор тоже не удался, контроллер переключается на
-  декодирование и вызывает `prepare()`/`play()` — пользователь ошибки не видит. Такой выход
+  декодирование и вызывает `prepare()`/`play()` - пользователь ошибки не видит. Такой выход
   запоминается (`PassthroughGuard.failed`), и passthrough для этого контроллера больше не включается.
-  Цена для ТВ, который совсем не умеет passthrough, — одна лишняя секунда тишины.
+  Цена для ТВ, который совсем не умеет passthrough, - одна лишняя секунда тишины.
 
-Выключение ночного режима опускает флаг — AC-3/E-AC-3/DTS снова уходят на ресивер многоканалом, в том числе если серия была запущена сразу с ночным звуком (звук с самого начала декодировался).
+Выключение ночного режима опускает флаг - AC-3/E-AC-3/DTS снова уходят на ресивер многоканалом, в том числе если серия была запущена сразу с ночным звуком (звук с самого начала декодировался).
 При любом переключении аудиорендерер переинициализируется (дорожка звука кратковременно выключается
 и включается, меньше секунды); видео не трогается.
 
@@ -1493,14 +1494,14 @@ val night = controller.state.value.nightMode
 Если у файла нет своей сохранённой записи в истории (`ResumeStore`) и `Settings.smartTracks = true`,
 `PlayerController` выбирает аудио и субтитры «по привычке», а ручной выбор пользователя
 (`select()` аудио/текста, `disableSubtitles()`) запоминает. Сохранённая позиция файла (§10) всегда
-важнее привычки; явно запрошенные внешние субтитры (`ExternalSubtitle.select`) — тоже.
+важнее привычки; явно запрошенные внешние субтитры (`ExternalSubtitle.select`) - тоже.
 
 Привычка хранится под двумя ключами одновременно:
 
 | Ключ | Пример | Откуда |
 |---|---|---|
 | Сериал | `series:<ключ>` | `SegmentDetector.seriesKey` от имени файла или заголовка (как у ручных отметок §12). Точнее всего. |
-| Набор языков аудио файла | `ctx:en+ja+ru` | `TrackRules.contextKey` — отсортированные нормализованные языки аудиодорожек. «ja+ru → японская озвучка + русские субтитры». |
+| Набор языков аудио файла | `ctx:en+ja+ru` | `TrackRules.contextKey` - отсортированные нормализованные языки аудиодорожек. «ja+ru → японская озвучка + русские субтитры». |
 
 При выборе сначала ищется привычка сериала, затем точный набор языков, затем **похожий** набор:
 коэффициент Жаккара `|A∩B| / |A∪B|` ≥ 0,5, и выбранный язык озвучки должен присутствовать в файле
@@ -1510,8 +1511,8 @@ val night = controller.state.value.nightMode
 /** Что пользователь выбрал. */
 data class TrackChoice(
     val audioLanguage: String?,
-    val audioHint: String?,       // "dub", "mvo", "dvo", "avo", "original", "commentary" — по названию дорожки
-    val textLanguage: String?,    // null — субтитры выключены
+    val audioHint: String?,       // "dub", "mvo", "dvo", "avo", "original", "commentary" - по названию дорожки
+    val textLanguage: String?,    // null - субтитры выключены
     val textForced: Boolean = false,
 )
 
@@ -1519,7 +1520,7 @@ data class TrackChoice(
 data class TrackCandidate(val index: Int, val language: String?, val label: String?, val channels: Int = 0, val forced: Boolean = false)
 ```
 
-`object TrackRules` — чистая логика (тестируется на JVM):
+`object TrackRules` - чистая логика (тестируется на JVM):
 
 | Член | Описание |
 |---|---|
@@ -1530,7 +1531,7 @@ data class TrackCandidate(val index: Int, val language: String?, val label: Stri
 | `fun pickText(choice, text): TrackCandidate?` | Тот же язык, предпочтительно с тем же флагом forced. |
 | `fun bestContext(stored: Map<String, TrackChoice>, languages: Set<String>): TrackChoice?` | Самая похожая привычка (Жаккар ≥ 0,5). |
 
-`class TrackPreferences` — хранилище (SharedPreferences `p2160_track_prefs`, JSON):
+`class TrackPreferences` - хранилище (SharedPreferences `p2160_track_prefs`, JSON):
 
 | Член | Описание |
 |---|---|
@@ -1553,15 +1554,15 @@ Player2160.settings(context).update { it.copy(smartTracks = false) }  // вык�
 
 Для файлов сериала (есть `SegmentDetector.seriesKey`) `PlayerController` через ~15 с после старта
 сравнивает звук начала текущей серии (10 мин) с началом 1–2 соседних элементов плейлиста того же
-сериала, а конец (6 мин) — с их концами. Общий отрезок 15–150 с в начале — вступление, у конца —
+сериала, а конец (6 мин) - с их концами. Общий отрезок 15–150 с в начале - вступление, у конца -
 титры. Найденные отрезки добавляются к `PlayerUiState.segments` с наименьшим приоритетом (после
 ручных отметок, `MediaEntry.segments`/Intent и глав, §12); отрезки с уверенностью < 0,6 показываются
-только кнопкой — в режиме `SkipMode.AUTO` они не пропускаются. Поиск не запускается для Blu-ray,
+только кнопкой - в режиме `SkipMode.AUTO` они не пропускаются. Поиск не запускается для Blu-ray,
 `liveTv` и если вступление и титры уже известны.
 
 Отпечатки, результаты и шаблоны сериала кэшируются в `filesDir/intro`: для следующей серии обычно
 достаточно звука её самой. Звук читается через `MediaExtractor`, который для сетевых источников тянет
-весь поток за нужный отрезок, — на 4K-ремуксе по SMB/HTTP это гигабайты трафика.
+весь поток за нужный отрезок, - на 4K-ремуксе по SMB/HTTP это гигабайты трафика.
 
 Публичная точка входа (`tv.p2160.core.intro`), если нужно искать отрезки самостоятельно:
 
@@ -1571,11 +1572,11 @@ class IntroDetector {
         current: Uri,
         siblings: List<Uri>,                      // лучше всего предыдущая и следующая серии
         headers: Map<String, String> = emptyMap(),
-        seriesKey: String? = null,                // SegmentDetector.seriesKey — для шаблонов сериала
+        seriesKey: String? = null,                // SegmentDetector.seriesKey - для шаблонов сериала
         durationMs: Long = -1,
         preferredLanguage: String? = null,        // язык озвучки, чтобы сравнивать одну и ту же
     ): DetectionResult
-    fun cached(current: Uri): DetectionResult?    // без декодирования; null — ещё не искали
+    fun cached(current: Uri): DetectionResult?    // без декодирования; null - ещё не искали
     companion object {
         fun get(context: Context): IntroDetector
         fun keyFor(uri: Uri): String
@@ -1585,7 +1586,7 @@ class IntroDetector {
 
 data class DetectionResult(
     val intro: SkipSegment? = null,
-    val credits: SkipSegment? = null,             // endMs = null — титры до конца файла
+    val credits: SkipSegment? = null,             // endMs = null - титры до конца файла
     val introConfidence: Float = 0f,              // 0…1; для автопропуска разумно ≥ 0.6
     val creditsConfidence: Float = 0f,
 ) { val segments: List<SkipSegment> }
@@ -1597,13 +1598,13 @@ val segments = result.segments   // можно передать в MediaEntry.se
 ```
 
 Остальные классы пакета (`IntroAnalyzer`, `Fingerprinter`, `IntroMatcher`, `IntroStore`,
-`MediaCodecPcmDecoder`) — детали реализации.
+`MediaCodecPcmDecoder`) - детали реализации.
 
-### 18.2. Сводка по файлу — `MediaReport`
+### 18.2. Сводка по файлу - `MediaReport`
 
 `controller.report()` собирает «что внутри и как это играет»: контейнер, длительность, видео
 (кодек и профиль, разрешение, fps, битрейт, HDR/Dolby Vision), выбранный декодер (аппаратный или
-программный — по реально инициализированному), аудиодорожки с пометкой, как играет каждая
+программный - по реально инициализированному), аудиодорожки с пометкой, как играет каждая
 (passthrough / аппаратно / программно / FFmpeg / не поддерживается), субтитры (встроенные/внешние).
 В `PlayerScreen` это боковая панель с информацией о файле.
 
@@ -1615,9 +1616,9 @@ data class ReportRow(val label: String, val value: String, val level: Level = Le
 }
 ```
 
-Строки локализованы. `warnings` — то же, что появляется в `PlayerUiState.warnings`: программное
+Строки локализованы. `warnings` - то же, что появляется в `PlayerUiState.warnings`: программное
 декодирование видео (отдельно для 4K), Dolby Vision без аппаратного декодера, HDR на SDR-экране.
-`MediaReporter`/`ActiveDecoders` — внутренние.
+`MediaReporter`/`ActiveDecoders` - внутренние.
 
 ---
 
@@ -1627,25 +1628,25 @@ data class ReportRow(val label: String, val value: String, val level: Level = Le
 Kodi, UMS, Serviio…), обзор их каталогов через ContentDirectory и воспроизведение элементов
 обычным HTTP-путём плеера. Своей схемы URI нет: играется прямая ссылка `<res>` сервера.
 
-### 19.1. Серверы — `DlnaServers`
+### 19.1. Серверы - `DlnaServers`
 
 | Член | Описание |
 |---|---|
 | `companion fun get(context: Context): DlnaServers` | Синглтон. |
 | `val servers: StateFlow<List<KnownDlnaServer>>` | Найденные (по алфавиту) + добавленные вручную. `KnownDlnaServer(server: DlnaServer, manual: Boolean)`. |
 | `val searching: StateFlow<Boolean>` | Идёт поиск. |
-| `fun refresh(timeoutMs: Long = 5000)` | Новый цикл SSDP-поиска (если уже идёт — ничего). Результаты поиска живут в памяти. |
+| `fun refresh(timeoutMs: Long = 5000)` | Новый цикл SSDP-поиска (если уже идёт - ничего). Результаты поиска живут в памяти. |
 | `fun find(udn: String): DlnaServer?` | Сервер по UDN. |
 | `suspend fun addByAddress(input: String): DlnaServer` | Добавить вручную (сохраняется в `p2160_dlna`). Бросает `DlnaException`, если не найден. |
 | `fun removeManual(udn: String)` | Удалить добавленный вручную. |
 
-Поиск — M-SEARCH (`MediaServer:1`, `ContentDirectory:1`, `ssdp:all`) на `239.255.255.250:1900` по всем
+Поиск - M-SEARCH (`MediaServer:1`, `ContentDirectory:1`, `ssdp:all`) на `239.255.255.250:1900` по всем
 IPv4-интерфейсам плюс приём NOTIFY alive/byebye; в результат попадают только устройства с сервисом
 ContentDirectory. На время поиска берётся `WifiManager.MulticastLock` (разрешение
 `CHANGE_WIFI_MULTICAST_STATE` добавляет библиотека). Низкоуровнево: `DlnaDiscovery.events(context, timeoutMs): Flow<DlnaDiscovery.Event>`
 (`Found(server)` / `Lost(udn)`), `SsdpDiscovery`.
 
-`addByAddress` (`DlnaProbe.resolve`) — для серверов, не видимых по SSDP (Docker в bridge-сети, другая
+`addByAddress` (`DlnaProbe.resolve`) - для серверов, не видимых по SSDP (Docker в bridge-сети, другая
 подсеть, VPN). Принимает URL описания (`http://nas:8200/rootDesc.xml`), `host:port` (перебираются
 известные пути описаний) или только `host` (перебираются стандартные порты: 8200 MiniDLNA, 8096
 Jellyfin/Emby, 32469 Plex, 5001 UMS, 50001 Synology, 8895 Serviio).
@@ -1659,29 +1660,29 @@ data class DlnaServer(
 ) { val host: String; fun bestIcon(target: Int = 120): DlnaIcon? }
 ```
 
-### 19.2. Обзор — `ContentDirectory`
+### 19.2. Обзор - `ContentDirectory`
 
-Методы **блокирующие** (сеть) — только `Dispatchers.IO`. Ошибки — `DlnaException` (`IOException`, есть `code`).
+Методы **блокирующие** (сеть) - только `Dispatchers.IO`. Ошибки - `DlnaException` (`IOException`, есть `code`).
 
 | Член | Описание |
 |---|---|
 | `ContentDirectory(server: DlnaServer, http: DlnaHttp = UrlConnectionHttp())` | Клиент SOAP Browse (`BrowseDirectChildren`). |
-| `fun browse(objectId: String, start: Int = 0, count: Int = PAGE_SIZE): BrowsePage` | Одна страница; `ROOT_ID = "0"` — корень, `PAGE_SIZE = 200`. |
+| `fun browse(objectId: String, start: Int = 0, count: Int = PAGE_SIZE): BrowsePage` | Одна страница; `ROOT_ID = "0"` - корень, `PAGE_SIZE = 200`. |
 | `fun browseAll(objectId: String, pageSize: Int = PAGE_SIZE, limit: Int = 10_000): List<DlnaObject>` | Все дети с постраничной загрузкой (терпит серверы с `TotalMatches=0` и игнорирующие `StartingIndex`). |
 
-`DlnaObject` — `DlnaContainer` (папка: `id`, `title`, `childCount`, `albumArtUrl`) или `DlnaItem`
-(`resources: List<DlnaResource>`, `subtitles: List<DlnaSubtitle>`, `kind: DlnaMediaKind` —
+`DlnaObject` - `DlnaContainer` (папка: `id`, `title`, `childCount`, `albumArtUrl`) или `DlnaItem`
+(`resources: List<DlnaResource>`, `subtitles: List<DlnaSubtitle>`, `kind: DlnaMediaKind` -
 `VIDEO/AUDIO/IMAGE/OTHER`, `bestResource`, `durationMs`, `size`, `date`, `artist`, `album`).
-`bestResource` — HTTP-ресурс нужного типа: сначала оригинал (без транскодирования `DLNA.ORG_CI=1`),
+`bestResource` - HTTP-ресурс нужного типа: сначала оригинал (без транскодирования `DLNA.ORG_CI=1`),
 затем наибольшее разрешение, размер и битрейт. Внешние субтитры берутся из `<res>` с типом
 субтитров и Samsung-расширения `sec:CaptionInfoEx`.
 
-### 19.3. Воспроизведение — `DlnaPlayback`
+### 19.3. Воспроизведение - `DlnaPlayback`
 
 | Член | Описание |
 |---|---|
-| `fun mediaEntry(item: DlnaItem): MediaEntry?` | URI = `bestResource.url`, заголовок, MIME (для HLS/DASH), внешние субтитры (имя `RU.srt` — по расширению плеер определяет формат). `null` — нет воспроизводимого ресурса. |
-| `fun request(items: List<DlnaItem>, index: Int): PlaybackRequest?` | Плейлист из элементов папки (без ресурса — пропускаются), старт с `index`. |
+| `fun mediaEntry(item: DlnaItem): MediaEntry?` | URI = `bestResource.url`, заголовок, MIME (для HLS/DASH), внешние субтитры (имя `RU.srt` - по расширению плеер определяет формат). `null` - нет воспроизводимого ресурса. |
+| `fun request(items: List<DlnaItem>, index: Int): PlaybackRequest?` | Плейлист из элементов папки (без ресурса - пропускаются), старт с `index`. |
 
 ```kotlin
 val dlna = DlnaServers.get(context)
@@ -1703,24 +1704,24 @@ DlnaPlayback.request(videos, 0)?.let { Player2160.play(context, it) }
 
 ### 20.1. Режим эфира
 
-`PlaybackRequest(liveTv = true)` (extra `tv.p2160.extra.LIVE`, §3.3) — элементы считаются
-телеканалами: нет продолжения с места, истории, глав и поиска вступлений; вместо полосы перемотки —
+`PlaybackRequest(liveTv = true)` (extra `tv.p2160.extra.LIVE`, §3.3) - элементы считаются
+телеканалами: нет продолжения с места, истории, глав и поиска вступлений; вместо полосы перемотки -
 «Эфир»; стрелки вверх/вниз при скрытой панели, CH+/CH−, `next()/previous()` переключают каналы по
-кругу (`switchChannel`); под названием — `PlayerUiState.subtitle` из `LiveGuide` (обновляется раз в 30 с).
+кругу (`switchChannel`); под названием - `PlayerUiState.subtitle` из `LiveGuide` (обновляется раз в 30 с).
 
 ```kotlin
 fun interface LiveGuide { fun describe(entry: MediaEntry, nowMs: Long): String? }   // tv.p2160.core.api
 
-// Свой телегид; вызывается с главного потока — отвечайте из памяти
+// Свой телегид; вызывается с главного потока - отвечайте из памяти
 Player2160.setLiveGuide { entry, now -> myEpg.current(entry.uri, now)?.title }
 Player2160.setLiveGuide(null)   // вернуть встроенный (IptvStore)
 ```
 
 Тот же объект доступен как `PlayerExtensions.liveGuide`.
 
-### 20.2. Разбор M3U — `M3uParser`
+### 20.2. Разбор M3U - `M3uParser`
 
-`M3uParser.parse(text: String, baseUrl: String? = null): M3uPlaylist` — терпим к реальным спискам: BOM,
+`M3uParser.parse(text: String, baseUrl: String? = null): M3uPlaylist` - терпим к реальным спискам: BOM,
 CRLF, атрибуты без кавычек и с запятыми, `#EXTGRP`, `#EXTVLCOPT` (`http-user-agent`, `http-referrer`,
 `http-origin`), `#KODIPROP` (`…stream_headers`/`…manifest_headers`), `#EXTHTTP` (JSON), заголовки после
 `url|User-Agent=…&Referer=…`, название на следующей строке, относительные URL (относительно `baseUrl`),
@@ -1750,14 +1751,14 @@ data class IptvChannel(
 
 | Класс | Описание |
 |---|---|
-| `XmltvParser.parse(input: InputStream, parser: XmlPullParser, nowMs: Long, filter: EpgFilter? = null, pastMs = 6 ч, futureMs = 24 ч): EpgData` | Потоковый разбор XMLTV (gzip распознаётся автоматически). Хранит передачи в окне `[now − pastMs, now + futureMs]`, не более 300 на канал. `parser` — `android.util.Xml.newPullParser()`. |
-| `EpgFilter(channels: Collection<IptvChannel>)` | Оставить только каналы плейлиста (по `tvg-id` и названиям) — экономит память на больших EPG. |
+| `XmltvParser.parse(input: InputStream, parser: XmlPullParser, nowMs: Long, filter: EpgFilter? = null, pastMs = 6 ч, futureMs = 24 ч): EpgData` | Потоковый разбор XMLTV (gzip распознаётся автоматически). Хранит передачи в окне `[now − pastMs, now + futureMs]`, не более 300 на канал. `parser` - `android.util.Xml.newPullParser()`. |
+| `EpgFilter(channels: Collection<IptvChannel>)` | Оставить только каналы плейлиста (по `tvg-id` и названиям) - экономит память на больших EPG. |
 | `EpgData` | `programmes: Map<String, List<EpgProgramme>>`, `channelNames`, `isEmpty`, `plus` (слияние источников), `trimmed(fromMs)`. |
 | `EpgGuide(data)` | Сопоставление каналу: `tvg-id` точно → без суффикса `@HD/@SD` → нормализованное название. `keyFor(channel)`, `programmes(channel)`, `nowNext(channel, nowMs): NowNext?`. |
 | `EpgProgramme(startMs, stopMs, title, description)` | `isOn(nowMs)`, `progress(nowMs)`. `NowNext(now, next)`. |
 | `EpgCodec.encode/decode` | Компактный текстовый формат кэша. |
 
-### 20.4. Хранилище — `IptvStore`
+### 20.4. Хранилище - `IptvStore`
 
 Синглтон (`IptvStore.get(context)`): плейлисты (`p2160_iptv`), кэш каналов (`filesDir/iptv/<id>.m3u`,
 исходный текст) и отфильтрованной EPG (`<id>.epg`), избранное, последний канал. Реализует
@@ -1771,20 +1772,20 @@ data class IptvPlaylist(
     val epgUrl: String? = null,    // свой EPG вместо url-tvg (можно несколько через запятую)
     val userAgent: String? = null, // для плейлиста, EPG и потоков без своего UA
     val updatedAt: Long = 0, val epgUpdatedAt: Long = 0, val channelCount: Int = 0,
-    val error: String? = null,     // последняя ошибка обновления; IptvStore.ERROR_EMPTY / ERROR_HLS — маркеры
+    val error: String? = null,     // последняя ошибка обновления; IptvStore.ERROR_EMPTY / ERROR_HLS - маркеры
 ) { val isLocal: Boolean }
 ```
 
 | Член | Описание |
 |---|---|
 | `val playlists: StateFlow<List<IptvPlaylist>>` | Список; `get(id)`, `save(playlist)` (смена источника/EPG сбрасывает кэш), `delete(id)`. |
-| `suspend fun channels(id, forceRefresh = false, maxAgeHours = 24): M3uPlaylist` | Из кэша, если свежий (локальный файл перечитывается только по `forceRefresh`), иначе загрузка. При ошибке сети — старый кэш и `error`; без кэша — исключение. |
-| `suspend fun guide(id, forceRefresh = false): EpgGuide?` | EPG с диска, если моложе 12 ч и покрывает ≥ 3 ч вперёд, иначе загрузка всех источников. `null` — источников нет. |
+| `suspend fun channels(id, forceRefresh = false, maxAgeHours = 24): M3uPlaylist` | Из кэша, если свежий (локальный файл перечитывается только по `forceRefresh`), иначе загрузка. При ошибке сети - старый кэш и `error`; без кэша - исключение. |
+| `suspend fun guide(id, forceRefresh = false): EpgGuide?` | EPG с диска, если моложе 12 ч и покрывает ≥ 3 ч вперёд, иначе загрузка всех источников. `null` - источников нет. |
 | `fun cachedChannels(id)` / `fun cachedGuide(id)` / `val guideVersion: StateFlow<Int>` | Без загрузки; счётчик обновлений EPG. |
 | `fun epgUrls(playlist, parsed): List<String>` | Свой `epgUrl` или адреса из `#EXTM3U`. |
 | `favourites: StateFlow<Map<String, Set<String>>>`, `isFavourite`, `toggleFavourite(playlistId, channelId)` | Избранное. |
 | `lastChannel(playlistId)`, `setLastChannel(...)`, `lastPlaylist()`, `lastChannelChanges` | Последний канал (обновляется и при переключении каналов в плеере). |
-| `fun playbackRequest(playlistId: String, channels: List<IptvChannel>, index: Int): PlaybackRequest` | `liveTv = true`, элементы — каналы (не более `IptvPlayback.MAX_ITEMS = 1000` вокруг `index` — лимит Binder), заголовки — `IptvPlayback.headersFor(channel, playlist.userAgent)`; включает подпись EPG в плеере. |
+| `fun playbackRequest(playlistId: String, channels: List<IptvChannel>, index: Int): PlaybackRequest` | `liveTv = true`, элементы - каналы (не более `IptvPlayback.MAX_ITEMS = 1000` вокруг `index` - лимит Binder), заголовки - `IptvPlayback.headersFor(channel, playlist.userAgent)`; включает подпись EPG в плеере. |
 
 ```kotlin
 val iptv = IptvStore.get(context)
@@ -1796,8 +1797,8 @@ Player2160.play(context, iptv.playbackRequest(playlist.id, news, index = 0))
 launch { iptv.guide(playlist.id) }   // подгрузить телегид для подписи «сейчас»
 ```
 
-Без `IptvStore` достаточно `PlaybackRequest(items, liveTv = true, headers = …)` — подписи не будет
-(или будет из вашего `LiveGuide`). Ограничение: заголовки запроса общие на весь плейлист — берутся у
+Без `IptvStore` достаточно `PlaybackRequest(items, liveTv = true, headers = …)` - подписи не будет
+(или будет из вашего `LiveGuide`). Ограничение: заголовки запроса общие на весь плейлист - берутся у
 стартового канала.
 
 ---
@@ -1806,10 +1807,10 @@ launch { iptv.guide(playlist.id) }   // подгрузить телегид дл
 
 Отдельный Android-модуль `:source-torrent` (пакет `tv.p2160.torrent`) на libtorrent4j: нативные
 библиотеки добавляют ~6–8 МБ на ABI, поэтому в `player-core` их нет. Плеер читает файлы торрента
-по схеме `torrent://` — через точку расширения `RoutingDataSource.registerScheme`, так что
+по схеме `torrent://` - через точку расширения `RoutingDataSource.registerScheme`, так что
 torrent-URI работают в `PlaybackRequest`, `PlayerScreen`, истории и «Продолжить просмотр».
 
-**Подключение.** В Maven модуль не публикуется — только исходниками (как вариант 1a/1b в
+**Подключение.** В Maven модуль не публикуется - только исходниками (как вариант 1a/1b в
 [EMBEDDING.md](EMBEDDING.md#1-подключение)):
 
 ```kotlin
@@ -1829,7 +1830,7 @@ dependencies {
 
 ProGuard-правила (`-keep class org.libtorrent4j.** { *; }`) подключаются автоматически.
 Разрешений сверх `INTERNET` не нужно; данные хранятся в `getExternalFilesDir(null)/torrent-data`
-(или `filesDir`), индекс — в `filesDir/torrents`.
+(или `filesDir`), индекс - в `filesDir/torrents`.
 
 **Формат URI**
 
@@ -1837,8 +1838,8 @@ ProGuard-правила (`-keep class org.libtorrent4j.** { *; }`) подклю�
 torrent://<info-hash, 40 hex в нижнем регистре>/<индекс файла>/<имя файла>
 ```
 
-Имя — только для отображения (заголовок, расширение для определения формата и субтитров).
-`TorrentEngine.uriFor(id, file)` строит URI, `TorrentEngine.parseUri(uri): Pair<String, Int>?` — разбирает.
+Имя - только для отображения (заголовок, расширение для определения формата и субтитров).
+`TorrentEngine.uriFor(id, file)` строит URI, `TorrentEngine.parseUri(uri): Pair<String, Int>?` - разбирает.
 
 **Воспроизведение magnet**
 
@@ -1853,14 +1854,14 @@ class App : Application() {
 lifecycleScope.launch {
     val engine = TorrentEngine.get(context)
     val id = engine.addMagnet("magnet:?xt=urn:btih:…")              // или голый info-hash
-    val files = engine.awaitFiles(id, timeoutMs = 60_000) ?: return@launch   // null — нет метаданных
+    val files = engine.awaitFiles(id, timeoutMs = 60_000) ?: return@launch   // null - нет метаданных
     val video = files.filter { it.isVideo }.maxBy { it.size }
     Player2160.play(context, engine.prepare(id, video.index))
 }
 ```
 
 `prepare` выбирает файл (остальные перестают качаться) и возвращает `PlaybackRequest`: все видео
-торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт — с выбранного; субтитры из
+торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт - с выбранного; субтитры из
 торрента подключаются к видео с тем же базовым именем. Чтение блокируется, пока нужные куски не
 скачаны; приоритеты кусков выставляются по позициям всех открытых потоков (перемотка работает).
 
@@ -1878,10 +1879,10 @@ lifecycleScope.launch {
 | `val torrents: StateFlow<List<TorrentItem>>` | Все торренты (`StoredTorrent` + живые `TorrentStats`: скорость, пиры, прогресс, буфер). |
 | `val engineError: StateFlow<String?>` | Ошибка запуска (например, нет нативной библиотеки под ABI). |
 | `val settings: TorrentSettings` | `state: StateFlow<TorrentPrefs>`, `update { }`: `cacheLimitGb = 20`, `keepFiles = false`, `maxAgeDays = 7`, `maxConnections = 200`, `uploadLimitKb = 0`, `network = NetworkMode.SEED_WIFI`, `seedPolicy = SeedPolicy.ALWAYS`, `seedOnlyCharging = false`, `mobileDownloadLimitKb = 0` (см. «Правила раздачи» ниже). |
-| `val device: StateFlow<DeviceState>` | `DeviceState(metered, charging)`: сеть с оплатой трафика (мобильный интернет, точка доступа) и зарядка (устройство без батареи — ТВ, приставка — считается заряжающимся). |
+| `val device: StateFlow<DeviceState>` | `DeviceState(metered, charging)`: сеть с оплатой трафика (мобильный интернет, точка доступа) и зарядка (устройство без батареи - ТВ, приставка - считается заряжающимся). |
 | `fun needsMobileConsent(): Boolean` / `fun allowMobileData()` | Режим `WIFI_ONLY` и сеть с оплатой трафика: нужно согласие. `allowMobileData()` разрешает торренты до возврата на безлимитную сеть; без него `openStream` (чтение плеером) бросает `IOException`. |
 | `suspend fun stop(id: String)` | Остановить раздачу: ни загрузки, ни отдачи; данные остаются. Начатый просмотр продолжит её сам. |
-| `suspend fun start(id: String): Boolean` | Продолжить раздачу (вернуть «неактивную» после перезапуска в сессию): качает и раздаёт, автопауза через 10 мин без просмотра её не трогает. `false` — не удалось восстановить. |
+| `suspend fun start(id: String): Boolean` | Продолжить раздачу (вернуть «неактивную» после перезапуска в сессию): качает и раздаёт, автопауза через 10 мин без просмотра её не трогает. `false` - не удалось восстановить. |
 | `suspend fun remove(id: String, deleteFiles: Boolean)` / `suspend fun deleteData(id: String)` | Удалить торрент / только скачанные данные. |
 | `fun dhtNodes(): Long` | Узлов DHT (для экрана ожидания метаданных). |
 
@@ -1894,13 +1895,13 @@ lifecycleScope.launch {
 (`TorrentOpenActivity`: `VIEW` со схемой `magnet`, MIME `application/x-bittorrent`, расширение `.torrent`).
 
 **Правила раздачи.** Раз в секунду и сразу при смене сети, зарядки или настроек движок применяет правила;
-торренты, поставленные на паузу правилами, возвращаются сами, когда условие снято. Причина паузы — в
-`TorrentItem.hold: TorrentHold?` (`WIFI` — ждёт безлимитную сеть, `CHARGING` — ждёт зарядку, `SEED_LIMIT` —
-раздача завершена по правилу; продолжить вручную — `start`, после этого правило к торренту не применяется).
+торренты, поставленные на паузу правилами, возвращаются сами, когда условие снято. Причина паузы - в
+`TorrentItem.hold: TorrentHold?` (`WIFI` - ждёт безлимитную сеть, `CHARGING` - ждёт зарядку, `SEED_LIMIT` -
+раздача завершена по правилу; продолжить вручную - `start`, после этого правило к торренту не применяется).
 
 | Настройка | Значения и поведение |
 |---|---|
-| `network: NetworkMode` | `ANY` — по любой сети. `SEED_WIFI` (по умолчанию) — просматриваемый торрент работает везде, фоновые по сети с оплатой трафика ждут Wi-Fi, отдача урезается до `TorrentPrefs.METERED_UPLOAD_LIMIT` (16 КБ/с: совсем выключить её нельзя, а при 1 КБ/с не устанавливаются даже соединения с пирами). `WIFI_ONLY` — по сети с оплатой трафика всё на паузе до `allowMobileData()`; дальше как `SEED_WIFI`. |
+| `network: NetworkMode` | `ANY` - по любой сети. `SEED_WIFI` (по умолчанию) - просматриваемый торрент работает везде, фоновые по сети с оплатой трафика ждут Wi-Fi, отдача урезается до `TorrentPrefs.METERED_UPLOAD_LIMIT` (16 КБ/с: совсем выключить её нельзя, а при 1 КБ/с не устанавливаются даже соединения с пирами). `WIFI_ONLY` - по сети с оплатой трафика всё на паузе до `allowMobileData()`; дальше как `SEED_WIFI`. |
 | `seedPolicy: SeedPolicy` | Когда скачанный и не просматриваемый торрент перестаёт раздаваться: `ALWAYS`, `RATIO` (отдано не меньше размера выбранных файлов, `TorrentStats.uploadedTotal`), `DAY` (24 ч в состоянии «загружено», `TorrentStats.finishedSeconds`), `NEVER`. Торрент без выбранных файлов «скачанным» не считается. |
 | `seedOnlyCharging` | Фоновые торренты ждут зарядку; просмотр работает всегда. |
 | (слабое устройство) | `DeviceProfile.lowMemory` (low-RAM или < 2 ГБ): по умолчанию 80 соединений вместо 200 (`TorrentSettings.lowMemory`; выбор `TorrentPrefs.CONNECTIONS`: 50, 80, 100, 200, 400), меньше одновременных загрузок и короче списки пиров (`SessionConfig.lowMemory`). |
@@ -1924,36 +1925,36 @@ lifecycleScope.launch {
 
 Пока приложение на экране (`ProcessLifecycleOwner` onStart/onStop) или идёт трансляция камеры/экрана (§22.7),
 `Handoff` поднимает HTTP-сервер на
-случайном порту и объявляет его по mDNS/DNS-SD как `_p2160._tcp` (имя сервиса — имя устройства,
-TXT-атрибуты: `id` — постоянный id устройства, `auth` — `1`, если включена защита кодом, `cam` — `1`, если идёт
+случайном порту и объявляет его по mDNS/DNS-SD как `_p2160._tcp` (имя сервиса - имя устройства,
+TXT-атрибуты: `id` - постоянный id устройства, `auth` - `1`, если включена защита кодом, `cam` - `1`, если идёт
 RTSP-трансляция камеры, §22.7). Другие
-экземпляры находят его через `NsdManager`. Без облака — только одна локальная сеть (Wi-Fi или точка
+экземпляры находят его через `NsdManager`. Без облака - только одна локальная сеть (Wi-Fi или точка
 доступа телефона): через мобильную сеть mDNS и прямые соединения не проходят (NAT оператора).
 
 | Запрос | Ответ |
 |---|---|
 | `GET /now` | `200` + JSON текущего `Player2160.nowPlaying` или `204`, если ничего не играет / нечем поделиться. |
-| `POST /play` (JSON, ≤ 64 КБ) | `200 {}`; на принимающем устройстве — диалог «… предлагает продолжить здесь» (`HandoffReceiveActivity`), при согласии — `Player2160.play` с той же позиции и заголовками. |
-| `GET /camera` | Адрес трансляции камеры (`{"url": "rtsp://…", "viewers": N}`), 204 — не транслирует. Защита кодом — как у `/now`. |
-| `GET /watch?k=ключ` | Страница «Смотреть трансляцию» для QR-кода экрана трансляции (§22.7): камера любого телефона откроет её в браузере. Кнопки: «Открыть в 2160 Player» (`intent://…#Intent;scheme=rtsp;package=tv.p2160.player;S.title=…;S.browser_fallback_url=<APK с этого устройства>;end` — нет плеера, браузер скачает APK, как «Раздать по Wi-Fi»), «Открыть в другом плеере» (`intent://…;scheme=rtsp`) и адрес для OBS/VLC. `k` — отдельный ключ ссылки на 15 минут, не PIN сопряжения и не пароль RTSP (без защиты не нужен); неверный или просроченный — 403, после 5 неверных подряд — минута ожидания (429); трансляции нет — 404. |
-| `GET /hello?id&name&port&auth&cam` | «Я тоже здесь»: найдя устройство по mDNS (и раз в минуту), плеер сообщает о себе напрямую, а получатель добавляет его в `peers`. Так обнаружение работает, даже если роутер пропускает multicast только в одну сторону; устройства, от которых нет ни mDNS, ни «привета» 3 минуты, удаляются; не ответившее на «привет» — сразу. |
-| `GET /stream/<token>/<имя>` | Раздача локального файла (`content://`, `file://`) с поддержкой `Range` (`206 Partial Content`, `Content-Range`). Токен выдаётся при публикации `/now`/отправке. Невыполнимый диапазон (`start` за концом файла, `end < start`, пустой файл с `Range`) — `416 Range Not Satisfiable` и `Content-Range: bytes */<size>`. Суффикс `bytes=-N` длиннее файла отдаёт файл с начала. |
-| `GET /pair/challenge?id=&name=` | `200 {"nonce": …}` — запрос подключения (живёт 3 мин). У хозяина появляется уведомление «… хочет подключиться» с кнопками «Разрешить» / «Отклонить» и кодом (на ТВ и без разрешения на уведомления — диалог; фокус на «Отклонить»). `403` — этот клиент отклонён меньше 10 мин назад (уведомления нет). `429` — больше 5 запросов в минуту с одного IP (уведомления нет). |
-| `GET /pair/status?nonce=` | `200 {"state": "pending"}`, `{"state": "approved", "token": …}` (после «Разрешить»; токен отдаётся один раз и только тому IP, который прислал challenge) или `{"state": "denied"}`. Чужой IP — `403`, запрос не закрывается. `404` — запрос истёк или закрыт. Клиент опрашивает раз в 1,5 с. |
-| `POST /pair` `{"id","name","nonce","proof"}` | Подключение по коду вместо кнопки: `proof = hex(HMAC-SHA256(код, "<nonce>:<id>"))`. `200 {"token": …}`; `403` — неверный код (запрос остаётся открытым); `429` — после 5 ошибок подряд блокировка на минуту; `400` — nonce неизвестен, просрочен, использован, отклонён или от другого `id`. |
+| `POST /play` (JSON, ≤ 64 КБ) | `200 {}`; на принимающем устройстве - диалог «… предлагает продолжить здесь» (`HandoffReceiveActivity`), при согласии - `Player2160.play` с той же позиции и заголовками. |
+| `GET /camera` | Адрес трансляции камеры (`{"url": "rtsp://…", "viewers": N}`), 204 - не транслирует. Защита кодом - как у `/now`. |
+| `GET /watch?k=ключ` | Страница «Смотреть трансляцию» для QR-кода экрана трансляции (§22.7): камера любого телефона откроет её в браузере. Кнопки: «Открыть в 2160 Player» (`intent://…#Intent;scheme=rtsp;package=tv.p2160.player;S.title=…;S.browser_fallback_url=<APK с этого устройства>;end` - нет плеера, браузер скачает APK, как «Раздать по Wi-Fi»), «Открыть в другом плеере» (`intent://…;scheme=rtsp`) и адрес для OBS/VLC. `k` - отдельный ключ ссылки на 15 минут, не PIN сопряжения и не пароль RTSP (без защиты не нужен); неверный или просроченный - 403, после 5 неверных подряд - минута ожидания (429); трансляции нет - 404. |
+| `GET /hello?id&name&port&auth&cam` | «Я тоже здесь»: найдя устройство по mDNS (и раз в минуту), плеер сообщает о себе напрямую, а получатель добавляет его в `peers`. Так обнаружение работает, даже если роутер пропускает multicast только в одну сторону; устройства, от которых нет ни mDNS, ни «привета» 3 минуты, удаляются; не ответившее на «привет» - сразу. |
+| `GET /stream/<token>/<имя>` | Раздача локального файла (`content://`, `file://`) с поддержкой `Range` (`206 Partial Content`, `Content-Range`). Токен выдаётся при публикации `/now`/отправке. Невыполнимый диапазон (`start` за концом файла, `end < start`, пустой файл с `Range`) - `416 Range Not Satisfiable` и `Content-Range: bytes */<size>`. Суффикс `bytes=-N` длиннее файла отдаёт файл с начала. |
+| `GET /pair/challenge?id=&name=` | `200 {"nonce": …}` - запрос подключения (живёт 3 мин). У хозяина появляется уведомление «… хочет подключиться» с кнопками «Разрешить» / «Отклонить» и кодом (на ТВ и без разрешения на уведомления - диалог; фокус на «Отклонить»). `403` - этот клиент отклонён меньше 10 мин назад (уведомления нет). `429` - больше 5 запросов в минуту с одного IP (уведомления нет). |
+| `GET /pair/status?nonce=` | `200 {"state": "pending"}`, `{"state": "approved", "token": …}` (после «Разрешить»; токен отдаётся один раз и только тому IP, который прислал challenge) или `{"state": "denied"}`. Чужой IP - `403`, запрос не закрывается. `404` - запрос истёк или закрыт. Клиент опрашивает раз в 1,5 с. |
+| `POST /pair` `{"id","name","nonce","proof"}` | Подключение по коду вместо кнопки: `proof = hex(HMAC-SHA256(код, "<nonce>:<id>"))`. `200 {"token": …}`; `403` - неверный код (запрос остаётся открытым); `429` - после 5 ошибок подряд блокировка на минуту; `400` - nonce неизвестен, просрочен, использован, отклонён или от другого `id`. |
 
 **Защита кодом** (`HandoffAuth`, Настройки → «Передача между устройствами»): режимы «Выключена»,
-«Код на сутки» (по умолчанию: 6 цифр, новый код в полночь) и «Свой код» (новый — 6–8 цифр; уже
+«Код на сутки» (по умолчанию: 6 цифр, новый код в полночь) и «Свой код» (новый - 6–8 цифр; уже
 сохранённые 4–5 цифр принимаются, пока их не сменят). Первый переход в «Выключена» показывает
 предупреждение один раз. При включённой защите `GET /now`, `POST /play` и `GET /camera` без заголовка
 `X-P2160-Token` с действующим токеном отвечают `401`. В режиме «Выключена» `/now` не отдаёт заголовки
-`Authorization` и `Cookie` (сопряжённым устройствам при включённой защите — отдаёт). Сервер слушает
+`Authorization` и `Cookie` (сопряжённым устройствам при включённой защите - отдаёт). Сервер слушает
 только частные IPv4 и IPv6 link-local/ULA локальных интерфейсов, не `0.0.0.0`.
-Подключение — один раз для нового устройства: хозяин нажимает «Разрешить» в уведомлении или гость
+Подключение - один раз для нового устройства: хозяин нажимает «Разрешить» в уведомлении или гость
 вводит код. Клиент (`PairCodeDialog`) сразу шлёт запрос, ждёт ответа и одновременно принимает код.
-Полученный токен хранится на клиенте, выданные токены (`issued_*`) — на
+Полученный токен хранится на клиенте, выданные токены (`issued_*`) - на
 сервере, пока пользователь не нажмёт «Забыть подключённые устройства»; смена кода и пароля RTSP
-сопряжения не сбрасывает. PIN нужен только для сопряжения: пароль RTSP и ключ `/watch` — другие секреты.
+сопряжения не сбрасывает. PIN нужен только для сопряжения: пароль RTSP и ключ `/watch` - другие секреты.
 Защита рассчитана на другие плееры и людей в той же сети; трафик не
 шифруется (HTTP), от перехвата в сети она не защищает.
 
@@ -1962,9 +1963,9 @@ RTSP-трансляция камеры, §22.7). Другие
   "playing": true, "headers": {}, "from": "Galaxy S21" }
 ```
 
-Сетевые URI (`smb`, `http(s)`, `rtsp`) передаются как есть; локальные файлы — как
+Сетевые URI (`smb`, `http(s)`, `rtsp`) передаются как есть; локальные файлы - как
 `http://<IPv4 устройства>:<порт>/stream/<token>/<имя>`; прочие схемы (`torrent://` и т.п.) не передаются.
-В плеере это кнопка «Отправить на устройство» — обычный `PlayerAction` (`id = "handoff"`),
+В плеере это кнопка «Отправить на устройство» - обычный `PlayerAction` (`id = "handoff"`),
 зарегистрированный приложением через `Player2160.registerAction`. После успешной отправки текущее
 воспроизведение ставится на паузу (`Player2160.pause()`).
 
@@ -1975,7 +1976,7 @@ RTSP-трансляция камеры, §22.7). Другие
 - запрос `https://api.github.com/repos/spacesarmat/2160player/releases/latest` с заголовком
   `Accept: application/vnd.github+json` и, если проверка уже была, `If-None-Match` сохранённого `ETag`.
   Ответ `304` квоту не тратит: тело берётся из прошлого JSON (SharedPreferences `p2160_update`, ключи
-  `etag_latest` / `body_latest`). Версия — `tag_name` без префикса `v` (теги вида `v<versionName>`),
+  `etag_latest` / `body_latest`). Версия - `tag_name` без префикса `v` (теги вида `v<versionName>`),
   сравнивается с `BuildConfig.VERSION_NAME` по числам `1.2.3` (суффиксы `-beta` игнорируются);
 - если API отвечает `403` или `429` (квота 60 запросов в час на IP: `X-RateLimit-Remaining: 0` или
   `Retry-After`), код наружу не показывается. Запасной путь не входит в эту квоту: `GET
@@ -1983,7 +1984,7 @@ RTSP-трансляция камеры, §22.7). Другие
   из заголовка `Location` (`…/releases/tag/vX.Y.Z`). Ссылка на APK собирается как
   `https://github.com/spacesarmat/2160player/releases/download/vX.Y.Z/2160player-X.Y.Z-<arm|abi|universal>-release.apk`
   в том же порядке, что и выбор ассета ниже, и проверяется `HEAD` (берётся первый ответ 2xx). Текст
-  релиза в этом случае короткий. Если запасной путь тоже не удался — «GitHub временно ограничил
+  релиза в этом случае короткий. Если запасной путь тоже не удался - «GitHub временно ограничил
   проверки обновлений, попробуйте через N мин»: N из `X-RateLimit-Reset` (иначе из `Retry-After`,
   иначе час);
 - из ассетов `*.apk` выбирается первый, чьё имя содержит `-<abi>-` для ABI из `Build.SUPPORTED_ABIS`
@@ -1991,17 +1992,17 @@ RTSP-трансляция камеры, §22.7). Другие
 - APK скачивается в `cacheDir/update` и ставится через `PackageInstaller` (сессия `MODE_FULL_INSTALL`,
   на Android 12+ `USER_ACTION_NOT_REQUIRED`); подтверждение системы показывает `UpdateReceiver`.
   Нужно разрешение `REQUEST_INSTALL_PACKAGES` (есть в манифесте приложения) и подпись тем же ключом;
-- тихая проверка при запуске — не чаще раза в 12 ч, если включена настройка «Проверять обновления»
+- тихая проверка при запуске - не чаще раза в 12 ч, если включена настройка «Проверять обновления»
   (по умолчанию включена в release и выключена в debug-сборке); версию можно пропустить («Пропустить
-  версию» — больше не предлагается при автопроверке). Ручная проверка — кнопкой в настройках.
+  версию» - больше не предлагается при автопроверке). Ручная проверка - кнопкой в настройках.
 
-Состояние — `Updater.state: StateFlow<UpdateState>` (`Idle`, `Checking`, `UpToDate`, `Available(info)`,
-`Downloading(info, progress)`, `Installing`, `Failed(message)`); настройки — SharedPreferences `p2160_update`.
+Состояние - `Updater.state: StateFlow<UpdateState>` (`Idle`, `Checking`, `UpToDate`, `Available(info)`,
+`Downloading(info, progress)`, `Installing`, `Failed(message)`); настройки - SharedPreferences `p2160_update`.
 
-Выбор APK из релиза: ARM-устройствам — общий ARM-APK (в имени `-arm-`), если он есть; иначе APK под
+Выбор APK из релиза: ARM-устройствам - общий ARM-APK (в имени `-arm-`), если он есть; иначе APK под
 архитектуру устройства (`-arm64-v8a-`, `-armeabi-v7a-`…), иначе `universal`.
 
-Отладочная сборка (`tv.p2160.player.debug`) — другой пакет, Android не поставит релиз поверх неё:
+Отладочная сборка (`tv.p2160.player.debug`) - другой пакет, Android не поставит релиз поверх неё:
 там «Обновить» открывает страницу релиза в браузере (`Updater.RELEASE_PACKAGE`).
 
 ### 22.3. Обзор файлов на устройстве (`tv.p2160.app.LocalBrowserScreen`)
@@ -2012,37 +2013,37 @@ RTSP-трансляция камеры, §22.7). Другие
 **Когда открывается.** `MainActivity.pickMedia()` возвращает `false`, и вместо системного выбора
 показывается экран `Screen.LOCAL`, если:
 
-- устройство — телевизор: `UiModeManager.currentModeType == UI_MODE_TYPE_TELEVISION` или есть
+- устройство - телевизор: `UiModeManager.currentModeType == UI_MODE_TYPE_TELEVISION` или есть
   `FEATURE_LEANBACK`;
 - системного выбора нет: `openMedia.launch(…)` бросает `ActivityNotFoundException`.
 
 На телефонах и планшетах остаётся системный выбор файлов. «Назад» в корне обзора возвращает на главный экран.
 
-**Корни** (`localRoots(context)`, блокирующий вызов — с фонового потока):
+**Корни** (`localRoots(context)`, блокирующий вызов - с фонового потока):
 
-- внутренняя память — `Environment.getExternalStorageDirectory()`;
-- съёмные накопители (флешки, карты памяти) — `StorageManager.storageVolumes` в состоянии
-  `MEDIA_MOUNTED`/`MEDIA_MOUNTED_READ_ONLY`, название — `StorageVolume.getDescription(context)`;
-  папка — `StorageVolume.directory` на Android 11+, на Android 7–10 — `/storage/<uuid>`;
-- запасной путь для нестандартных приставок — все папки `/storage/*`, кроме `self` и `emulated`.
+- внутренняя память - `Environment.getExternalStorageDirectory()`;
+- съёмные накопители (флешки, карты памяти) - `StorageManager.storageVolumes` в состоянии
+  `MEDIA_MOUNTED`/`MEDIA_MOUNTED_READ_ONLY`, название - `StorageVolume.getDescription(context)`;
+  папка - `StorageVolume.directory` на Android 11+, на Android 7–10 - `/storage/<uuid>`;
+- запасной путь для нестандартных приставок - все папки `/storage/*`, кроме `self` и `emulated`.
 
 Повторы (по `canonicalPath`) убираются; у каждого корня показывается «Свободно X из Y» (`File.freeSpace`/`totalSpace`).
 
 **Список папки** (`listLocalMedia(dir)`): сначала папки, затем файлы, по имени с «естественным» порядком
 чисел («Серия 2» раньше «Серии 10»); скрытые (имя с точки) не показываются. Из файлов остаются видео и
-аудио (`VIDEO_EXTENSIONS`, `AUDIO_EXTENSIONS` из `BrowserScreen.kt` — тот же фильтр, что для SMB),
-образы `.iso`, субтитры (`SubtitleSupport.EXTENSIONS` без `xml`) и плейлисты `.m3u`/`.m3u8`; у файлов — размер.
+аудио (`VIDEO_EXTENSIONS`, `AUDIO_EXTENSIONS` из `BrowserScreen.kt` - тот же фильтр, что для SMB),
+образы `.iso`, субтитры (`SubtitleSupport.EXTENSIONS` без `xml`) и плейлисты `.m3u`/`.m3u8`; у файлов - размер.
 
 **Воспроизведение.**
 
 | Что выбрано | Что играется |
 |---|---|
-| видео или аудио | `PlaybackRequest` из всех видео/аудио папки (`MediaEntry(Uri.fromFile(file), имя без расширения)`) со `startIndex` выбранного — как `playSmb` для SMB, работает «Следующая серия»; субтитры рядом подхватываются плеером (`SubtitleSupport.findSidecars`) |
-| `.iso` или папка с `BDMV` | `file://…/Film.iso` или `file://…/BDMV` — `DiscSessions` открывает диск (§14) |
+| видео или аудио | `PlaybackRequest` из всех видео/аудио папки (`MediaEntry(Uri.fromFile(file), имя без расширения)`) со `startIndex` выбранного - как `playSmb` для SMB, работает «Следующая серия»; субтитры рядом подхватываются плеером (`SubtitleSupport.findSidecars`) |
+| `.iso` или папка с `BDMV` | `file://…/Film.iso` или `file://…/BDMV` - `DiscSessions` открывает диск (§14) |
 | субтитры | видео той же папки, с имени которого начинается имя субтитров |
-| `.m3u`/`.m3u8` | HLS-манифест (`M3uParser.looksLikeHls`) — как поток `application/x-mpegURL`; обычный список — его элементы (относительные пути — от папки плейлиста) |
+| `.m3u`/`.m3u8` | HLS-манифест (`M3uParser.looksLikeHls`) - как поток `application/x-mpegURL`; обычный список - его элементы (относительные пути - от папки плейлиста) |
 
-**Разрешения** (в манифесте приложения; `MANAGE_EXTERNAL_STORAGE` не запрашивается — политика Google Play):
+**Разрешения** (в манифесте приложения; `MANAGE_EXTERNAL_STORAGE` не запрашивается - политика Google Play):
 
 | Android | Разрешение | Что видно |
 |---|---|---|
@@ -2052,20 +2053,20 @@ RTSP-трансляция камеры, §22.7). Другие
 | 13+ (API 33+) | `READ_MEDIA_VIDEO` + `READ_MEDIA_AUDIO` (достаточно одного) | папки и медиафайлы того же типа; прочие файлы скрыты |
 
 Без разрешения экран показывает пояснение и кнопку «Разрешить доступ»; если пользователь отказал
-насовсем — кнопку «Открыть настройки» (`ACTION_APPLICATION_DETAILS_SETTINGS`). При возврате на экран
-(`ON_RESUME`) разрешение и список накопителей перечитываются — так появляется только что вставленная флешка.
+насовсем - кнопку «Открыть настройки» (`ACTION_APPLICATION_DETAILS_SETTINGS`). При возврате на экран
+(`ON_RESUME`) разрешение и список накопителей перечитываются - так появляется только что вставленная флешка.
 
 ### 22.4. Поделиться приложением (`tv.p2160.app.share.ShareApp`)
 
-Настройки → О приложении → «Поделиться приложением». Три способа, первые два — без интернета:
+Настройки → О приложении → «Поделиться приложением». Три способа, первые два - без интернета:
 
 | Способ | Как работает |
 |---|---|
 | Отправить файл | `ShareApp.sharedApk` (обычно копия установленного APK, `applicationInfo.sourceDir`) через `FileProvider` (`${applicationId}.share`) в системное «Поделиться»: Quick Share, Bluetooth, Telegram, почта. |
-| Раздать по Wi-Fi | Сервер передачи между устройствами (§22.1) отдаёт тот же файл по `GET /app/<имя>.apk` (без защиты кодом, `Content-Type: application/vnd.android.package-archive`, поддерживает `Range`). На экране — адрес `http://<IPv4>:<порт>/app/…` и QR-код (ZXing). Работает в одной Wi-Fi или через точку доступа телефона, пока окно открыто. |
+| Раздать по Wi-Fi | Сервер передачи между устройствами (§22.1) отдаёт тот же файл по `GET /app/<имя>.apk` (без защиты кодом, `Content-Type: application/vnd.android.package-archive`, поддерживает `Range`). На экране - адрес `http://<IPv4>:<порт>/app/…` и QR-код (ZXing). Работает в одной Wi-Fi или через точку доступа телефона, пока окно открыто. |
 | Ссылка | Текст со ссылкой на `releases/latest` (нужен интернет у получателя). |
 
-Основной APK релиза — общий ARM-APK (`-Pp2160.abi=arm`, `arm64-v8a` + `armeabi-v7a`), и автообновление на
+Основной APK релиза - общий ARM-APK (`-Pp2160.abi=arm`, `arm64-v8a` + `armeabi-v7a`), и автообновление на
 ARM-устройствах берёт именно его (§22.2): установленный файл сразу подходит любому телефону и ТВ.
 
 **Полный пакет при установке под одну архитектуру.** Если установлен APK под одну архитектуру (проверяются папки
@@ -2073,76 +2074,76 @@ ARM-устройствах берёт именно его (§22.2): устано
 
 | Что | Как |
 |---|---|
-| Где | `filesDir/share-apk/2160player-<версия>-arm.apk` — одна копия; отдаётся в FileProvider как `files-path share-apk/`. |
-| Когда качается | При запуске (`ShareApp.prepareFull(context, auto = true)`) — только по безлимитной сети, тихо; или кнопкой «Скачать пакет для всех устройств» в диалоге (`auto = false`, ошибка показывается). |
-| Откуда | Релиз `v<VERSION_NAME>` (`GET /repos/<repo>/releases/tags/v…`, `Updater.sharedAsset`, с `ETag` как у проверки обновления): ассет `-arm-`, иначе `universal`. При `403`/`429` API — те же прямые ссылки `releases/download` и `HEAD`, без кода ошибки. Скачивается во временный `.part`, проверяется `getPackageArchiveInfo` (пакет `tv.p2160.player` и та же версия), затем переименовывается. |
+| Где | `filesDir/share-apk/2160player-<версия>-arm.apk` - одна копия; отдаётся в FileProvider как `files-path share-apk/`. |
+| Когда качается | При запуске (`ShareApp.prepareFull(context, auto = true)`) - только по безлимитной сети, тихо; или кнопкой «Скачать пакет для всех устройств» в диалоге (`auto = false`, ошибка показывается). |
+| Откуда | Релиз `v<VERSION_NAME>` (`GET /repos/<repo>/releases/tags/v…`, `Updater.sharedAsset`, с `ETag` как у проверки обновления): ассет `-arm-`, иначе `universal`. При `403`/`429` API - те же прямые ссылки `releases/download` и `HEAD`, без кода ошибки. Скачивается во временный `.part`, проверяется `getPackageArchiveInfo` (пакет `tv.p2160.player` и та же версия), затем переименовывается. |
 | Очистка | При каждом запуске удаляется всё, кроме пакета текущей версии; после перехода на общий ARM-APK папка очищается целиком. `Updater.cleanup` при запуске удаляет и скачанный APK обновления из `cacheDir/update`. |
-| Использование | `ShareApp.sharedApk(context)` — полный пакет, если он нужен и скачан, иначе установленный APK: его отдают «Отправить файл» и `GET /app/…`. |
+| Использование | `ShareApp.sharedApk(context)` - полный пакет, если он нужен и скачан, иначе установленный APK: его отдают «Отправить файл» и `GET /app/…`. |
 
-Состояние — `ShareApp.full: StateFlow<FullState>` (`None`, `Downloading(progress)`, `Ready(file)`,
+Состояние - `ShareApp.full: StateFlow<FullState>` (`None`, `Downloading(progress)`, `Ready(file)`,
 `Failed(message)`); диалог показывает предупреждение и кнопку, прогресс или «Отправляется пакет для всех устройств».
 
 ### 22.5. Справка и FAQ (`tv.p2160.app.FaqScreen`)
 
 Настройки → О приложении → «Справка и FAQ»: вопросы по разделам (установка и обновления, картинка, звук,
 субтитры, файлы и сеть, торренты, между устройствами, разное), ответ раскрывается по нажатию (палец и
-пульт), внизу — контакт автора в Telegram (`Faq.TELEGRAM_URL`, тот же пункт «Автор» в Настройках → О приложении),
+пульт), внизу - контакт автора в Telegram (`Faq.TELEGRAM_URL`, тот же пункт «Автор» в Настройках → О приложении),
 «Поддержать проект» на Boosty (`Faq.DONATE_URL`, есть и в Настройках)
-и ссылка на GitHub Issues. Список вопросов — `Faq.sections` (id по разделам), тексты — в
+и ссылка на GitHub Issues. Список вопросов - `Faq.sections` (id по разделам), тексты - в
 языковом пакете `assets/i18n/faq/<код>.json` (ключи `faq.<id>.q` / `faq.<id>.a`, заголовки `faq.section.*`),
 поэтому FAQ переводится вместе с остальным интерфейсом (экспорт/импорт шаблона перевода).
 
 ### 22.6. Список «Продолжить просмотр» (`tv.p2160.app.ContinueScreen`)
 
-На главном экране заголовок «Продолжить просмотр» кликабелен (палец и пульт, рядом — «все · N»): открывается
-полный список недосмотренных файлов — `store.recent(500)` без досмотренных и без нулевой позиции, сеткой
-(`GridCells.Adaptive(300.dp)`, на телефоне — одна колонка) с обложками и прогрессом. Нажатие — продолжить,
-долгое нажатие — убрать запись (`ResumeStore.delete`), как и на главном экране; когда список пустеет, экран
+На главном экране заголовок «Продолжить просмотр» кликабелен (палец и пульт, рядом - «все · N»): открывается
+полный список недосмотренных файлов - `store.recent(500)` без досмотренных и без нулевой позиции, сеткой
+(`GridCells.Adaptive(300.dp)`, на телефоне - одна колонка) с обложками и прогрессом. Нажатие - продолжить,
+долгое нажатие - убрать запись (`ResumeStore.delete`), как и на главном экране; когда список пустеет, экран
 закрывается. «Назад» возвращает на главный экран.
 
 ### 22.7. Трансляция камеры (`tv.p2160.app.camera`)
 
 Главный экран → «Камера» (плитка есть, только если система видит хотя бы одну камеру). Телефон становится RTSP-сервером
-в своей сети (или сам отправляет поток по SRT/RTMP — см. «Куда»): видео H.264 с аппаратного кодировщика и звук AAC с микрофона. Смотреть — в OBS («Источник медиа»,
+в своей сети (или сам отправляет поток по SRT/RTMP - см. «Куда»): видео H.264 с аппаратного кодировщика и звук AAC с микрофона. Смотреть - в OBS («Источник медиа»,
 снять «Локальный файл», адрес `rtsp://<IP телефона>:8554/`), VLC («Открыть URL»), ffmpeg или в другом 2160 Player
 («Ссылка»). Работает и через точку доступа телефона.
 
 | Что | Как |
 |---|---|
-| NDI® | `StreamProtocol.NDI` — отправка в локальную сеть по NDI® (NDI® is a registered trademark of Vizrt NDI AB, https://ndi.video/): источник «<ИМЯ-УСТРОЙСТВА> (2160 Player)» (`CameraStream.ndiName`; имя машины NDI — имя устройства латиницей, `Ndi.machineName`, записывается в `ndi-config.v1.json` через `NDI_CONFIG_DIR`: иначе Android даёт «LOCALHOST», и приёмники не подключаются) виден в OBS (плагин DistroAV), vMix, NDI Studio Monitor. Кадры с камеры/экрана идут через тот же GL-конвейер (предпросмотр, зум, фокус). После старта кодировщики H.264 и AAC останавливаются, `ImageReader` (RGBX) становится единственным выходом GL: второго прохода и кодирования нет. NV12 не используется — GL отдаёт RGBA, перевод в YUV на CPU добавил бы проход перед SpeedHQ, которым NDI сжимает RGBX сам. Копия кадра одна, в native (`ndi_bridge.cpp`): прямой буфер ImageReader NDI читает чёрным. `acquireLatestImage` оставляет свежий кадр. Таймкод видео — метка кадра (100 нс), звук — число PCM-сэмплов от первого кадра (пока кадра нет — синтез). Звук — PCM 16 бит с микрофона (`GainMeterEffect.pcmListener`), не AAC; «зрители» — подключённые приёмники. На устройстве `adb logcat -s Ndi:I` раз в секунду пишет `pipeline Nus` — от метки кадра до возврата из отправки NDI (сжатие на телефоне, без сети и приёмника). Если часы кадра и `nanoTime` не совпали, строка не пишется. Нужна быстрая сеть (5 ГГц). Есть, только если NDI SDK был при сборке (`BuildConfig.NDI`) и библиотека загрузилась (`Ndi.available(context)`): `libndi.so` в APK, загрузка динамическая (`cpp/ndi_bridge.cpp`, `NDIlib_v6_load`); на время трансляции — `WifiManager.MulticastLock`. Лицензия: `third-party/ndi/NOTICE.md`, [LICENSE-NDI-EXCEPTION.md](../LICENSE-NDI-EXCEPTION.md); в «О приложении» — пункт «NDI®» (знак, ссылка, лицензии компонентов `libndi`). |
-| Что | `CameraStreamConfig.source` (`StreamSource`): `CAMERA` или `SCREEN` — экран телефона (`ScreenSource` RootEncoder): при старте системный запрос записи экрана (`MediaProjectionManager.createScreenCaptureIntent`), ответ передаётся сервису (`CameraStream.startScreen`), сервис стартует с типом `mediaProjection` и только потом берёт `MediaProjection` (требование Android 14). Последний кадр повторяется не реже 15 раз в секунду (`setForceRender`) — иначе статичный экран «застывает». Звук экрана (`screenAudio`): микрофон, звук телефона (`InternalAudioSource`, Android 10+; приложения могут запрещать запись своего звука) или оба (`MixAudioSource`). Режимы — 720p/1080p × 30/60, что потянет кодировщик (`CameraStream.screenModes()`). Остановка системной кнопкой записи экрана тоже останавливает трансляцию. |
-| Куда | `CameraStreamConfig.protocol` (`StreamProtocol`): `RTSP` — сервер на телефоне (зрители подключаются сами, адрес и QR); `SRT` — телефон сам шлёт поток (`srtUrl`, например `srt://192.168.1.10:9000`; в OBS «Источник медиа»: `srt://0.0.0.0:9000?mode=listener`, формат `mpegts`); `RTMP` — на сервис (`rtmpUrl` + `rtmpKey`, заготовки YouTube `rtmp://a.rtmp.youtube.com/live2` и Twitch `rtmp://live.twitch.tv/app`; `CameraStream.rtmpEndpoint` склеивает адрес, ключ уже в адресе своего сервера тоже понимается). SRT/RTMP: до 10 повторов подключения через 5 с (`reTry`), статус «Подключение…/Подключено» (`CameraStreamState.Streaming.connected`), ключ на экран и в уведомление не выводится; неверный адрес — `camera.err_srt_url` / `camera.err_rtmp_url`, отказ по ключу — `camera.err_auth`. Настройки (камера, режим, звук, куда, адрес, ключ) сохраняются на устройстве (`CameraStream.load`). Камеры в сети (`/camera`, `cam=1`) — только для RTSP (`CameraStream.isServing`). |
-| Камера | `CameraStream.cameras(context)`: камеры Camera2 с разными подписями (`CameraLabels`). Одна камера стороны — «Задняя», «Фронтальная», «Внешняя». Несколько задних — ближайшая к 26 мм экв. называется «Основная», остальные по фокусному (`LENS_INFO_AVAILABLE_FOCAL_LENGTHS`, при известной ширине сенсора — эквивалент 35 мм): «Сверхширокая», «Широкая», «Телевик 3×». Вторая фронтальная с тем же сенсором (совпавшие `physicalCameraIds` или ширина и высота `SENSOR_INFO_PHYSICAL_SIZE`) скрывается — это кадрирование, не второй объектив. «Телевик» у фронтальной — только при фокусном ≥ 2× и другом размере сенсора; иначе «Фронтальная (кадрирование)». Номер («Фронтальная 2») — только если отличить нельзя. «Минимальная задержка», вспышка и звук микрофона — видимый `Switch` (`onCheckedChange = null`, нажатие на строке) и `Role.Switch`: TalkBack объявляет состояние, узел `checkable`. Логическая мульти-камера не показывается, если все её `physicalCameraIds` уже есть в списке. У чипа та же строка в `contentDescription`. Режимы и вспышка — как раньше. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
-| Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), — и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт — ~0,08 бит на пиксель (1080p·30 — 5 Мбит/с, 4K·30 — 20). По умолчанию 1080p·30 (`CameraStreamConfig.quality`); если у камеры его нет — лучший до 30 fps (запасной — 720p·30, `StreamMode.DEFAULT`); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
-| Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения — видео без звука. Микрофон — `micId` из `CameraStream.microphones(context)` (встроенный, гарнитура, USB, Bluetooth; `null` — выбирает система), меняется и во время трансляции (`MicrophoneSource.setPreferredDevice`). Усиление `micGain` 0,5–4× и индикатор уровня — один эффект `GainMeterEffect` (`CameraStream.gainMeter.level`: пик 0..1 раз в ~0,1 с; красный — звук обрезается); усиление меняется на лету. Для звука экрана «Звук телефона» / «Телефон + микрофон» усиление и индикатор не действуют. |
-| Фонарик | `CameraStream.setTorch(on)` — у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
-| Фокус и зум | Касание предпросмотра — фокус и экспозиция в точке (`CameraStream.tapToFocus`), «Автофокус» — снова непрерывный (`autoFocus`). Зум — щипком на предпросмотре (`onPreviewTouch`) и ползунком (`setZoom`, диапазон `zoomRange()` у самой камеры, `zoom: StateFlow`). Ползунок — круг 20 dp и дорожка без точки конца шкалы (штатный бегунок Material 3 высокий, точка конца читалась как второе положение). Подпись зума и усиления — `1,0×` с `letterSpacing = 0` и `tnum`, не моноширинная. Работают и во время трансляции; при смене камеры зум сбрасывается. |
-| Ориентация | Как у телефона в момент запуска (`Configuration.orientation`): вертикально — вертикальный кадр (например 720×1280, `prepareVideo(rotation = 90)`), и зрители (2160 Player, OBS, VLC, NDI) видят его вертикальным; горизонтально — 16:9. Повернули телефон до старта — поток готовится заново; во время трансляции ориентация кадра не меняется (картинка поворачивается внутри кадра). NDI получает кадр того же размера. |
+| NDI® | `StreamProtocol.NDI` - отправка в локальную сеть по NDI® (NDI® is a registered trademark of Vizrt NDI AB, https://ndi.video/): источник «<ИМЯ-УСТРОЙСТВА> (2160 Player)» (`CameraStream.ndiName`; имя машины NDI - имя устройства латиницей, `Ndi.machineName`, записывается в `ndi-config.v1.json` через `NDI_CONFIG_DIR`: иначе Android даёт «LOCALHOST», и приёмники не подключаются) виден в OBS (плагин DistroAV), vMix, NDI Studio Monitor. Кадры с камеры/экрана идут через тот же GL-конвейер (предпросмотр, зум, фокус). После старта кодировщики H.264 и AAC останавливаются, `ImageReader` (RGBX) становится единственным выходом GL: второго прохода и кодирования нет. NV12 не используется - GL отдаёт RGBA, перевод в YUV на CPU добавил бы проход перед SpeedHQ, которым NDI сжимает RGBX сам. Копия кадра одна, в native (`ndi_bridge.cpp`): прямой буфер ImageReader NDI читает чёрным. `acquireLatestImage` оставляет свежий кадр. Таймкод видео - метка кадра (100 нс), звук - число PCM-сэмплов от первого кадра (пока кадра нет - синтез). Звук - PCM 16 бит с микрофона (`GainMeterEffect.pcmListener`), не AAC; «зрители» - подключённые приёмники. На устройстве `adb logcat -s Ndi:I` раз в секунду пишет `pipeline Nus` - от метки кадра до возврата из отправки NDI (сжатие на телефоне, без сети и приёмника). Если часы кадра и `nanoTime` не совпали, строка не пишется. Нужна быстрая сеть (5 ГГц). Есть, только если NDI SDK был при сборке (`BuildConfig.NDI`) и библиотека загрузилась (`Ndi.available(context)`): `libndi.so` в APK, загрузка динамическая (`cpp/ndi_bridge.cpp`, `NDIlib_v6_load`); на время трансляции - `WifiManager.MulticastLock`. Лицензия: `third-party/ndi/NOTICE.md`, [LICENSE-NDI-EXCEPTION.md](../LICENSE-NDI-EXCEPTION.md); в «О приложении» - пункт «NDI®» (знак, ссылка, лицензии компонентов `libndi`). |
+| Что | `CameraStreamConfig.source` (`StreamSource`): `CAMERA` или `SCREEN` - экран телефона (`ScreenSource` RootEncoder): при старте системный запрос записи экрана (`MediaProjectionManager.createScreenCaptureIntent`), ответ передаётся сервису (`CameraStream.startScreen`), сервис стартует с типом `mediaProjection` и только потом берёт `MediaProjection` (требование Android 14). Последний кадр повторяется не реже 15 раз в секунду (`setForceRender`) - иначе статичный экран «застывает». Звук экрана (`screenAudio`): микрофон, звук телефона (`InternalAudioSource`, Android 10+; приложения могут запрещать запись своего звука) или оба (`MixAudioSource`). Режимы - 720p/1080p × 30/60, что потянет кодировщик (`CameraStream.screenModes()`). Остановка системной кнопкой записи экрана тоже останавливает трансляцию. |
+| Куда | `CameraStreamConfig.protocol` (`StreamProtocol`): `RTSP` - сервер на телефоне (зрители подключаются сами, адрес и QR); `SRT` - телефон сам шлёт поток (`srtUrl`, например `srt://192.168.1.10:9000`; в OBS «Источник медиа»: `srt://0.0.0.0:9000?mode=listener`, формат `mpegts`); `RTMP` - на сервис (`rtmpUrl` + `rtmpKey`, заготовки YouTube `rtmp://a.rtmp.youtube.com/live2` и Twitch `rtmp://live.twitch.tv/app`; `CameraStream.rtmpEndpoint` склеивает адрес, ключ уже в адресе своего сервера тоже понимается). SRT/RTMP: до 10 повторов подключения через 5 с (`reTry`), статус «Подключение…/Подключено» (`CameraStreamState.Streaming.connected`), ключ на экран и в уведомление не выводится; неверный адрес - `camera.err_srt_url` / `camera.err_rtmp_url`, отказ по ключу - `camera.err_auth`. Настройки (камера, режим, звук, куда, адрес, ключ) сохраняются на устройстве (`CameraStream.load`). Камеры в сети (`/camera`, `cam=1`) - только для RTSP (`CameraStream.isServing`). |
+| Камера | `CameraStream.cameras(context)`: камеры Camera2 с разными подписями (`CameraLabels`). Одна камера стороны - «Задняя», «Фронтальная», «Внешняя». Несколько задних - ближайшая к 26 мм экв. называется «Основная», остальные по фокусному (`LENS_INFO_AVAILABLE_FOCAL_LENGTHS`, при известной ширине сенсора - эквивалент 35 мм): «Сверхширокая», «Широкая», «Телевик 3×». Вторая фронтальная с тем же сенсором (совпавшие `physicalCameraIds` или ширина и высота `SENSOR_INFO_PHYSICAL_SIZE`) скрывается - это кадрирование, не второй объектив. «Телевик» у фронтальной - только при фокусном ≥ 2× и другом размере сенсора; иначе «Фронтальная (кадрирование)». Номер («Фронтальная 2») - только если отличить нельзя. «Минимальная задержка», вспышка и звук микрофона - видимый `Switch` (`onCheckedChange = null`, нажатие на строке) и `Role.Switch`: TalkBack объявляет состояние, узел `checkable`. Логическая мульти-камера не показывается, если все её `physicalCameraIds` уже есть в списке. У чипа та же строка в `contentDescription`. Режимы и вспышка - как раньше. Переключается и во время трансляции (`Camera2Source.openCameraId`). |
+| Режимы | `StreamMode(width, height, fps)` строятся из возможностей устройства (`CameraInfo.modes`): кадры 16:9 из ряда 720p/1080p/1440p/4K, которые камера отдаёт на поверхность (`SCALER_STREAM_CONFIGURATION_MAP`), × частоты автоэкспозиции 24–120 fps, которые она держит при этом размере (`getOutputMinFrameDuration`), - и только то, что потянет аппаратный кодировщик H.264 (`VideoCapabilities.areSizeAndRateSupported`, в любой ориентации). Битрейт - ~0,08 бит на пиксель (1080p·30 - 5 Мбит/с, 4K·30 - 20). По умолчанию 1080p·30 (`CameraStreamConfig.quality`); если у камеры его нет - лучший до 30 fps (запасной - 720p·30, `StreamMode.DEFAULT`); при смене камеры, если её режимы другие, берётся ближайший не больше прежнего. Меняется только без трансляции. |
+| Звук | Микрофон, AAC 44,1 кГц стерео, 128 кбит/с (`CameraStreamConfig.audio`); без разрешения - видео без звука. Микрофон - `micId` из `CameraStream.microphones(context)` (встроенный, гарнитура, USB, Bluetooth; `null` - выбирает система), меняется и во время трансляции (`MicrophoneSource.setPreferredDevice`). Усиление `micGain` 0,5–4× и индикатор уровня - один эффект `GainMeterEffect` (`CameraStream.gainMeter.level`: пик 0..1 раз в ~0,1 с; красный - звук обрезается); усиление меняется на лету. Для звука экрана «Звук телефона» / «Телефон + микрофон» усиление и индикатор не действуют. |
+| Фонарик | `CameraStream.setTorch(on)` - у камеры со вспышкой (обычно задней), в том числе во время трансляции. |
+| Фокус и зум | Касание предпросмотра - фокус и экспозиция в точке (`CameraStream.tapToFocus`), «Автофокус» - снова непрерывный (`autoFocus`). Зум - щипком на предпросмотре (`onPreviewTouch`) и ползунком (`setZoom`, диапазон `zoomRange()` у самой камеры, `zoom: StateFlow`). Ползунок - круг 20 dp и дорожка без точки конца шкалы (штатный бегунок Material 3 высокий, точка конца читалась как второе положение). Подпись зума и усиления - `1,0×` с `letterSpacing = 0` и `tnum`, не моноширинная. Работают и во время трансляции; при смене камеры зум сбрасывается. |
+| Ориентация | Как у телефона в момент запуска (`Configuration.orientation`): вертикально - вертикальный кадр (например 720×1280, `prepareVideo(rotation = 90)`), и зрители (2160 Player, OBS, VLC, NDI) видят его вертикальным; горизонтально - 16:9. Повернули телефон до старта - поток готовится заново; во время трансляции ориентация кадра не меняется (картинка поворачивается внутри кадра). NDI получает кадр того же размера. |
 | Фон | Трансляция идёт в сервисе переднего плана `CameraStreamService` (`foregroundServiceType="camera\|microphone\|mediaProjection"`): экран можно закрыть, приложение свернуть. Уведомление показывает адрес и число зрителей, кнопка «Остановить»; нажатие открывает экран трансляции (`MainActivity.EXTRA_OPEN_CAMERA`). |
-| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку). Видеокодек H.264 всегда получает низкую задержку, если устройство её принимает: `KEY_PRIORITY` = realtime, `KEY_LOW_LATENCY`, `KEY_MAX_B_FRAMES` = 0, `KEY_LATENCY` = 1 кадр, `KEY_OPERATING_RATE` = fps. Профиль не форсируется в Baseline (на части устройств это режет качество). GOP остаётся 1 с, режим битрейта — CBR, как задаёт RootEncoder. Очередь отправки по умолчанию — ~1–1,5 с (`StreamLatency.SEND_QUEUE_DEFAULT` = 120 кадров вместо 400 у библиотеки, и для зрителей, подключившихся позже). Настройка `CameraStreamConfig.lowLatency` («Минимальная задержка», по умолчанию выключена): очередь 30 кадров, SRT `setLatency(80)` мс вместо 120, `SO_SNDBUF` принятого RTSP-сокета 64 КБ, при заполнении очереди хотя бы наполовину она сбрасывается не чаще раза в 2 с и запрашивается ключевой кадр, у камеры выключаются шумодав и резкость (со следующего запуска). Без настройки буфер сокета не трогается — на слабой сети короткая очередь чаще теряет кадры. `TCP_NODELAY` на принятом RTSP-сокете включён всегда. Сокеты SRT и RTMP библиотека не отдаёт: у них крутятся очередь и, у SRT, latency. В URL OBS latency — микросекунды, берётся большее из двух сторон: обычно `latency=200000` (200 мс); с «Минимальной задержкой» телефон просит 80 мс и в OBS нужно `latency=80000`. Битрейт подстраивается под сеть (очередь заполнена больше чем на треть — видео −20 %, до 30 % от выбранного; сеть свободна — +10 % в секунду). Плеер для живых источников (`rtsp(s)`, `srt`, `udp`, `rtp`; внутренний список схем) включает низкую задержку: старт после 0,1 с буфера, не больше 1,5 с в буфере, без чтения глав и поиска вступления через FFmpeg; держит задержку около 0,3 с — буфер больше 0,8 с — скорость ×1,1, больше 2 с — ×1,25 (тон звука сохраняется), догнал — ×1 (перемоткой не прыгает: у RTSP она переоткрывает поток); RTSP — RTP поверх TCP (по Wi-Fi UDP теряется). OBS: «Буферизация сети» — 0 МБ. Прежние замеры стекло–стекло (этот прогон без телефона их не повторял): экран S21 → 2160 Player на S25, RTSP 1080p30 — 0,2–0,65 с, в среднем ~0,45 с; NDI до ПК — ~0,08–0,1 с (720p/1080p). Новый лог `pipeline Nus` измеряет только телефон до возврата из NDI, это не те 0,08–0,1 с. |
-| QR-код | Не сам `rtsp://`, а ссылка на страницу `/watch` этого устройства (`CameraStream.watchUrl`, §22.1): камеры и Google Lens открывают только веб-ссылки. На странице — «Открыть в 2160 Player» (или скачать его с этого телефона) и адрес для OBS/VLC с паролем сеанса. В ссылке отдельный ключ на 15 минут, не PIN. Нет Wi-Fi — в QR сам адрес RTSP. |
-| Защита | Если защита передачи включена (§22.1), RTSP требует Basic на `DESCRIBE` и `SETUP`: логин `CameraStream.RTSP_USER` = `2160`, пароль — случайный на эту трансляцию (не PIN; на экране и в `urlWithAuth`). `PLAY`/`PAUSE`/`TEARDOWN` принимаются только после успешного `SETUP` на том же соединении. Пароль не меняется в полночь; уже подключённые зрители остаются. Сопряжённые 2160 Player берут адрес с паролем из `GET /camera`. VLC и OBS копируют его с экрана телефона. Защита выключена — поток без пароля, `SETUP` всё равно нужен до `PLAY`. Сервер слушает только частные адреса локальных интерфейсов. |
-| Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах — IPv4 (по нему клиенты делают SETUP), адрес для зрителей — IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт — в `CameraStream.state` (`CameraStreamState.Streaming`). |
-| Только локальная сеть | Трансляции и «Передача между устройствами» идут только по Wi-Fi, Ethernet, точке доступа или USB-модему самого телефона; мобильный интернет не используется (`handoff/Lan.kt`). Адрес в URL, QR-коде и `/camera` — IPv4 локального интерфейса (`Lan.ipv4`). Входящие подключения к RTSP-серверу (`RtspServer.allowLocal`) и HTTP-серверу Handoff, пришедшие на мобильный интерфейс, закрываются. NDI: в `ndi-config.v1.json` → `ndi.adapters.allowed` — только адреса локальной сети (переинициализация NDI при каждом старте). SRT/RTMP: процесс на время трансляции привязан к сети Wi-Fi/Ethernet (`ConnectivityManager.bindProcessToNetwork`); без неё — только если адрес назначения — IP в подсети точки доступа телефона. Нет локальной сети — ошибка `camera.err_no_lan`, трансляция не начинается. |
+| Задержка | Камера: ключевой кадр раз в секунду (новый зритель быстро получает картинку). Видеокодек H.264 всегда получает низкую задержку, если устройство её принимает: `KEY_PRIORITY` = realtime, `KEY_LOW_LATENCY`, `KEY_MAX_B_FRAMES` = 0, `KEY_LATENCY` = 1 кадр, `KEY_OPERATING_RATE` = fps. Профиль не форсируется в Baseline (на части устройств это режет качество). GOP остаётся 1 с, режим битрейта - CBR, как задаёт RootEncoder. Очередь отправки по умолчанию - ~1–1,5 с (`StreamLatency.SEND_QUEUE_DEFAULT` = 120 кадров вместо 400 у библиотеки, и для зрителей, подключившихся позже). Настройка `CameraStreamConfig.lowLatency` («Минимальная задержка», по умолчанию выключена): очередь 30 кадров, SRT `setLatency(80)` мс вместо 120, `SO_SNDBUF` принятого RTSP-сокета 64 КБ, при заполнении очереди хотя бы наполовину она сбрасывается не чаще раза в 2 с и запрашивается ключевой кадр, у камеры выключаются шумодав и резкость (со следующего запуска). Без настройки буфер сокета не трогается - на слабой сети короткая очередь чаще теряет кадры. `TCP_NODELAY` на принятом RTSP-сокете включён всегда. Сокеты SRT и RTMP библиотека не отдаёт: у них крутятся очередь и, у SRT, latency. В URL OBS latency - микросекунды, берётся большее из двух сторон: обычно `latency=200000` (200 мс); с «Минимальной задержкой» телефон просит 80 мс и в OBS нужно `latency=80000`. Битрейт подстраивается под сеть (очередь заполнена больше чем на треть - видео −20 %, до 30 % от выбранного; сеть свободна - +10 % в секунду). Плеер для живых источников (`rtsp(s)`, `srt`, `udp`, `rtp`; внутренний список схем) включает низкую задержку: старт после 0,1 с буфера, не больше 1,5 с в буфере, без чтения глав и поиска вступления через FFmpeg; держит задержку около 0,3 с - буфер больше 0,8 с - скорость ×1,1, больше 2 с - ×1,25 (тон звука сохраняется), догнал - ×1 (перемоткой не прыгает: у RTSP она переоткрывает поток); RTSP - RTP поверх TCP (по Wi-Fi UDP теряется). OBS: «Буферизация сети» - 0 МБ. Прежние замеры стекло–стекло (этот прогон без телефона их не повторял): экран S21 → 2160 Player на S25, RTSP 1080p30 - 0,2–0,65 с, в среднем ~0,45 с; NDI до ПК - ~0,08–0,1 с (720p/1080p). Новый лог `pipeline Nus` измеряет только телефон до возврата из NDI, это не те 0,08–0,1 с. |
+| QR-код | Не сам `rtsp://`, а ссылка на страницу `/watch` этого устройства (`CameraStream.watchUrl`, §22.1): камеры и Google Lens открывают только веб-ссылки. На странице - «Открыть в 2160 Player» (или скачать его с этого телефона) и адрес для OBS/VLC с паролем сеанса. В ссылке отдельный ключ на 15 минут, не PIN. Нет Wi-Fi - в QR сам адрес RTSP. |
+| Защита | Если защита передачи включена (§22.1), RTSP требует Basic на `DESCRIBE` и `SETUP`: логин `CameraStream.RTSP_USER` = `2160`, пароль - случайный на эту трансляцию (не PIN; на экране и в `urlWithAuth`). `PLAY`/`PAUSE`/`TEARDOWN` принимаются только после успешного `SETUP` на том же соединении. Пароль не меняется в полночь; уже подключённые зрители остаются. Сопряжённые 2160 Player берут адрес с паролем из `GET /camera`. VLC и OBS копируют его с экрана телефона. Защита выключена - поток без пароля, `SETUP` всё равно нужен до `PLAY`. Сервер слушает только частные адреса локальных интерфейсов. |
+| Сервер | RTSP на порту `CameraStream.DEFAULT_PORT` = 8554, адрес в ответах - IPv4 (по нему клиенты делают SETUP), адрес для зрителей - IPv4 Wi-Fi, как у передачи между устройствами (§22.1). Число зрителей и битрейт - в `CameraStream.state` (`CameraStreamState.Streaming`). |
+| Только локальная сеть | Трансляции и «Передача между устройствами» идут только по Wi-Fi, Ethernet, точке доступа или USB-модему самого телефона; мобильный интернет не используется (`handoff/Lan.kt`). Адрес в URL, QR-коде и `/camera` - IPv4 локального интерфейса (`Lan.ipv4`). Входящие подключения к RTSP-серверу (`RtspServer.allowLocal`) и HTTP-серверу Handoff, пришедшие на мобильный интерфейс, закрываются. NDI: в `ndi-config.v1.json` → `ndi.adapters.allowed` - только адреса локальной сети (переинициализация NDI при каждом старте). SRT/RTMP: процесс на время трансляции привязан к сети Wi-Fi/Ethernet (`ConnectivityManager.bindProcessToNetwork`); без неё - только если адрес назначения - IP в подсети точки доступа телефона. Нет локальной сети - ошибка `camera.err_no_lan`, трансляция не начинается. |
 
 **Приём потоков.** Любой плеер 2160 Player открывает `rtsp://`, HLS/DASH и `udp://адрес:порт`
-(MPEG-TS по UDP — ffmpeg, OBS, IPTV-мультикаст; встроенный источник `UdpDataSource` в `RoutingDataSource`) через
-«Ссылку» или Intent (`udp://` — только с явным компонентом: фильтров `VIEW` для этой схемы нет). Приём SRT плеер
-не умеет — SRT здесь только для отправки в OBS. Просмотр `rtmp://` не поддерживается (с 0.2.5 модуль
-`media3-datasource-rtmp` убран: его `librtmp` не выровнена под страницы 16 КБ); RTMP — только для отправки на YouTube/Twitch. Для живых источников включается низкая задержка (см. «Задержка»).
+(MPEG-TS по UDP - ffmpeg, OBS, IPTV-мультикаст; встроенный источник `UdpDataSource` в `RoutingDataSource`) через
+«Ссылку» или Intent (`udp://` - только с явным компонентом: фильтров `VIEW` для этой схемы нет). Приём SRT плеер
+не умеет - SRT здесь только для отправки в OBS. Просмотр `rtmp://` не поддерживается (с 0.2.5 модуль
+`media3-datasource-rtmp` убран: его `librtmp` не выровнена под страницы 16 КБ); RTMP - только для отправки на YouTube/Twitch. Для живых источников включается низкая задержка (см. «Задержка»).
 
 **Камеры в сети.** Транслирующее устройство объявляет в mDNS-записи `cam=1` (`Handoff.reannounce()` при старте и
-остановке) и отдаёт адрес по `GET /camera` (с той же защитой кодом, что `/now`). На главном экране других плееров —
+остановке) и отдаёт адрес по `GET /camera` (с той же защитой кодом, что `/now`). На главном экране других плееров -
 раздел «Камеры в сети» (`Handoff.fetchCameras()`, опрос раз в 5 с): у сопряжённых устройств карточка сразу открывает
-поток, у остальных — «Нажмите, чтобы подключиться»: обычное сопряжение (уведомление «Разрешить» на телефоне или код,
+поток, у остальных - «Нажмите, чтобы подключиться»: обычное сопряжение (уведомление «Разрешить» на телефоне или код,
 §22.1), затем поток. Обнаружение работает и в сетях, где multicast проходит только в одну сторону (Wi-Fi ↔ провод):
 см. `GET /hello` в §22.1.
 
 Разрешения: `CAMERA`, `RECORD_AUDIO`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`,
 `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS` (уведомление трансляции)
-(камера и микрофон запрашиваются при первом открытии экрана). Захват и кодирование — RootEncoder 2.8.1,
-сервер — RTSP-Server 1.4.3 (pedroSG94, Apache-2.0) исходниками в модуле `third-party/rtsp-server` с правкой: ответ на `PLAY` без `RTP-Info: seq=1;rtptime=0` — иначе Media3, подключившись не сразу после старта, не начинал воспроизведение (см. `NOTICE.md`). RootEncoder — с JitPack, модуль WHIP исключён. Без защиты (выключена в настройках) любой в той же сети, кто знает адрес, может смотреть;
-Basic-авторизация RTSP идёт открытым текстом — защищает от случайных зрителей в домашней сети, а не в чужих сетях.
+(камера и микрофон запрашиваются при первом открытии экрана). Захват и кодирование - RootEncoder 2.8.1,
+сервер - RTSP-Server 1.4.3 (pedroSG94, Apache-2.0) исходниками в модуле `third-party/rtsp-server` с правкой: ответ на `PLAY` без `RTP-Info: seq=1;rtptime=0` - иначе Media3, подключившись не сразу после старта, не начинал воспроизведение (см. `NOTICE.md`). RootEncoder - с JitPack, модуль WHIP исключён. Без защиты (выключена в настройках) любой в той же сети, кто знает адрес, может смотреть;
+Basic-авторизация RTSP идёт открытым текстом - защищает от случайных зрителей в домашней сети, а не в чужих сетях.
 
 ## 23. Справочник классов
 
@@ -2210,4 +2211,4 @@ Basic-авторизация RTSP идёт открытым текстом — �
 
 Если вы собираете свой ExoPlayer и хотите `smb://`, можно использовать
 `RoutingDataSource.Factory(context, DefaultDataSource.Factory(context))` и
-`M2tsExtractorsFactory` — но это вне гарантий совместимости.
+`M2tsExtractorsFactory` - но это вне гарантий совместимости.

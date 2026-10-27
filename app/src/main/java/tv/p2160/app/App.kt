@@ -15,7 +15,7 @@ import tv.p2160.core.api.PlayerAction
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Пароли SMB и ключ RTMP — в Keystore до того, как их прочитают экраны.
+        // Пароли SMB и ключ RTMP - в Keystore до того, как их прочитают экраны.
         tv.p2160.core.secret.FieldSecrets.migrate(this)
         // Настройки передачи читают HandoffAuth до старта сервера (onStart приходит позже первого кадра).
         tv.p2160.app.handoff.HandoffAuth.init(this)
@@ -23,7 +23,7 @@ class App : Application() {
         tv.p2160.torrent.TorrentEngine.install(this)
 
         // Передача между устройствами работает, пока приложение на экране (в т.ч. во время просмотра)
-        // и пока идёт трансляция камеры — иначе другие устройства не найдут её, когда экран погашен.
+        // и пока идёт трансляция камеры - иначе другие устройства не найдут её, когда экран погашен.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = Handoff.start(this@App)
             override fun onStop(owner: LifecycleOwner) {
@@ -31,7 +31,7 @@ class App : Application() {
             }
         })
 
-        // Кнопка «Отправить на устройство» в плеере — через публичное API библиотеки.
+        // Кнопка «Отправить на устройство» в плеере - через публичное API библиотеки.
         Player2160.registerAction(
             PlayerAction(id = "handoff", icon = Icons.Default.Devices, label = "handoff.send_title") { context, _ ->
                 context.startActivity(Intent(context, HandoffSendActivity::class.java))

@@ -18,7 +18,7 @@ interface RandomAccessSource : Closeable {
 
     /**
      * Читает до [length] байт с позиции [position]. Может вернуть меньше запрошенного;
-     * -1 — конец данных.
+     * -1 - конец данных.
      */
     fun read(position: Long, buffer: ByteArray, offset: Int, length: Int): Int
 }
@@ -68,19 +68,19 @@ class ByteArraySource(private val data: ByteArray) : RandomAccessSource {
 
 /**
  * Кусок файла на диске: [length] байт с [position] в родительском источнике;
- * position = -1 — незаписанный участок, читается нулями.
+ * position = -1 - незаписанный участок, читается нулями.
  */
 data class DiscExtent(val position: Long, val length: Long)
 
 /**
  * Файл, собранный из последовательных экстентов родителя (фрагментированный m2ts в ISO).
- * Родителя не закрывает — он общий для всех файлов образа.
+ * Родителя не закрывает - он общий для всех файлов образа.
  */
 class ExtentRandomAccessSource(
     private val parent: RandomAccessSource,
     val extents: List<DiscExtent>,
 ) : RandomAccessSource {
-    // Логическое начало каждого экстента — для бинарного поиска.
+    // Логическое начало каждого экстента - для бинарного поиска.
     private val starts = LongArray(extents.size)
     override val size: Long
 
@@ -110,7 +110,7 @@ class ExtentRandomAccessSource(
 
 /**
  * Кэш поверх медленного источника (SMB/HTTP): LRU блоков по [blockSize] байт.
- * При промахе читает сразу [readAheadBlocks] блоков одним запросом — меньше обращений по сети.
+ * При промахе читает сразу [readAheadBlocks] блоков одним запросом - меньше обращений по сети.
  * Закрывает обёрнутый источник.
  */
 class CachedRandomAccessSource(
@@ -157,7 +157,7 @@ class CachedRandomAccessSource(
         var off = 0
         while (off < done) {
             val len = minOf(blockSize, done - off)
-            // Неполный блок кладём, только если это конец файла — иначе перечитаем позже.
+            // Неполный блок кладём, только если это конец файла - иначе перечитаем позже.
             if (len == blockSize || start + off + len == size) cache[idx] = tmp.copyOfRange(off, off + len)
             else if (idx == first) return tmp.copyOfRange(off, off + len)
             idx++

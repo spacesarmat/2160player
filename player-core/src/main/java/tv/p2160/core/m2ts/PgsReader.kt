@@ -118,7 +118,7 @@ class PgsReader(
 
     private fun ensureCapacity(extra: Int) {
         if (displaySetSize + extra > MAX_DISPLAY_SET_SIZE) {
-            // Мусор вместо PGS — сбрасываемся до следующего PCS.
+            // Мусор вместо PGS - сбрасываемся до следующего PCS.
             inDisplaySet = false
             displaySetSize = 0
             return

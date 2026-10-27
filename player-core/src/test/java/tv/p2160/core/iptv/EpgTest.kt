@@ -49,7 +49,7 @@ class EpgTest {
         val data = parse()
         assertEquals(setOf("Russia24.ru", "2x2.ru", "perviy"), data.programmes.keys)
         val r24 = data.programmes.getValue("Russia24.ru")
-        // Старые и далёкие передачи отброшены, пустое название — тоже.
+        // Старые и далёкие передачи отброшены, пустое название - тоже.
         assertEquals(listOf("Вести", "Вести. Экономика", "Вести. Спорт"), r24.map { it.title })
         assertEquals("Новости & погода", r24[0].description)
         assertEquals("Выпуск 2", r24[1].description)
@@ -107,7 +107,7 @@ class EpgTest {
         val list = listOf(EpgProgramme(100, 200, "a"), EpgProgramme(300, 400, "b"))
         assertEquals(NowNext(null, list[0]), EpgGuide.nowNext(list, 50))
         assertEquals(NowNext(list[0], list[1]), EpgGuide.nowNext(list, 100))
-        // Перерыв между передачами: сейчас ничего, далее — «b».
+        // Перерыв между передачами: сейчас ничего, далее - «b».
         assertEquals(NowNext(null, list[1]), EpgGuide.nowNext(list, 250))
         assertEquals(NowNext(list[1], null), EpgGuide.nowNext(list, 399))
         assertEquals(NowNext(null, null), EpgGuide.nowNext(list, 400))

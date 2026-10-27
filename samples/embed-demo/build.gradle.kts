@@ -15,7 +15,7 @@ android {
         versionName = "0.1.0"
     }
 
-    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg — берём одну копию.
+    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg - берём одну копию.
     // Без этого блока сборка любого приложения с player-core падает на mergeNativeLibs.
     packaging {
         jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so")
@@ -36,7 +36,7 @@ kotlin {
 }
 
 dependencies {
-    // Внутри этого репозитория — зависимость на модуль. Снаружи:
+    // Внутри этого репозитория - зависимость на модуль. Снаружи:
     // implementation("tv.p2160:player-core:0.1.0") (см. docs/EMBEDDING.md).
     implementation(project(":player-core"))
 

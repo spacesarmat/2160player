@@ -6,7 +6,7 @@ import kotlin.math.min
 
 /**
  * Поиск общего звукового отрезка в двух отпечатках: перебор всех сдвигов,
- * на каждом — самый длинный участок, где среднее расстояние Хэмминга по окну ниже порога.
+ * на каждом - самый длинный участок, где среднее расстояние Хэмминга по окну ниже порога.
  */
 object IntroMatcher {
 
@@ -49,14 +49,14 @@ object IntroMatcher {
     /** Итог по текущему файлу после сведения нескольких пар. */
     data class Found(val startMs: Long, val endMs: Long, val confidence: Float, val match: Match)
 
-    /** Оценка кандидата (кадры A и B, полуинтервалы); больше — лучше. */
+    /** Оценка кандидата (кадры A и B, полуинтервалы); больше - лучше. */
     fun interface Scorer {
         fun score(aFrom: Int, aTo: Int, bFrom: Int, bTo: Int, aSize: Int, bSize: Int): Double
     }
 
     val byLength = Scorer { aFrom, aTo, _, _, _, _ -> (aTo - aFrom).toDouble() }
 
-    /** Титры: длиннее — лучше, но доходящие до конца окна в обоих файлах — сильно лучше. */
+    /** Титры: длиннее - лучше, но доходящие до конца окна в обоих файлах - сильно лучше. */
     fun creditsScorer(nearEndFrames: Int) = Scorer { aFrom, aTo, _, bTo, aSize, bSize ->
         val len = (aTo - aFrom).toDouble()
         if (aSize - aTo <= nearEndFrames && bSize - bTo <= nearEndFrames) len + 100_000 else len
@@ -64,7 +64,7 @@ object IntroMatcher {
 
     /**
      * Лучший общий отрезок A и B. Сначала перебор всех постоянных сдвигов даёт «затравки» (≥ [Params.seedMs]),
-     * затем каждая растягивается кадр за кадром с подстройкой сдвига на ±1 кадр — так переживается
+     * затем каждая растягивается кадр за кадром с подстройкой сдвига на ±1 кадр - так переживается
      * небольшое расхождение темпа (у реальных релизов встречается ~2%).
      */
     fun bestCommon(a: Fingerprint, b: Fingerprint, params: Params = Params(), scorer: Scorer = byLength): Match? {
@@ -118,7 +118,7 @@ object IntroMatcher {
         fun offsetAt(i: Int): Int = offsets[(i - from).coerceIn(0, offsets.size - 1)]
     }
 
-    /** Все постоянные сдвиги (кадр i файла A ↔ кадр i + d файла B); самые длинные участки — затравки. */
+    /** Все постоянные сдвиги (кадр i файла A ↔ кадр i + d файла B); самые длинные участки - затравки. */
     private fun seeds(fa: IntArray, ma: IntArray, fb: IntArray, mb: IntArray, params: Params, seedF: Int): List<Seed> {
         val w = params.window
         val limit = params.maxAvgBits * w
@@ -216,7 +216,7 @@ object IntroMatcher {
         return Path(from, to, offsets)
     }
 
-    /** Среднее расстояние в окне с центром [i] при сдвиге [d]; NaN — окно почти вне файлов. */
+    /** Среднее расстояние в окне с центром [i] при сдвиге [d]; NaN - окно почти вне файлов. */
     private fun windowAvg(fa: IntArray, ma: IntArray, fb: IntArray, mb: IntArray, i: Int, d: Int, w: Int): Double {
         if (i < 0 || i >= fa.size || i + d < 0 || i + d >= fb.size) return Double.NaN
         var sum = 0
@@ -238,7 +238,7 @@ object IntroMatcher {
         if (current.startMs == 0L && f.startMs <= START_SNAP_MS) f.copy(startMs = 0) else f
 
     /**
-     * Титры по хвостам: [current] и [siblings] — отпечатки последних минут.
+     * Титры по хвостам: [current] и [siblings] - отпечатки последних минут.
      * Предпочитаются отрезки, доходящие почти до конца окна.
      */
     fun findCredits(
@@ -262,8 +262,8 @@ object IntroMatcher {
     }
 
     /**
-     * Сведение пар «текущий — сосед». Одна пара принимается при достаточной уверенности;
-     * из нескольких нужны две согласные (перекрытие ≥ половины), иначе — только очень уверенная.
+     * Сведение пар «текущий - сосед». Одна пара принимается при достаточной уверенности;
+     * из нескольких нужны две согласные (перекрытие ≥ половины), иначе - только очень уверенная.
      */
     fun combine(matches: List<Match?>): Found? {
         val ok = matches.filterNotNull().filter { it.confidence >= MIN_CONFIDENCE }
@@ -275,7 +275,7 @@ object IntroMatcher {
             val q = ok[y]
             val overlap = min(p.aEndMs, q.aEndMs) - max(p.aStartMs, q.aStartMs)
             if (overlap < min(p.lengthMs, q.lengthMs) / 2) continue
-            // Близкие границы — осторожная (лучше секунда заставки, чем секунда серии); далёкие — значит,
+            // Близкие границы - осторожная (лучше секунда заставки, чем секунда серии); далёкие - значит,
             // одна пара оборвалась на различающемся куске, а переползание за край ограничено подтверждением.
             val start = if (abs(p.aStartMs - q.aStartMs) <= 3_000) max(p.aStartMs, q.aStartMs) else min(p.aStartMs, q.aStartMs)
             val end = if (abs(p.aEndMs - q.aEndMs) <= 3_000) min(p.aEndMs, q.aEndMs) else max(p.aEndMs, q.aEndMs)
@@ -295,7 +295,7 @@ object IntroMatcher {
         return (bits * len).toFloat()
     }
 
-    /** Титры: длиннее, но с короткими разрывами — иначе к ним прилипает анонс следующей серии. */
+    /** Титры: длиннее, но с короткими разрывами - иначе к ним прилипает анонс следующей серии. */
     val CREDITS = Params(maxLenMs = 300_000, gapMs = 3_000)
 
     private const val MIN_CONFIDENCE = 0.2f

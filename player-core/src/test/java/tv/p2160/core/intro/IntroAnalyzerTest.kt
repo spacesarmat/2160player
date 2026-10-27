@@ -57,7 +57,7 @@ class IntroAnalyzerTest {
             assertNull("credits run to the end", r.credits?.endMs)
             assertTrue(r.introConfidence > 0.5f)
 
-            // Повторно — из кэша, без декодирования.
+            // Повторно - из кэша, без декодирования.
             c.opens = 0
             assertEquals(r, analyzer.analyze(ep("e2", e2, c), emptyList(), "show"))
             assertEquals(0, c.opens)
@@ -87,7 +87,7 @@ class IntroAnalyzerTest {
             assertEquals(0, c.opens)
             near(30.0, r1.intro?.startMs)
 
-            // Другой сериал с тем же ключом шаблонов, но другой музыкой — шаблон не срабатывает.
+            // Другой сериал с тем же ключом шаблонов, но другой музыкой - шаблон не срабатывает.
             val other = episode(9, 60.0, theme = 50, ending = 51)
             val r9 = analyzer.analyze(ep("x9", other, c), emptyList(), seriesKey = "show")
             assertNull(r9.intro)

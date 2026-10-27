@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
         lastResult = "PlayContract: " + describe(result)
     }
 
-    // (a) Отдельное приложение 2160 Player через Intent API; результат — в формате MX Player.
+    // (a) Отдельное приложение 2160 Player через Intent API; результат - в формате MX Player.
     private val externalPlayer = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         lastResult = "Intent API: " + describe(IntentApi.parseResult(r.resultCode, r.data))
     }
@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("2160 Player — пример встраивания", style = MaterialTheme.typography.titleLarge)
+                Text("2160 Player - пример встраивания", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
                     Text("Player2160.play()")
                 }
                 Button(onClick = { playForResult.launch(request(url)) }, Modifier.fillMaxWidth()) {
-                    Text("PlayContract — вернуть позицию")
+                    Text("PlayContract - вернуть позицию")
                 }
                 Button(
                     onClick = { startActivity(EmbeddedPlayerActivity.intent(this@MainActivity, Uri.parse(url.trim()), "Встроенный PlayerScreen")) },
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
 
                 lastResult?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 Text(
-                    "В плеере справа сверху есть кнопка «Поделиться ссылкой» — её добавляет SampleApp " +
+                    "В плеере справа сверху есть кнопка «Поделиться ссылкой» - её добавляет SampleApp " +
                         "через Player2160.registerAction().",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Intent API без библиотеки: только строковые ключи, поэтому этот код работает
-     * в любом приложении. Константы IntentApi здесь — лишь для удобства.
+     * в любом приложении. Константы IntentApi здесь - лишь для удобства.
      */
     private fun openInStandaloneApp(url: String) {
         val intent = Intent(Intent.ACTION_VIEW)
@@ -160,7 +160,7 @@ class MainActivity : ComponentActivity() {
             intent.component = ComponentName(pkg, PLAYER_ACTIVITY)
             externalPlayer.launch(intent)
         } else {
-            // Приложение не установлено — предлагаем любой видеоплеер (без возврата результата).
+            // Приложение не установлено - предлагаем любой видеоплеер (без возврата результата).
             try {
                 startActivity(Intent.createChooser(intent, "Открыть в…"))
             } catch (_: ActivityNotFoundException) {

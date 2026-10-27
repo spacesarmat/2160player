@@ -119,7 +119,7 @@ class PanelScrollTest {
         val max = scrollMax()
         assertTrue("список должен быть длиннее окна, иначе проверка прокрутки пустая: max=$max", max > 0f)
 
-        // Сброс на простое — тот, что бывает после закрытия. Уже нулевая прокрутка ничего не двигает.
+        // Сброс на простое - тот, что бывает после закрытия. Уже нулевая прокрутка ничего не двигает.
         rule.runOnIdle { resets++ }
         rule.waitForIdle()
         assertAtTop(topText, belowText)

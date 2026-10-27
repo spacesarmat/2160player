@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.update
 
 /**
  * Состояние устройства для правил раздачи.
- * [metered] — сеть с оплатой трафика (мобильный интернет, точка доступа телефона);
- * [charging] — на зарядке (или без батареи вовсе: ТВ, приставка).
+ * [metered] - сеть с оплатой трафика (мобильный интернет, точка доступа телефона);
+ * [charging] - на зарядке (или без батареи вовсе: ТВ, приставка).
  */
 data class DeviceState(val metered: Boolean = false, val charging: Boolean = true)
 

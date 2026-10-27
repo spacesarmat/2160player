@@ -97,7 +97,7 @@ class DlnaParsersTest {
         // Относительно URLBase, а не адреса описания.
         assertEquals("http://192.168.1.20:50001/upnp/cd/control", s.contentDirectoryControlUrl)
         assertEquals("urn:schemas-upnp-org:service:ContentDirectory:2", s.contentDirectoryType)
-        // У вложенного устройства иконок нет — берём у корневого.
+        // У вложенного устройства иконок нет - берём у корневого.
         assertEquals("http://192.168.1.20:50001/upnp/icons/big.png", s.bestIcon()!!.url)
     }
 
@@ -160,7 +160,7 @@ class DlnaParsersTest {
         assertEquals(2_384_965L, res.bitrate)
         assertFalse(res.isConverted)
         assertEquals("http://192.168.1.191:8200/AlbumArt/88-412.jpg", dune.albumArtUrl)
-        // CaptionInfoEx и res text/srt указывают на один файл — одна дорожка.
+        // CaptionInfoEx и res text/srt указывают на один файл - одна дорожка.
         assertEquals(1, dune.subtitles.size)
         assertEquals("srt", dune.subtitles[0].format)
         assertEquals("http://192.168.1.191:8200/Captions/412.srt", dune.subtitles[0].url)
@@ -206,7 +206,7 @@ class DlnaParsersTest {
         assertEquals(0, page.totalMatches)
         assertEquals("Movies & Shows", page.objects[0].title)
         val clip = page.objects[1] as DlnaItem
-        assertEquals(DlnaMediaKind.VIDEO, clip.kind) // класс не указан — по MIME
+        assertEquals(DlnaMediaKind.VIDEO, clip.kind) // класс не указан - по MIME
         assertEquals("http://10.0.0.2:9000/disk/clip.avi", clip.bestResource!!.url)
     }
 
@@ -260,7 +260,7 @@ class DlnaParsersTest {
         contentDirectoryControlUrl = "http://h/ctl", contentDirectoryType = "urn:schemas-upnp-org:service:ContentDirectory:1",
     )
 
-    /** Сервер со [total] элементами; [reportTotal] = false — отвечает TotalMatches=0; [ignoreStart] — всегда с начала. */
+    /** Сервер со [total] элементами; [reportTotal] = false - отвечает TotalMatches=0; [ignoreStart] - всегда с начала. */
     private class FakeServer(val total: Int, val maxPage: Int, val reportTotal: Boolean = true, val ignoreStart: Boolean = false) : DlnaHttp {
         val requests = ArrayList<Pair<Int, Int>>()
         val headers = ArrayList<Map<String, String>>()
@@ -337,7 +337,7 @@ class DlnaParsersTest {
     @Test
     fun playlistSkipsUnplayable() {
         val items = browse("minidlna_browse_videos.xml").objects.filterIsInstance<DlnaItem>()
-        // [Дюна, Tom & Jerry, notes.txt] — выбрали Tom & Jerry.
+        // [Дюна, Tom & Jerry, notes.txt] - выбрали Tom & Jerry.
         val (playable, start) = DlnaPlayback.playlistIndex(items, 1)!!
         assertEquals(2, playable.size)
         assertEquals(1, start)

@@ -1,11 +1,11 @@
 package tv.p2160.core.source.dlna
 
 /**
- * Поиск медиасервера по введённому адресу — для серверов, не видимых по SSDP
+ * Поиск медиасервера по введённому адресу - для серверов, не видимых по SSDP
  * (Docker с bridge-сетью, другая подсеть, VPN). Принимает:
  * - URL описания (`http://nas:8200/rootDesc.xml`);
- * - `host:port` — проверяются известные пути описаний на этом порту;
- * - `host` — перебираются стандартные порты популярных серверов.
+ * - `host:port` - проверяются известные пути описаний на этом порту;
+ * - `host` - перебираются стандартные порты популярных серверов.
  */
 object DlnaProbe {
 
@@ -50,7 +50,7 @@ object DlnaProbe {
     private fun candidate(scheme: String, host: String, port: Int, path: String, http: DlnaHttp): DlnaServer? {
         val base = "$scheme://${if (':' in host) "[$host]" else host}:$port"
         if (path == JELLYFIN) {
-            // Jellyfin: идентификатор сервера из публичного API, описание — /dlna/<id>/description.xml
+            // Jellyfin: идентификатор сервера из публичного API, описание - /dlna/<id>/description.xml
             val info = runCatching { http.get("$base/System/Info/Public") }.getOrNull() ?: return null
             if (info.code !in 200..299) return null
             val id = Regex("\"Id\"\\s*:\\s*\"([0-9a-fA-F-]+)\"").find(info.body)?.groupValues?.get(1) ?: return null

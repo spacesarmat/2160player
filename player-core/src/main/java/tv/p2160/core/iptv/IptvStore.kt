@@ -56,7 +56,7 @@ data class IptvPlaylist(
  * IPTV: плейлисты, кэш каналов и телепрограммы, избранное, последний канал.
  *
  * Плейлист кэшируется как исходный текст (`filesDir/iptv/<id>.m3u`) и разбирается заново при
- * загрузке — это быстро. EPG хранится уже отфильтрованным (`<id>.epg`, см. [EpgCodec]).
+ * загрузке - это быстро. EPG хранится уже отфильтрованным (`<id>.epg`, см. [EpgCodec]).
  * Также служит встроенным [LiveGuide] для плеера: подпись «текущая передача» по URL канала.
  */
 class IptvStore private constructor(context: Context) : LiveGuide {
@@ -76,7 +76,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     private val channelsCache = ConcurrentHashMap<String, M3uPlaylist>()
     private val guides = ConcurrentHashMap<String, EpgGuide>()
     private val _guideVersion = MutableStateFlow(0)
-    /** Меняется при каждой загрузке телепрограммы — повод перерисовать «сейчас/далее». */
+    /** Меняется при каждой загрузке телепрограммы - повод перерисовать «сейчас/далее». */
     val guideVersion: StateFlow<Int> = _guideVersion.asStateFlow()
 
     /** Текущий сеанс: URL, id плейлиста, канал. Список, а не карта: у повторов URL совпадает. */
@@ -85,7 +85,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     private val guideAttempts = ConcurrentHashMap<String, Long>()
 
     init {
-        // Переключили канал в плеере — он и становится «последним».
+        // Переключили канал в плеере - он и становится «последним».
         scope.launch {
             PlayerExtensions.nowPlaying.map { it?.uri?.toString() to it?.title }.distinctUntilChanged().collect { (uri, title) ->
                 val (playlistId, channel) = uri?.let { lookupChannel(it, title) } ?: return@collect
@@ -101,7 +101,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
 
     fun save(playlist: IptvPlaylist) {
         val old = get(playlist.id)
-        // Сменился источник или EPG — кэш устарел.
+        // Сменился источник или EPG - кэш устарел.
         if (old != null && (old.source != playlist.source || old.userAgent != playlist.userAgent)) {
             channelsCache.remove(playlist.id)
             cacheFile(playlist.id).delete()
@@ -130,7 +130,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
 
     /**
      * Каналы плейлиста: из кэша, если он свежий, иначе загрузка. При ошибке сети остаётся
-     * старый кэш (ошибка записывается в [IptvPlaylist.error]); без кэша — исключение.
+     * старый кэш (ошибка записывается в [IptvPlaylist.error]); без кэша - исключение.
      */
     suspend fun channels(id: String, forceRefresh: Boolean = false, maxAgeHours: Int = PLAYLIST_MAX_AGE_HOURS): M3uPlaylist =
         lock(id).withLock {
@@ -183,7 +183,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
 
     /**
      * Телепрограмма плейлиста: с диска, если свежая и покрывает ближайшие часы, иначе загрузка
-     * всех источников EPG. null — источников нет или все недоступны.
+     * всех источников EPG. null - источников нет или все недоступны.
      */
     suspend fun guide(id: String, forceRefresh: Boolean = false): EpgGuide? {
         val parsed = runCatching { channels(id) }.getOrNull() ?: return null
@@ -210,7 +210,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
                     }.onSuccess { merged += it }.onFailure { lastError = it }
                 }
                 if (merged.isEmpty) {
-                    // Сеть недоступна — показываем старое, если есть.
+                    // Сеть недоступна - показываем старое, если есть.
                     val old = guides[id] ?: runCatching { file.bufferedReader().useLines { EpgCodec.decode(it) } }.getOrNull()
                         ?.trimmed(now)?.takeUnless { it.isEmpty }?.let { remember(id, it) }
                     if (old == null && lastError != null) throw lastError!!
@@ -258,7 +258,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     // region Воспроизведение
 
     /**
-     * Запрос для плеера: элементы — каналы [channels] (обычно видимый список группы),
+     * Запрос для плеера: элементы - каналы [channels] (обычно видимый список группы),
      * старт с [index]. Запоминает последний канал и включает подпись из EPG в плеере.
      */
     fun playbackRequest(playlistId: String, channels: List<IptvChannel>, index: Int): PlaybackRequest {
@@ -288,7 +288,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
         val (playlistId, channel) = hit
         val guide = guides[playlistId]
         if (guide == null) {
-            // После перезапуска процесса программа ещё не в памяти — подгружаем в фоне (не чаще раза в 5 мин).
+            // После перезапуска процесса программа ещё не в памяти - подгружаем в фоне (не чаще раза в 5 мин).
             val last = guideAttempts[playlistId] ?: 0L
             if (nowMs - last > 5 * 60_000L) {
                 guideAttempts[playlistId] = nowMs
@@ -329,7 +329,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     private fun cacheFile(id: String) = File(dir, "$id.m3u")
     private fun epgFile(id: String) = File(dir, "$id.epg")
 
-    /** Открывает поток источника: content/file — через ContentResolver, http(s) — с редиректами между схемами. */
+    /** Открывает поток источника: content/file - через ContentResolver, http(s) - с редиректами между схемами. */
     private fun download(source: String, userAgent: String?): InputStream {
         val uri = Uri.parse(source)
         when (uri.scheme?.lowercase()) {
@@ -432,7 +432,7 @@ class IptvStore private constructor(context: Context) : LiveGuide {
     }
 }
 
-/** Чистая логика сборки запроса — без Android, проверяется JVM-тестами. */
+/** Чистая логика сборки запроса - без Android, проверяется JVM-тестами. */
 object IptvPlayback {
     /** Ограничение размера плейлиста в Intent (лимит Binder ~1 МБ). */
     const val MAX_ITEMS = 1000
@@ -444,7 +444,7 @@ object IptvPlayback {
         return start until start + max
     }
 
-    /** Заголовки запроса: свои у канала, User-Agent плейлиста — если у канала его нет. */
+    /** Заголовки запроса: свои у канала, User-Agent плейлиста - если у канала его нет. */
     fun headersFor(channel: IptvChannel, playlistUserAgent: String?): Map<String, String> {
         val headers = LinkedHashMap(channel.httpHeaders())
         if (headers.keys.none { it.equals("User-Agent", true) }) playlistUserAgent?.ifBlank { null }?.let { headers["User-Agent"] = it }

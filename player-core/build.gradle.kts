@@ -6,7 +6,7 @@ plugins {
 
 // Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
 group = "tv.p2160"
-version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.12")
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.13")
 
 android {
     namespace = "tv.p2160.core"
@@ -63,7 +63,7 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     // Типы из этих библиотек видны в публичном API (ActivityResultContract, StateFlow,
-    // @Composable, ImageVector, ColorScheme) — поэтому api, а не implementation.
+    // @Composable, ImageVector, ColorScheme) - поэтому api, а не implementation.
     api(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     api(libs.kotlinx.coroutines.android)
@@ -79,13 +79,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.robolectric)
-    // XmlPullParser для JVM-тестов разбора XMLTV (на устройстве — android.util.Xml)
+    // XmlPullParser для JVM-тестов разбора XMLTV (на устройстве - android.util.Xml)
     testImplementation(libs.kxml2)
 }
 
 // Публикация: mavenLocal (./gradlew :player-core:publishReleasePublicationToMavenLocal)
 // и GitHub Packages (./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository).
-// Учётные данные — только из gradle-свойств (gpr.user / gpr.key) или окружения (GITHUB_ACTOR / GITHUB_TOKEN).
+// Учётные данные - только из gradle-свойств (gpr.user / gpr.key) или окружения (GITHUB_ACTOR / GITHUB_TOKEN).
 afterEvaluate {
     publishing {
         publications {

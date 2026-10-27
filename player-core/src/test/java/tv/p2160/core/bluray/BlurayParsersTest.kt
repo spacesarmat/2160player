@@ -24,7 +24,7 @@ class BlurayParsersTest {
             listOf(
                 MarkSpec(1, 0, 1000),
                 MarkSpec(1, 0, 1000 + 10 * min),
-                MarkSpec(2, 0, 1000 + 12 * min), // link point — не глава
+                MarkSpec(2, 0, 1000 + 12 * min), // link point - не глава
                 MarkSpec(1, 1, 500 + 5 * min),
                 MarkSpec(1, 7, 0), // ссылка на несуществующий элемент
             ),
@@ -61,10 +61,10 @@ class BlurayParsersTest {
         assertEquals(ClipPosition(0, 9000 + 5 * min), t.locate(5 * 60_000))
         assertEquals(ClipPosition(1, 0), t.locate(10 * 60_000))
         assertEquals(ClipPosition(1, 3 * min), t.locate(13 * 60_000))
-        assertEquals(ClipPosition(1, 20 * min), t.locate(999 * 60_000)) // за концом — край
+        assertEquals(ClipPosition(1, 20 * min), t.locate(999 * 60_000)) // за концом - край
         assertEquals(13 * 60_000L, t.toPlaylistMs(1, 3 * min))
         assertEquals(5 * 60_000L, t.toPlaylistMs(0, 9000 + 5 * min))
-        assertEquals(0L, t.toPlaylistMs(0, 0)) // до IN_time — начало элемента
+        assertEquals(0L, t.toPlaylistMs(0, 0)) // до IN_time - начало элемента
     }
 
     @Test
@@ -76,7 +76,7 @@ class BlurayParsersTest {
             }, 0, List(chapters) { MplsMark(1, 0, it * 45_000L, 0, 0) })
             return BlurayDisc.buildTitle(name, mpls, "BDMV")
         }
-        // Обманки: та же длина, клипы перемешаны и повторяются; настоящий — по возрастанию.
+        // Обманки: та же длина, клипы перемешаны и повторяются; настоящий - по возрастанию.
         val titles = listOf(
             title("00001", listOf("00005"), 3),
             title("00100", listOf("00030", "00012", "00030", "00011"), 140, chapters = 30),
@@ -84,9 +84,9 @@ class BlurayParsersTest {
             title("00300", listOf("00014", "00011", "00013", "00012"), 140, chapters = 20),
         )
         assertEquals("00200", pickMain(titles))
-        // Без обманок — самый длинный.
+        // Без обманок - самый длинный.
         assertEquals("00100", pickMain(listOf(titles[0], titles[1], title("00002", listOf("00001"), 100))))
-        // Только короткие — всё равно что-то выбираем.
+        // Только короткие - всё равно что-то выбираем.
         assertEquals("00001", pickMain(listOf(titles[0])))
     }
 
@@ -169,7 +169,7 @@ class BlurayParsersTest {
             u32(b.size.toLong()).bytes(b.toByteArray())
         }.toByteArray()
         val cpi = BeWriter().apply {
-            // coarse — когда меняются старшие биты PTS или SPN.
+            // coarse - когда меняются старшие биты PTS или SPN.
             val coarse = ArrayList<Triple<Int, Long, Long>>()
             val fine = ArrayList<Long>()
             points.forEachIndexed { i, (pts45, spn) ->

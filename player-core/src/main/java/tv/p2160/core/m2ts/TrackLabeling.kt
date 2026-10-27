@@ -58,8 +58,8 @@ internal class LabeledExtractorOutput(delegate: ExtractorOutput, label: String?)
 
 /**
  * Обёртка над любым TsPayloadReader: язык и подпись дорожек по PID из внешнего источника
- * (STN-таблица MPLS — в PMT Blu-ray ISO-639 обычно нет). PID = trackId & 0x1FFF: TsExtractor
- * в режиме SINGLE/MULTI_PMT выдаёт trackId = PID, вторичные дорожки того же PID — PID + 0x2000·n.
+ * (STN-таблица MPLS - в PMT Blu-ray ISO-639 обычно нет). PID = trackId & 0x1FFF: TsExtractor
+ * в режиме SINGLE/MULTI_PMT выдаёт trackId = PID, вторичные дорожки того же PID - PID + 0x2000·n.
  */
 @OptIn(UnstableApi::class)
 internal class PidLabelingPayloadReader(
@@ -86,7 +86,7 @@ internal class PidLabelingPayloadReader(
         if (label != null) {
             // Вторичная дорожка (напр. AC-3 ядро) сохраняет своё уточнение.
             val own = format.label
-            builder.setLabel(if (own != null && trackId > PID_MASK) "$label — $own" else label)
+            builder.setLabel(if (own != null && trackId > PID_MASK) "$label - $own" else label)
         }
         return builder.build()
     }

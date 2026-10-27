@@ -46,7 +46,7 @@ import tv.p2160.core.i18n.tr
 
 /**
  * «Справка и FAQ»: вопросы по разделам, ответ раскрывается по нажатию (палец и пульт).
- * Тексты — в языковом пакете `assets/i18n/faq/<код>.json` (ключи `faq.<id>.q` / `faq.<id>.a`).
+ * Тексты - в языковом пакете `assets/i18n/faq/<код>.json` (ключи `faq.<id>.q` / `faq.<id>.a`).
  */
 internal object Faq {
     const val ISSUES_URL = "https://github.com/spacesarmat/2160player/issues"

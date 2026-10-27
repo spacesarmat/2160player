@@ -54,7 +54,7 @@ class RealIsoTest {
             fs.open(clip.m2tsPath).use { m2ts ->
                 val head = m2ts.readBytes(0, 192 * 32)
                 for (i in 0 until 32) assertEquals("packet $i", 0x47, head[i * 192 + 4].toInt() and 0xFF)
-                // Сразу за границей первого экстента — тоже пакеты (проверка склейки экстентов).
+                // Сразу за границей первого экстента - тоже пакеты (проверка склейки экстентов).
                 if (extents.size > 1) {
                     val boundary = extents[0].length / 192 * 192
                     val pkt = m2ts.readBytes(boundary + 192, 192)

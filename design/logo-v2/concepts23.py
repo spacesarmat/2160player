@@ -7,7 +7,7 @@ from glyphs import numerals, layout, letters
 from gen import svg_open, front_grad, beam, text_flat, icon_bg, GOLD_FRONT, CHROME_FRONT, STONE
 
 # =====================================================================================
-# CONCEPT 2 — "Премьера 4K": chrome numerals with molten-amber depth, hard 3/4 view,
+# CONCEPT 2 - "Премьера 4K": chrome numerals with molten-amber depth, hard 3/4 view,
 #              perspective pixel grid on faces, two top spotlights, mirror floor.
 # =====================================================================================
 S2 = dict(W=74, s=26, c=24, ci=8, gap=16, W1=50, yri=0.55, term=12, yB=66, wt=0.9, base1=False)
@@ -135,7 +135,7 @@ def c2_banner(prefix='c2b'):
 
 
 # =====================================================================================
-# CONCEPT 3 — "Ар-деко": tall fluted numerals, steep worm's-eye view, sunburst, ziggurat.
+# CONCEPT 3 - "Ар-деко": tall fluted numerals, steep worm's-eye view, sunburst, ziggurat.
 # =====================================================================================
 S3 = dict(W=48, s=16, c=10, ci=3, gap=10, W1=38, yri=0.58, term=8, yB=56, wt=0.92, base1=False, sv=13)
 C3_LIGHT = (-0.25, 0.85, -0.55)

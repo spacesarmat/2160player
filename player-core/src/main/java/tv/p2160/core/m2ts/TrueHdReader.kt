@@ -16,11 +16,11 @@ import androidx.media3.extractor.ts.TsPayloadReader
 /**
  * Dolby TrueHD на Blu-ray (stream_type 0x83). В одном PID идут PES двух видов:
  * кадры AC-3 «ядра» (sync 0x0B77) и access unit'ы TrueHD/MLP
- * (2 байта: check nibble + длина в 16-битных словах, 2 байта timing, у части AU — major sync
+ * (2 байта: check nibble + длина в 16-битных словах, 2 байта timing, у части AU - major sync
  * 0xF8726FBA). Вид PES определяем по первым двум байтам: у AU TrueHD 0x0B77 невозможно
  * (это длина 5870 байт, а реальные AU < 4 КБ).
  *
- * TrueHD отдаётся как AUDIO_TRUEHD, сэмплами по [Ac3Util.TRUEHD_RECHUNK_SAMPLE_COUNT] AU — ровно
+ * TrueHD отдаётся как AUDIO_TRUEHD, сэмплами по [Ac3Util.TRUEHD_RECHUNK_SAMPLE_COUNT] AU - ровно
  * так же, как Matroska/MP4 (TrueHdSampleRechunker): этого ждут DefaultAudioSink в passthrough
  * (кадров на сэмпл = 16 × AU) и FFmpeg-декодер. Выдача начинается с первого AU с major sync.
  *
@@ -45,7 +45,7 @@ class TrueHdReader(
     private var pesTimeUs = C.TIME_UNSET
     private var pesFlags = 0
 
-    /** Хвост AU, разрезанного границей PES; [carryTimeUs] — его метка времени. */
+    /** Хвост AU, разрезанного границей PES; [carryTimeUs] - его метка времени. */
     private var carry = ByteArray(0)
     private var carryTimeUs = C.TIME_UNSET
     private var synced = false
@@ -139,7 +139,7 @@ class TrueHdReader(
         while (pos + 4 <= length) {
             val auLength = (((data[pos].toInt() and 0x0F) shl 8) or (data[pos + 1].toInt() and 0xFF)) * 2
             if (auLength < 4 || auLength > MAX_AU_SIZE) {
-                // Потеряли синхронизацию — ищем следующий major sync.
+                // Потеряли синхронизацию - ищем следующий major sync.
                 synced = false
                 pos = findMajorSync(data, pos + 1, length)
                 if (pos < 0) return
@@ -147,7 +147,7 @@ class TrueHdReader(
                 continue
             }
             if (pos + auLength > length) break
-            // Время AU: от PES, в котором он начался (хвост — от прошлого PES).
+            // Время AU: от PES, в котором он начался (хвост - от прошлого PES).
             val timeUs = when {
                 pos < carryLength -> dataStartTimeUs
                 pesTimeUs == C.TIME_UNSET -> C.TIME_UNSET

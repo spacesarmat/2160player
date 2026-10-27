@@ -55,14 +55,14 @@ class EmbeddedPlayerViewModel(app: Application) : AndroidViewModel(app) {
 
 /**
  * Пример встраивания Compose-экрана [PlayerScreen] в собственную Activity:
- * сверху — своя панель приложения, под ней — плеер библиотеки.
+ * сверху - своя панель приложения, под ней - плеер библиотеки.
  */
 class EmbeddedPlayerActivity : ComponentActivity() {
 
     private val vm: EmbeddedPlayerViewModel by viewModels()
     private var inPip by mutableStateOf(false)
 
-    // Кнопка «Загрузить из файла…» в панели субтитров вызывает onPickSubtitle — выбор файла за нами.
+    // Кнопка «Загрузить из файла…» в панели субтитров вызывает onPickSubtitle - выбор файла за нами.
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.controller?.addExternalSubtitle(uri)
     }
@@ -104,7 +104,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Нажали «Домой» во время просмотра — уходим в картинку-в-картинке.
+        // Нажали «Домой» во время просмотра - уходим в картинку-в-картинке.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
         val state = vm.controller?.state?.value ?: return
@@ -135,7 +135,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         controller.saveProgress()
         if (isFinishing) { controller.player.pause(); return }
         if (inPip && !isChangingConfigurations) return            // в PiP играем дальше
-        // Аудио — если «Музыка и аудио в фоне», видео — если «Видео в фоне»; иначе пауза.
+        // Аудио - если «Музыка и аудио в фоне», видео - если «Видео в фоне»; иначе пауза.
         val s = controller.state.value
         val settings = Player2160.settings(this).current
         val background = controller.player.playWhenReady &&

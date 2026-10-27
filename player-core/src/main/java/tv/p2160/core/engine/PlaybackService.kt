@@ -33,7 +33,7 @@ internal object PlaybackSessions {
             .setSessionActivity(PendingIntent.getActivity(app, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build()
         this.controller = controller
-        // Плеер создаётся, пока приложение на экране, — запуск сервиса разрешён.
+        // Плеер создаётся, пока приложение на экране, - запуск сервиса разрешён.
         runCatching { app.startService(Intent(app, PlaybackService::class.java)) }
     }
 

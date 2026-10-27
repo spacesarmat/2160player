@@ -3,11 +3,11 @@ package tv.p2160.torrent
 import java.net.URLDecoder
 
 /**
- * Разобранная magnet-ссылка. Разбор свой (без нативной библиотеки) — чтобы проверить ввод
+ * Разобранная magnet-ссылка. Разбор свой (без нативной библиотеки) - чтобы проверить ввод
  * пользователя и показать имя сразу, ещё до запуска сессии.
  */
 data class MagnetLink(
-    /** v1 info-hash, 40 hex-символов в нижнем регистре (из hex или base32). null — только v2. */
+    /** v1 info-hash, 40 hex-символов в нижнем регистре (из hex или base32). null - только v2. */
     val infoHashV1: String?,
     /** v2 info-hash (SHA-256), 64 hex-символа. */
     val infoHashV2: String?,
@@ -30,7 +30,7 @@ data class MagnetLink(
 
         /**
          * Разбирает `magnet:?xt=urn:btih:…` или голый хеш (40 hex / 32 base32).
-         * null — не magnet или нет корректного info-hash.
+         * null - не magnet или нет корректного info-hash.
          */
         fun parse(input: String): MagnetLink? {
             val text = input.trim()

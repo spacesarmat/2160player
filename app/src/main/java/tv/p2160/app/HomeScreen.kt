@@ -96,7 +96,7 @@ fun HomeScreen(
     onOpenCamera: () -> Unit = {},
     onPlayCamera: (RemoteCamera) -> Unit = {},
 ) {
-    // Что играет на других устройствах в сети — опрашиваем раз в несколько секунд.
+    // Что играет на других устройствах в сети - опрашиваем раз в несколько секунд.
     val peers by Handoff.peers.collectAsState()
     var remote by remember { mutableStateOf<List<RemoteSession>>(emptyList()) }
     // Камеры, которые сейчас транслируют другие устройства с 2160 Player.
@@ -106,7 +106,7 @@ fun HomeScreen(
     val pairScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) {
         // Один цикл на весь экран: список устройств берём свежий на каждом шаге (перезапуск по каждому
-        // изменению списка мог не дать циклу дойти до конца). Камеры — первыми: у несопряжённых без сети.
+        // изменению списка мог не дать циклу дойти до конца). Камеры - первыми: у несопряжённых без сети.
         while (true) {
             cameras = withContext(Dispatchers.IO) { Handoff.fetchCameras() }
             remote = withContext(Dispatchers.IO) {
@@ -153,7 +153,7 @@ fun HomeScreen(
                 Triple(Icons.Default.Link, tr("app.link"), { urlDialog = true }),
                 Triple(Icons.Default.Settings, tr("app.settings"), onOpenSettings),
             ) + listOfNotNull(
-                // Трансляция камеры — только если камера есть (на ТВ обычно нет).
+                // Трансляция камеры - только если камера есть (на ТВ обычно нет).
                 Triple(Icons.Default.Videocam, tr("camera.tile"), onOpenCamera).takeIf { hasCamera },
             )
             val columns = if (LocalConfiguration.current.screenWidthDp >= 600) actions.size else 3
@@ -176,7 +176,7 @@ fun HomeScreen(
                 SectionTitle(tr("camera.network"))
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево -
                     // чтобы первая карточка стояла ровно под заголовком раздела.
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     modifier = Modifier.offset(x = (-8).dp),
@@ -208,7 +208,7 @@ fun HomeScreen(
                 SectionTitle(tr("handoff.other_devices"))
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево -
                     // чтобы первая карточка стояла ровно под заголовком раздела.
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     modifier = Modifier.offset(x = (-8).dp),
@@ -248,7 +248,7 @@ fun HomeScreen(
                 FocusCard(
                     onClick = onOpenContinue,
                     background = androidx.compose.ui.graphics.Color.Transparent,
-                    // Текст — ровно под остальными заголовками: компенсируем внутренний отступ кнопки.
+                    // Текст - ровно под остальными заголовками: компенсируем внутренний отступ кнопки.
                     modifier = Modifier.padding(top = 12.dp).offset(x = (-4).dp),
                 ) {
                     Row(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -260,7 +260,7 @@ fun HomeScreen(
                 }
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево —
+                    // Место под увеличение и рамку карточки в фокусе (пульт): иначе ряд их обрезает. Сдвиг влево -
                     // чтобы первая карточка стояла ровно под заголовком раздела.
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     modifier = Modifier.offset(x = (-8).dp),
@@ -339,7 +339,7 @@ private fun ContinueCard(
         mergeDescendants = true,
     ) {
         Row(Modifier.fillMaxSize()) {
-        // Обложка слева (постер 2:3 — по высоте карточки), если у файла она есть.
+        // Обложка слева (постер 2:3 - по высоте карточки), если у файла она есть.
         if (cover != null) CoverImage(cover, Modifier.fillMaxHeight().width(78.dp))
         Column(Modifier.weight(1f).fillMaxHeight().padding(14.dp)) {
             Text(
@@ -367,8 +367,8 @@ private fun ContinueCard(
 }
 
 /**
- * «Продолжить просмотр» целиком: все недосмотренные файлы сеткой (на телефоне — в одну колонку).
- * Нажатие — продолжить, долгое нажатие — убрать из списка, как и на главном экране.
+ * «Продолжить просмотр» целиком: все недосмотренные файлы сеткой (на телефоне - в одну колонку).
+ * Нажатие - продолжить, долгое нажатие - убрать из списка, как и на главном экране.
  */
 @Composable
 fun ContinueScreen(store: ResumeStore, onBack: () -> Unit, onPlayEntry: (ResumeEntry) -> Unit) {

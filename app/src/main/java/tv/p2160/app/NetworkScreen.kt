@@ -213,7 +213,7 @@ private fun ServerDialog(initial: SmbServer?, initialAddress: String?, servers: 
         name = name.trim().ifEmpty { share },
         host = host, share = share, path = path,
         username = user.trim(), password = password,
-        // Частая ошибка — вписать путь в поле домена; путь доменом быть не может.
+        // Частая ошибка - вписать путь в поле домена; путь доменом быть не может.
         domain = domain.trim().takeUnless { '\\' in it || '/' in it }.orEmpty(),
     )
 

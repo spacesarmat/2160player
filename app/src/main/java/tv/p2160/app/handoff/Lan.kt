@@ -10,7 +10,7 @@ import java.net.NetworkInterface
 
 /**
  * Только локальная сеть: Wi-Fi, Ethernet, точка доступа и USB-модем самого телефона. Мобильный интернет для
- * трансляций и раздачи файлов не используется — ни в адресах, которые мы показываем, ни для входящих
+ * трансляций и раздачи файлов не используется - ни в адресах, которые мы показываем, ни для входящих
  * подключений, ни для исходящих (SRT/RTMP).
  */
 object Lan {
@@ -19,7 +19,7 @@ object Lan {
 
     private fun cm(context: Context) = context.getSystemService(ConnectivityManager::class.java)
 
-    /** Сеть Wi-Fi или Ethernet (без мобильной и VPN поверх неё); null — такой нет. */
+    /** Сеть Wi-Fi или Ethernet (без мобильной и VPN поверх неё); null - такой нет. */
     fun network(context: Context): Network? {
         val cm = cm(context) ?: return null
         @Suppress("DEPRECATION")
@@ -53,7 +53,7 @@ object Lan {
         return lan
     }
 
-    /** IPv4 устройства в локальной сети (сначала Wi-Fi/Ethernet, потом точка доступа); null — локальной сети нет. */
+    /** IPv4 устройства в локальной сети (сначала Wi-Fi/Ethernet, потом точка доступа); null - локальной сети нет. */
     fun ipv4(context: Context): String? = ipv4s(context).firstOrNull()
 
     fun ipv4s(context: Context): List<String> {
@@ -113,7 +113,7 @@ object Lan {
         local != null && isPrivate(local) && isLocal(context, local)
 
     /**
-     * Адрес назначения (только IP-литерал, без DNS) лежит в подсети одного из локальных интерфейсов — туда
+     * Адрес назначения (только IP-литерал, без DNS) лежит в подсети одного из локальных интерфейсов - туда
      * пакеты уйдут по локальной сети даже без Wi-Fi (например, OBS подключён к точке доступа телефона).
      */
     fun inLocalSubnet(context: Context, host: String): Boolean {

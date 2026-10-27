@@ -101,7 +101,7 @@ import tv.p2160.torrent.TorrentStats
  * Экран торрентов: добавить magnet/.torrent, список торрентов, выбор файла → просмотр
  * во время загрузки. Единственная точка входа для навигации приложения.
  *
- * @param initialUri magnet: или content:// .torrent, пришедший извне (Intent) — добавляется сразу.
+ * @param initialUri magnet: или content:// .torrent, пришедший извне (Intent) - добавляется сразу.
  * @param onPlay запрос для плеера (`Player2160.play(context, request)`).
  */
 @Composable
@@ -143,7 +143,7 @@ fun TorrentScreen(
         if (uri != null) add { engine.addFromUri(uri) }
     }
 
-    // Уже обработанный внешний URI — чтобы поворот экрана не добавлял его повторно.
+    // Уже обработанный внешний URI - чтобы поворот экрана не добавлял его повторно.
     var handledUri by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(initialUri) {
         val uri = initialUri ?: return@LaunchedEffect
@@ -273,12 +273,12 @@ private fun TorrentList(
             if (torrents.isEmpty()) {
                 item(key = "empty") { Text(tr("torrent.empty"), color = colors.onSurfaceVariant) }
             }
-            // ТВ и широкий экран — две колонки (раздачи парами), телефон в портрете — одна: иначе текст не помещается.
+            // ТВ и широкий экран - две колонки (раздачи парами), телефон в портрете - одна: иначе текст не помещается.
             val columns = if (wide) 2 else 1
             items(torrents.chunked(columns), key = { it.first().id }) { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(IntrinsicSize.Min)) {
                     pair.forEach { t ->
-                        // Свайп вправо — продолжить раздачу, влево — остановить (кнопки — для пульта ТВ).
+                        // Свайп вправо - продолжить раздачу, влево - остановить (кнопки - для пульта ТВ).
                         SwipeStartStop(
                             onStart = { scope.launch { engine.start(t.id) } },
                             onStop = { scope.launch { engine.stop(t.id) } },
@@ -330,7 +330,7 @@ private fun Progress(text: String) {
     }
 }
 
-/** Что сейчас с раздачей — для цвета, значка и подписи карточки. */
+/** Что сейчас с раздачей - для цвета, значка и подписи карточки. */
 private enum class TorrentPhase { DOWNLOADING, SEEDING, PAUSED, STORED, METADATA, CHECKING, ERROR, WAIT_WIFI, WAIT_CHARGING, SEED_DONE }
 
 private val TorrentItem.phase: TorrentPhase
@@ -388,8 +388,8 @@ private fun phaseLabel(phase: TorrentPhase): String = when (phase) {
 
 /**
  * Карточка раздачи: цветная полоса и метка состояния, скорость/пиры, скачано из общего размера и
- * полоса прогресса. Цвет: качается — основной, раздаётся — зелёный, остановлена/неактивна — серый,
- * ошибка — красный, получение данных/проверка — синий.
+ * полоса прогресса. Цвет: качается - основной, раздаётся - зелёный, остановлена/неактивна - серый,
+ * ошибка - красный, получение данных/проверка - синий.
  */
 @Composable
 private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit, onToggle: () -> Unit, modifier: Modifier = Modifier) {
@@ -452,14 +452,14 @@ private fun TorrentRow(t: TorrentItem, onClick: () -> Unit, onRemove: () -> Unit
 }
 
 /**
- * Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе — или ждёт Wi-Fi/зарядку
+ * Идёт ли раздача (качает/раздаёт): есть в сессии и не на паузе - или ждёт Wi-Fi/зарядку
  * (тогда кнопка «Остановить» отменяет ожидание).
  */
 private val TorrentItem.running: Boolean
     get() = stats?.paused == false || hold == TorrentHold.WIFI || hold == TorrentHold.CHARGING
 
 /**
- * Строка со свайпами: вправо — [onStart], влево — [onStop]. Строка не исчезает: после действия
+ * Строка со свайпами: вправо - [onStart], влево - [onStop]. Строка не исчезает: после действия
  * возвращается на место, под ней на время свайпа видна подсказка со значком.
  */
 @Composable
@@ -704,7 +704,7 @@ private fun MagnetDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
         cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
     }.getOrNull()
 
-    // Если в буфере уже magnet — подставляем сразу.
+    // Если в буфере уже magnet - подставляем сразу.
     var text by remember { mutableStateOf(clipboard()?.takeIf(MagnetLink::looksLikeMagnet)?.trim().orEmpty()) }
     val valid = MagnetLink.looksLikeMagnet(text)
     AlertDialog(

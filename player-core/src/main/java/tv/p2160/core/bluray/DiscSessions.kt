@@ -33,8 +33,8 @@ class DiscSession internal constructor(
 }
 
 /**
- * Реестр открытых дисков. ISO читается через кэширующий источник (SMB/HTTP — сеть с задержкой),
- * папка BDMV — как обычные файлы.
+ * Реестр открытых дисков. ISO читается через кэширующий источник (SMB/HTTP - сеть с задержкой),
+ * папка BDMV - как обычные файлы.
  */
 object DiscSessions {
     private val sessions = ConcurrentHashMap<String, DiscSession>()
@@ -48,7 +48,7 @@ object DiscSessions {
             (uri.scheme in setOf("smb", "file") && !name.contains('.'))
     }
 
-    /** Открывает диск и основной фильм. Блокирующий вызов — только с фонового потока. */
+    /** Открывает диск и основной фильм. Блокирующий вызов - только с фонового потока. */
     fun open(context: Context, uri: Uri, headers: Map<String, String> = emptyMap()): DiscSession {
         val fs: DiscFileSystem = if (uri.lastPathSegment.orEmpty().endsWith(".iso", ignoreCase = true)) {
             UdfFileSystem(CachedRandomAccessSource(RandomAccessSources.open(context, uri, headers)))

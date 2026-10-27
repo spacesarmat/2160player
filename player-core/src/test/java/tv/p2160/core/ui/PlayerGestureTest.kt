@@ -90,7 +90,7 @@ class PlayerGestureTest {
         rule.onNodeWithTag("panel").assertDoesNotExist()
         assertEquals(0, backs)
 
-        // Панели нет — Back выходит.
+        // Панели нет - Back выходит.
         rule.runOnIdle { checkNotNull(dispatcher).onBackPressed() }
         assertEquals(1, backs)
     }
@@ -134,7 +134,7 @@ class PlayerGestureTest {
         val full = rule.onNodeWithTag("transport").getUnclippedBoundsInRoot().let { it.right - it.left }
         rule.mainClock.autoAdvance = false
         rule.onNodeWithTag("open").performClick()
-        // Жест садится в один кадр, открытие — в следующий. В кадре, где панель уже есть,
+        // Жест садится в один кадр, открытие - в следующий. В кадре, где панель уже есть,
         // полоса уже узкая: отступ не ждёт отдельной пересборки.
         var narrow = full
         var opened = false

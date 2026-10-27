@@ -2,8 +2,8 @@ package tv.p2160.app.handoff
 
 /**
  * Разбор заголовка `Range: bytes=…` для раздачи файла.
- * [partial] = false — заголовка не было, отдаём файл целиком (в том числе пустой: end < start, длина 0).
- * null — диапазон задан, но невыполним (ответ 416).
+ * [partial] = false - заголовка не было, отдаём файл целиком (в том числе пустой: end < start, длина 0).
+ * null - диапазон задан, но невыполним (ответ 416).
  */
 internal data class ByteRange(val start: Long, val endInclusive: Long, val partial: Boolean) {
     val length: Long get() = if (endInclusive < start) 0 else endInclusive - start + 1

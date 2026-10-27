@@ -47,9 +47,9 @@ import kotlin.math.abs
 
 /**
  * Окно, в которое должен попасть второй тап, чтобы считаться двойным.
- * Одиночный тап ждёт это окно и не показывает кнопки сразу: второй тап в центре — пауза,
- * по краям — перемотка. Немедленное переключение кнопок на первом тапе совпало бы с этим жестом
- * (пауза ещё и открыла бы панель, перемотка — спрятала или показала её).
+ * Одиночный тап ждёт это окно и не показывает кнопки сразу: второй тап в центре - пауза,
+ * по краям - перемотка. Немедленное переключение кнопок на первом тапе совпало бы с этим жестом
+ * (пауза ещё и открыла бы панель, перемотка - спрятала или показала её).
  */
 private const val DOUBLE_TAP_MS = 300L
 
@@ -58,11 +58,11 @@ private const val SERIES_MS = 800L
 
 /**
  * Слой жестов поверх видео:
- * - одиночный тап — [onSingleTap] (показать/скрыть управление);
- * - двойной тап по центру — [onCenterDoubleTap] (пауза);
- * - двойной тап по левой/правой трети — перемотка на [stepMs], каждый следующий
+ * - одиночный тап - [onSingleTap] (показать/скрыть управление);
+ * - двойной тап по центру - [onCenterDoubleTap] (пауза);
+ * - двойной тап по левой/правой трети - перемотка на [stepMs], каждый следующий
  *   быстрый тап с той же стороны добавляет ещё [stepMs]: 3 тапа = 2 шага, 5 тапов = 4 шага;
- * - щипок двумя пальцами — [onPinch] с итоговым масштабом жеста (>1 — развели, <1 — свели).
+ * - щипок двумя пальцами - [onPinch] с итоговым масштабом жеста (>1 - развели, <1 - свели).
  */
 @Composable
 fun TapSeekLayer(
@@ -74,17 +74,17 @@ fun TapSeekLayer(
     /** Горизонтальный свайп: смещение пальца в долях ширины экрана (−1…1). */
     onScrub: (fraction: Float) -> Unit,
     onScrubEnd: () -> Unit,
-    /** Удержание пальца: true — начать временное 2×, false — вернуть скорость. */
+    /** Удержание пальца: true - начать временное 2×, false - вернуть скорость. */
     onSpeedBoost: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onPinch: (zoom: Float) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
-    var side by remember { mutableIntStateOf(0) }          // -1 — назад, 1 — вперёд, 0 — серии нет
+    var side by remember { mutableIntStateOf(0) }          // -1 - назад, 1 - вперёд, 0 - серии нет
     var steps by remember { mutableIntStateOf(0) }
     var lastTapAt by remember { mutableLongStateOf(0L) }
     var pendingZone by remember { mutableIntStateOf(0) }
-    val pending = remember { arrayOfNulls<Job>(2) }        // [0] — отложенный одиночный тап, [1] — скрытие подсказки
+    val pending = remember { arrayOfNulls<Job>(2) }        // [0] - отложенный одиночный тап, [1] - скрытие подсказки
     val step by rememberUpdatedState(stepMs)
     val single by rememberUpdatedState(onSingleTap)
     val centerDouble by rememberUpdatedState(onCenterDoubleTap)
@@ -121,7 +121,7 @@ fun TapSeekLayer(
             return
         }
 
-        // Второй тап быстро после первого и в той же зоне — двойной.
+        // Второй тап быстро после первого и в той же зоне - двойной.
         val firstTap = pending[0]
         if (firstTap?.isActive == true && sinceLast < DOUBLE_TAP_MS && zone == pendingZone) {
             firstTap.cancel()
@@ -151,7 +151,7 @@ fun TapSeekLayer(
     val scrubEnd by rememberUpdatedState(onScrubEnd)
     val boost by rememberUpdatedState(onSpeedBoost)
     val pinch by rememberUpdatedState(onPinch)
-    // Края экрана, где Android ловит жест «Назад» (жестовая навигация); при кнопках — 0.
+    // Края экрана, где Android ловит жест «Назад» (жестовая навигация); при кнопках - 0.
     val density = LocalDensity.current
     val dir = LocalLayoutDirection.current
     val gestures = WindowInsets.systemGestures
@@ -164,7 +164,7 @@ fun TapSeekLayer(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    // Свайп от края — системный «Назад», а не перемотка.
+                    // Свайп от края - системный «Назад», а не перемотка.
                     val fromEdge = down.position.x < edgeLeft || down.position.x > size.width - edgeRight
                     val slop = viewConfiguration.touchSlop
                     val longPress = viewConfiguration.longPressTimeoutMillis
@@ -174,7 +174,7 @@ fun TapSeekLayer(
                     var zoom = 1f
                     var last = down.position
                     while (true) {
-                        // Ждём событие; если палец неподвижен дольше longPress — это удержание (2×).
+                        // Ждём событие; если палец неподвижен дольше longPress - это удержание (2×).
                         val event = if (!dragging && !boosted && !pinching) {
                             withTimeoutOrNull(longPress) { awaitPointerEvent() }
                         } else {
@@ -185,7 +185,7 @@ fun TapSeekLayer(
                             boost(true)
                             continue
                         }
-                        // Второй палец — это щипок: отменяем перемотку/ускорение и копим масштаб до отпускания.
+                        // Второй палец - это щипок: отменяем перемотку/ускорение и копим масштаб до отпускания.
                         val pressed = event.changes.count { it.pressed }
                         if (pressed >= 2 || pinching) {
                             if (!pinching) {

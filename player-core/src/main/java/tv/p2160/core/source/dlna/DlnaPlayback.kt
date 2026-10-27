@@ -12,7 +12,7 @@ import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.MediaEntry
 import tv.p2160.core.api.PlaybackRequest
 
-/** Внешние субтитры для воспроизведения: [name] с расширением — по нему плеер определяет формат. */
+/** Внешние субтитры для воспроизведения: [name] с расширением - по нему плеер определяет формат. */
 data class DlnaSubtitleSpec(val url: String, val name: String, val language: String?)
 
 /** Платформонезависимое описание того, что играть (для тестов без android.net.Uri). */

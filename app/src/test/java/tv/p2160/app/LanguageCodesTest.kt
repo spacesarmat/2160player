@@ -21,7 +21,7 @@ class LanguageCodesTest {
         val ru = LanguageCodes.displayName("en", Locale("ru", "RU"))
         assertEquals("английский", ru.lowercase(Locale("ru", "RU")))
         assertEquals("ru", LanguageCodes.displayName("ru", Locale.ENGLISH).let { if (it.equals("russian", true)) "ru" else it }.let { "ru" })
-        // Английское имя русского языка — Russian, не код.
+        // Английское имя русского языка - Russian, не код.
         assertEquals("Russian", LanguageCodes.displayName("ru", Locale.ENGLISH))
     }
 }

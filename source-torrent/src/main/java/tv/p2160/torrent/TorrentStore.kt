@@ -15,7 +15,7 @@ data class StoredTorrent(
     /** Скачано байт (последнее известное значение). */
     val bytesDone: Long = 0,
     val totalSize: Long = 0,
-    /** Есть ли данные на диске (после очистки — false, остаются только метаданные). */
+    /** Есть ли данные на диске (после очистки - false, остаются только метаданные). */
     val hasData: Boolean = false,
     val files: List<TorrentFile> = emptyList(),
 )

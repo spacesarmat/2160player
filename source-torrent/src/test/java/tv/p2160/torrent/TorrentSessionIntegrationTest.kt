@@ -15,7 +15,7 @@ import java.nio.file.Files
  * Интеграционный тест с настоящей сетью и нативным libtorrent (Windows x64).
  * Запуск: `P2160_TORRENT_IT=1 ./gradlew :source-torrent:testDebugUnitTest --tests '*Integration*'`.
  *
- * Big Buck Bunny (CC BY 3.0, Blender Foundation) — торрент WebTorrent с веб-сидом.
+ * Big Buck Bunny (CC BY 3.0, Blender Foundation) - торрент WebTorrent с веб-сидом.
  */
 class TorrentSessionIntegrationTest {
 

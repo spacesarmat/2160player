@@ -13,6 +13,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.platform.testTag
@@ -136,6 +137,29 @@ class TransportTickTest {
         val hourWidth = widthFlushWithTheBar()
         assertEquals("−1:00:00 / 1:00:00", description("time-remaining"))
         assertTrue(hourWidth > shortWidth)
+    }
+
+    @Test
+    fun unknownDurationShowsPlaceholderInsteadOfLive() {
+        rule.setContent {
+            MaterialTheme {
+                Column(Modifier.width(400.dp)) {
+                    TransportReadout(
+                        clock = TransportClock(0L, 0L),
+                        state = PlayerUiState(durationMs = 0L, isBuffering = false, isLive = false),
+                        theme = PlayerThemes.Cinema,
+                        stepMs = 10_000L,
+                        onSeek = {},
+                        onInteraction = {},
+                        onScrub = {},
+                        onGoTo = {},
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        assertEquals(UNKNOWN_TIME, description("time-elapsed"))
+        assertEquals(0, rule.onAllNodesWithTag("time-remaining", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
     @Test

@@ -69,7 +69,7 @@ private fun buildItem(s: ItemSpec): ByteArray {
 /**
  * Крошечный UDF-образ: корень → BDMV → PLAYLIST/00001.mpls, STREAM/00001.m2ts (фрагментирован,
  * с продолжением списка дескрипторов), и встроенный в ICB файл с именем в UTF-16.
- * [metadata] = true — UDF 2.50 с разделом метаданных, иначе UDF 1.02.
+ * [metadata] = true - UDF 2.50 с разделом метаданных, иначе UDF 1.02.
  */
 class UdfImageBuilder(private val metadata: Boolean, private val mpls: ByteArray) {
     val image = ByteArray(TOTAL * BS)

@@ -159,7 +159,7 @@ class SyntheticM2tsTest {
         reader.createTracks(output, TsPayloadReader.TrackIdGenerator(1, 0x1101, 0x2000))
         var timeUs = 1_000_000L
         var unitIndex = 0
-        // Начинаем с хвоста AU без major sync — читатель должен дождаться синхронизации.
+        // Начинаем с хвоста AU без major sync - читатель должен дождаться синхронизации.
         val firstSync = units.indexOfFirst(::hasMajorSync)
         unitIndex = firstSync + 1
         for (frame in coreFrames.take(100)) {

@@ -16,7 +16,7 @@ import kotlin.math.abs
 
 /**
  * Реальные Blu-ray файлы с NAS (Y:). Читаем только начало/окна по десяткам МБ и хвост для длительности.
- * Нет файлов — тесты пропускаются.
+ * Нет файлов - тесты пропускаются.
  */
 class RealBlurayFilesTest {
 
@@ -70,7 +70,7 @@ class RealBlurayFilesTest {
         assertTrue(keyTimes.size >= 2)
         assertEquals(keyTimes.sorted(), keyTimes)
 
-        // Длительность по PCR (ffmpeg: 02:04:11.39) — читали только начало и ~115 КБ хвоста.
+        // Длительность по PCR (ffmpeg: 02:04:11.39) - читали только начало и ~115 КБ хвоста.
         val seekMap = driver.output.seekMap!!
         assertTrue(seekMap.isSeekable)
         assertTrue("длительность ${seekMap.durationUs}", abs(seekMap.durationUs - 7_451_390_000L) < 1_000_000)
@@ -96,7 +96,7 @@ class RealBlurayFilesTest {
             val readMb = (source.physicalBytesRead - readBefore) / 1e6
             println("seek %.1f с → ключевой кадр %.3f с, бинарный поиск %d шагов, прочитано %.1f МБ".format(
                 targetUs / 1e6, key.timeUs / 1e6, driver.seekPositions.size - stepsBefore, readMb))
-            // TsBinarySearchSeeker останавливается до цели, первый ключевой кадр — в пределах GOP.
+            // TsBinarySearchSeeker останавливается до цели, первый ключевой кадр - в пределах GOP.
             assertTrue("ключевой кадр ${key.timeUs} для цели $targetUs", key.timeUs in (targetUs - 3_000_000)..(targetUs + 3_000_000))
             assertTrue("seek прочитал $readMb МБ", readMb < 64)
         }

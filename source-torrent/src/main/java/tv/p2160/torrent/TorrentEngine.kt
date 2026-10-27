@@ -43,9 +43,9 @@ data class TorrentItem(val stored: StoredTorrent, val stats: TorrentStats?, val 
 
 /**
  * Точка входа модуля: сессия libtorrent, список торрентов, выбор файла, URI для плеера,
- * очистка кэша. Сессия запускается лениво — при первом добавлении/открытии торрента.
+ * очистка кэша. Сессия запускается лениво - при первом добавлении/открытии торрента.
  *
- * Плеер читает файлы через `torrent://<id>/<fileIndex>/<имя>` — см. [install] и [TorrentDataSource].
+ * Плеер читает файлы через `torrent://<id>/<fileIndex>/<имя>` - см. [install] и [TorrentDataSource].
  */
 class TorrentEngine private constructor(context: Context) {
     private val appContext = context.applicationContext
@@ -54,13 +54,13 @@ class TorrentEngine private constructor(context: Context) {
     private val dataRoot: File = File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "torrent-data")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val monitor = DeviceMonitor(appContext)
-    /** Сеть (с оплатой трафика или нет) и зарядка — от них зависят правила раздачи. */
+    /** Сеть (с оплатой трафика или нет) и зарядка - от них зависят правила раздачи. */
     val device: StateFlow<DeviceState> = monitor.state
 
-    /** Причины пауз по правилам; [held] — торренты, которые мы сами поставили на паузу и вернём. */
+    /** Причины пауз по правилам; [held] - торренты, которые мы сами поставили на паузу и вернём. */
     private val holds = ConcurrentHashMap<String, TorrentHold>()
     private val held: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    /** Пользователь продолжил раздачу, уже выполнившую [SeedPolicy], — больше её не останавливаем. */
+    /** Пользователь продолжил раздачу, уже выполнившую [SeedPolicy], - больше её не останавливаем. */
     private val seedExempt: MutableSet<String> = ConcurrentHashMap.newKeySet()
     /** Согласие смотреть торренты по мобильному интернету в режиме [NetworkMode.WIFI_ONLY] (до возврата на Wi-Fi). */
     @Volatile private var mobileAllowed = false
@@ -97,7 +97,7 @@ class TorrentEngine private constructor(context: Context) {
                 cleanup()
             }
         }
-        // Сменилась сеть или зарядка — пересчитать лимиты и паузы сразу, не дожидаясь тика.
+        // Сменилась сеть или зарядка - пересчитать лимиты и паузы сразу, не дожидаясь тика.
         scope.launch {
             device.drop(1).collect { state ->
                 if (!state.metered) mobileAllowed = false
@@ -135,7 +135,7 @@ class TorrentEngine private constructor(context: Context) {
                 val now = System.currentTimeMillis()
                 session.ids().forEach { id ->
                     val stats = session.stats(id) ?: return@forEach
-                    // Неиспользуемые торренты ставим на паузу — не качать фильм целиком «в фоне».
+                    // Неиспользуемые торренты ставим на паузу - не качать фильм целиком «в фоне».
                     if (!stats.paused && stats.readers == 0 && !session.keepActive(id) && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
                     if (n % 15 == 0 && stats.hasMetadata) store.update(id) { it.copy(bytesDone = stats.wantedDone) }
                 }
@@ -149,7 +149,7 @@ class TorrentEngine private constructor(context: Context) {
 
     /**
      * Правила раздачи (раз в секунду и при смене сети/зарядки/настроек):
-     * - [NetworkMode.WIFI_ONLY] по сети с оплатой трафика без согласия — пауза всему;
+     * - [NetworkMode.WIFI_ONLY] по сети с оплатой трафика без согласия - пауза всему;
      * - иначе просматриваемый сейчас торрент работает всегда, а фоновые встают на паузу по сети
      *   ([NetworkMode.SEED_WIFI]) и без зарядки ([TorrentPrefs.seedOnlyCharging]);
      * - скачанный и не просматриваемый торрент останавливается по [SeedPolicy].
@@ -167,7 +167,7 @@ class TorrentEngine private constructor(context: Context) {
             val stats = session.stats(id) ?: return@forEach
             val watching = stats.readers > 0
             if (holds[id] == TorrentHold.SEED_LIMIT) {
-                // Снова запущен (просмотр, «Продолжить») — метка больше не верна.
+                // Снова запущен (просмотр, «Продолжить») - метка больше не верна.
                 if (stats.paused) return@forEach
                 holds.remove(id)
             }
@@ -189,7 +189,7 @@ class TorrentEngine private constructor(context: Context) {
                     held.add(id)
                     session.pause(id)
                 }
-                // Метка — только для поставленных на паузу правилами (не для остановленных пользователем).
+                // Метка - только для поставленных на паузу правилами (не для остановленных пользователем).
                 if (id in held) holds[id] = hold else holds.remove(id)
             } else {
                 holds.remove(id)
@@ -244,7 +244,7 @@ class TorrentEngine private constructor(context: Context) {
         store.update(id) { it.copy(lastOpenedAt = now) } ?: store.put(
             StoredTorrent(id, magnet.displayName ?: session.name(id) ?: id, uri, now, now)
         )
-        // Метаданные могли уже быть (повторное добавление) — сохраним список файлов.
+        // Метаданные могли уже быть (повторное добавление) - сохраним список файлов.
         session.files(id)?.let { files -> store.update(id) { it.copy(files = files, totalSize = files.sumOf(TorrentFile::size)) } }
         refresh()
         id
@@ -318,7 +318,7 @@ class TorrentEngine private constructor(context: Context) {
 
     // ---------------------------------------------------------------- метаданные и файлы
 
-    /** Ждёт метаданные (блокирует корутину на IO). null — не дождались за [timeoutMs]. */
+    /** Ждёт метаданные (блокирует корутину на IO). null - не дождались за [timeoutMs]. */
     suspend fun awaitFiles(id: String, timeoutMs: Long): List<TorrentFile>? = withContext(Dispatchers.IO) {
         if (!ensureActive(id)) throw IOException("unknown torrent $id")
         if (session.awaitMetadata(id, timeoutMs)) session.files(id) else null
@@ -331,7 +331,7 @@ class TorrentEngine private constructor(context: Context) {
 
     /**
      * Выбирает файл для просмотра (остальные файлы перестают качаться) и возвращает запрос
-     * для плеера: все видео торрента плейлистом, старт — с выбранного; субтитры из торрента
+     * для плеера: все видео торрента плейлистом, старт - с выбранного; субтитры из торрента
      * подключаются к видео с тем же базовым именем.
      */
     suspend fun prepare(id: String, fileIndex: Int): PlaybackRequest = withContext(Dispatchers.IO) {
@@ -375,7 +375,7 @@ class TorrentEngine private constructor(context: Context) {
 
     // ---------------------------------------------------------------- удаление и очистка
 
-    /** Удаляет торрент из списка; [deleteFiles] — вместе со скачанными данными. */
+    /** Удаляет торрент из списка; [deleteFiles] - вместе со скачанными данными. */
     /** Остановить раздачу: ни загрузки, ни отдачи (данные остаются; просмотр продолжит её сам). */
     suspend fun stop(id: String) = withContext(Dispatchers.IO) {
         held.remove(id)
@@ -386,11 +386,11 @@ class TorrentEngine private constructor(context: Context) {
 
     /**
      * Продолжить раздачу: вернуть в сессию (если она «неактивна» после перезапуска), качать и раздавать
-     * без автопаузы. false — торрент не удалось восстановить.
+     * без автопаузы. false - торрент не удалось восстановить.
      */
     suspend fun start(id: String): Boolean = withContext(Dispatchers.IO) {
         if (!ensureActive(id)) return@withContext false
-        // Продолжили вручную раздачу, уже выполнившую правило «сколько раздавать», — не останавливаем снова.
+        // Продолжили вручную раздачу, уже выполнившую правило «сколько раздавать», - не останавливаем снова.
         val stats = session.stats(id)
         if (holds.remove(id) == TorrentHold.SEED_LIMIT ||
             (stats != null && stats.state == TorrentStats.State.FINISHED && seedDone(settings.state.value.seedPolicy, stats))
@@ -422,7 +422,7 @@ class TorrentEngine private constructor(context: Context) {
 
     private fun deleteDataDir(id: String) {
         val dir = dataDir(id)
-        // libtorrent удаляет файлы асинхронно — добиваем остатки с небольшой задержкой.
+        // libtorrent удаляет файлы асинхронно - добиваем остатки с небольшой задержкой.
         scope.launch {
             repeat(3) {
                 delay(1_500)
@@ -473,7 +473,7 @@ class TorrentEngine private constructor(context: Context) {
         }
 
         /**
-         * Регистрирует схему `torrent://` в плеере. Вызывать в Application.onCreate — тогда
+         * Регистрирует схему `torrent://` в плеере. Вызывать в Application.onCreate - тогда
          * и «Продолжить просмотр» из истории откроет торрент. Нативную сессию не запускает.
          */
         fun install(context: Context) {

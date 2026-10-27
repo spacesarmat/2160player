@@ -478,7 +478,7 @@ fun SettingsScreen(
 private class LangPick(val title: String, val selected: List<String>, val onConfirm: (List<String>) -> Unit)
 
 private fun languageValue(codes: List<String>): String =
-    codes.joinToString(", ") { LanguageCodes.displayName(it) }.ifBlank { "—" }
+    codes.joinToString(", ") { LanguageCodes.displayName(it) }.ifBlank { "-" }
 
 @Composable
 private fun SettingRow(
@@ -486,7 +486,7 @@ private fun SettingRow(
     value: String? = null,
     hint: String? = null,
     modifier: Modifier = Modifier,
-    /** Значок слева (фирменным цветом) — для пунктов-ссылок вроде «Справка», «Автор». */
+    /** Значок слева (фирменным цветом) - для пунктов-ссылок вроде «Справка», «Автор». */
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: () -> Unit,
 ) {
@@ -497,8 +497,8 @@ private fun SettingRow(
                 Icon(icon, null, tint = colors.primary)
                 Spacer(Modifier.size(16.dp))
             }
-            // Длинное значение справа сжимает заголовок и подсказку — тогда показываем его под заголовком.
-            // Короткое — у правого края карточки (колонка забирает ширину), как до сужения колонки в 0.2.10.
+            // Длинное значение справа сжимает заголовок и подсказку - тогда показываем его под заголовком.
+            // Короткое - у правого края карточки (колонка забирает ширину), как до сужения колонки в 0.2.10.
             val inline = value != null && value.length <= 14
             Column(Modifier.weight(1f)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)

@@ -3,7 +3,7 @@ package tv.p2160.app
 import java.net.Inet4Address
 import java.net.InetAddress
 
-/** Адрес, который пришёл из mDNS, уже разобранный — чтобы выбрать его без сети и без Android NSD. */
+/** Адрес, который пришёл из mDNS, уже разобранный - чтобы выбрать его без сети и без Android NSD. */
 data class HostCandidate(
     val address: String,
     val ipv4: Boolean,
@@ -16,7 +16,7 @@ data class HostCandidate(
  * Какой адрес подставить в SMB из ответа mDNS.
  * IPv4 (не link-local, затем любой) важнее hostname, hostname важнее IPv6.
  * Link-local IPv6 (`fe80::…%wlan0`) в поле адреса не попадает: SMB по нему с телефона обычно не открывается,
- * а выглядит как мусор. Если IPv4 нет — имя хоста или `<имя службы>.local`.
+ * а выглядит как мусор. Если IPv4 нет - имя хоста или `<имя службы>.local`.
  */
 object SmbDiscovery {
     fun preferredHost(candidates: List<HostCandidate>, serviceName: String): String? {

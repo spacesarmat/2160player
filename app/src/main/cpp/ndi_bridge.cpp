@@ -135,7 +135,7 @@ Java_tv_p2160_app_camera_Ndi_nativeSendVideo(JNIEnv* env, jclass, jlong handle, 
     frame.frame_rate_D = fpsD;
     frame.picture_aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
     frame.frame_format_type = NDIlib_frame_format_type_progressive;
-    // Единицы NDI — 100 нс. Long.MAX_VALUE совпадает с NDIlib_send_timecode_synthesize.
+    // Единицы NDI - 100 нс. Long.MAX_VALUE совпадает с NDIlib_send_timecode_synthesize.
     frame.timecode = static_cast<int64_t>(timecode);
     frame.p_data = data;
     frame.line_stride_in_bytes = stride;

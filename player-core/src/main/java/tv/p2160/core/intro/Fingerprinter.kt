@@ -10,7 +10,7 @@ import kotlin.math.sin
 /**
  * Аудио-отпечаток участка файла: по одному 32-битному слову на кадр и маска надёжных бит.
  * Ненадёжные биты (полосы у порога шума) при сравнении считаются «половиной совпадения»,
- * кадр с маской 0 (тишина, края) — случайным. Так тихие и разреженные места не дают ложного сходства.
+ * кадр с маской 0 (тишина, края) - случайным. Так тихие и разреженные места не дают ложного сходства.
  *
  * @param startMs время начала участка в файле.
  * @param hopMs шаг между кадрами.
@@ -39,7 +39,7 @@ class Fingerprint(
     fun slice(from: Int, to: Int): Fingerprint =
         Fingerprint(startMs + (from * hopMs).toLong(), hopMs, frames.copyOfRange(from, to), masks.copyOfRange(from, to), leadMs)
 
-    /** Расстояние между кадром [i] и кадром [j] отпечатка [other], 0…32 (16 — случайные кадры). */
+    /** Расстояние между кадром [i] и кадром [j] отпечатка [other], 0…32 (16 - случайные кадры). */
     fun distance(i: Int, other: Fingerprint, j: Int): Int = bitDistance(frames[i], masks[i], other.frames[j], other.masks[j])
 
     companion object {
@@ -53,7 +53,7 @@ class Fingerprint(
 /**
  * Отпечатки в духе Philips/Chromaprint: окно 4096 сэмплов (~0.37 с при 11 025 Гц), шаг ~0.12 с,
  * 32 логарифмические полосы 300–3000 Гц, объединённые в 16 пар и сглаженные по 3 кадрам.
- * 16 бит — форма спектра (знак «лапласиана» по частоте), 16 бит — тренд энергии каждой пары (t+2 против t−2).
+ * 16 бит - форма спектра (знак «лапласиана» по частоте), 16 бит - тренд энергии каждой пары (t+2 против t−2).
  * Полосы тише самой громкой на ~39 дБ обрезаются: пустые полосы не дают случайных бит.
  * Устойчиво к громкости, сжатию, тихому фону; на реальных сериях заметно надёжнее классического Philips.
  */
@@ -69,7 +69,7 @@ class Fingerprinter(val config: Config = Config()) {
         val silenceDb: Double = -55.0,
     ) {
         val hopMs: Double get() = hop * 1000.0 / sampleRate
-        /** Признаки симметричны относительно кадра — его время соответствует центру окна. */
+        /** Признаки симметричны относительно кадра - его время соответствует центру окна. */
         val leadMs: Double get() = frameSize * 500.0 / sampleRate
     }
 
@@ -83,7 +83,7 @@ class Fingerprinter(val config: Config = Config()) {
         e
     }
 
-    /** Потоковое вычисление: PCM подаётся кусками, память — одно окно и несколько кадров признаков. */
+    /** Потоковое вычисление: PCM подаётся кусками, память - одно окно и несколько кадров признаков. */
     fun stream(startMs: Long = 0L): Stream = Stream(startMs)
 
     fun fingerprint(samples: ShortArray, startMs: Long = 0L): Fingerprint =
@@ -128,7 +128,7 @@ class Fingerprinter(val config: Config = Config()) {
         }
 
         fun finish(): Fingerprint {
-            // Хвостовым кадрам не хватает «будущего» — оставляем их пустыми, индексы не сдвигаются.
+            // Хвостовым кадрам не хватает «будущего» - оставляем их пустыми, индексы не сдвигаются.
             while (count < frames) emit(0, 0)
             return Fingerprint(startMs, config.hopMs, out.copyOf(count), outMask.copyOf(count), config.leadMs)
         }

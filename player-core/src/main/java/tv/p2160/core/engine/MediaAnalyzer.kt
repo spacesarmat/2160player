@@ -55,7 +55,7 @@ internal class MediaAnalyzer(private val context: Context) {
             when (uri.scheme?.lowercase()) {
                 "content", "android.resource" -> MediaInfoBuilder().from(context, uri).build()
                 "file" -> MediaInfoBuilder().from(uri.path ?: return null).build()
-                // SMB FFmpeg не умеет — отдаём ему дескриптор с произвольным доступом.
+                // SMB FFmpeg не умеет - отдаём ему дескриптор с произвольным доступом.
                 "smb" -> SeekableFiles.open(context, uri)?.let { fd ->
                     proxyFd = fd
                     MediaInfoBuilder().from(fd).build()

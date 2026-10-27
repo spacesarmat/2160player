@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class NetworkMode {
     /** Качать и раздавать по любой сети. */
     ANY,
-    /** Просмотр — по любой сети; фоновые раздачи и отдача — только по безлимитной (Wi-Fi). */
+    /** Просмотр - по любой сети; фоновые раздачи и отдача - только по безлимитной (Wi-Fi). */
     SEED_WIFI,
-    /** Только по безлимитной сети; на мобильном интернете — после согласия ([TorrentEngine.allowMobileData]). */
+    /** Только по безлимитной сети; на мобильном интернете - после согласия ([TorrentEngine.allowMobileData]). */
     WIFI_ONLY,
 }
 
@@ -29,25 +29,25 @@ enum class SeedPolicy {
 
 /** Пользовательские настройки торрентов. */
 data class TorrentPrefs(
-    /** Лимит кэша, ГБ; 0 — без лимита. */
+    /** Лимит кэша, ГБ; 0 - без лимита. */
     val cacheLimitGb: Int = 20,
     /** Хранить скачанное после просмотра (иначе данные удаляются через сутки). */
     val keepFiles: Boolean = false,
     /** Удалять торренты, не открывавшиеся столько дней. */
     val maxAgeDays: Int = 7,
     val maxConnections: Int = 200,
-    /** Ограничение отдачи, КБ/с; 0 — без ограничения. */
+    /** Ограничение отдачи, КБ/с; 0 - без ограничения. */
     val uploadLimitKb: Int = 0,
     val network: NetworkMode = NetworkMode.SEED_WIFI,
     val seedPolicy: SeedPolicy = SeedPolicy.ALWAYS,
-    /** Фоновые раздачи — только на зарядке (устройства без батареи считаются заряжающимися). */
+    /** Фоновые раздачи - только на зарядке (устройства без батареи считаются заряжающимися). */
     val seedOnlyCharging: Boolean = false,
-    /** Ограничение загрузки по сети с оплатой трафика, КБ/с; 0 — без ограничения. */
+    /** Ограничение загрузки по сети с оплатой трафика, КБ/с; 0 - без ограничения. */
     val mobileDownloadLimitKb: Int = 0,
 ) {
     /**
      * Настройки сессии с учётом сети: по сети с оплатой трафика (кроме режима [NetworkMode.ANY]) отдача
-     * урезается до 16 КБ/с — совсем выключить её у качающегося торрента нельзя (пиры перестанут отдавать
+     * урезается до 16 КБ/с - совсем выключить её у качающегося торрента нельзя (пиры перестанут отдавать
      * нам), и действует [mobileDownloadLimitKb].
      */
     fun sessionConfig(metered: Boolean = false): SessionConfig = SessionConfig(
@@ -79,7 +79,7 @@ class TorrentSettings internal constructor(context: Context) {
     private val _state = MutableStateFlow(load())
     val state: StateFlow<TorrentPrefs> = _state.asStateFlow()
 
-    /** Слабое устройство: по умолчанию меньше соединений (каждое — буферы в памяти). */
+    /** Слабое устройство: по умолчанию меньше соединений (каждое - буферы в памяти). */
     val lowMemory: Boolean = tv.p2160.core.api.DeviceProfile.lowMemory(context)
 
     private fun load(): TorrentPrefs {

@@ -17,17 +17,17 @@ class PidTrackHints(
 
 /**
  * ExtractorsFactory: первым идёт [M2tsExtractor] (TS 188 и M2TS 192 байта, типы потоков Blu-ray),
- * за ним — все экстракторы [fallback] для прочих форматов.
+ * за ним - все экстракторы [fallback] для прочих форматов.
  *
  * Штатный TsExtractor M2TS не распознаёт вовсе (sniff ищет sync-байты с шагом 188), поэтому
- * [M2tsExtractor] стоит первым всегда: его sniff — это peek ~1,2 КБ.
+ * [M2tsExtractor] стоит первым всегда: его sniff - это peek ~1,2 КБ.
  *
  * Настройки субтитров, которые DefaultMediaSourceFactory проталкивает в фабрику
  * ([setSubtitleParserFactory], [experimentalSetTextTrackTranscodingEnabled]), применяются и к
  * [M2tsExtractor], и к [fallback]. По умолчанию (как в Media3 ≥ 1.4) PGS транскодируется в cues
  * при извлечении через [DefaultSubtitleParserFactory] → PgsParser.
  *
- * @param hintsForUri язык/подписи дорожек по PID для данного URI (null — брать из PMT).
+ * @param hintsForUri язык/подписи дорожек по PID для данного URI (null - брать из PMT).
  * @param forceHdmv трактовать и 188-байтный TS как Blu-ray (0x80 LPCM, 0x86 DTS-HD MA).
  */
 @OptIn(UnstableApi::class)
@@ -63,7 +63,7 @@ class M2tsExtractorsFactory @JvmOverloads constructor(
     override fun createExtractors(uri: Uri, responseHeaders: Map<String, List<String>>): Array<Extractor> =
         arrayOf(createM2tsExtractor(uri), *fallback.createExtractors(uri, responseHeaders))
 
-    /** Отдельный экстрактор — например, для ProgressiveMediaSource.Factory с заведомо M2TS. */
+    /** Отдельный экстрактор - например, для ProgressiveMediaSource.Factory с заведомо M2TS. */
     fun createM2tsExtractor(uri: Uri?): M2tsExtractor {
         val hints = hintsForUri?.invoke(uri)
         return M2tsExtractor(

@@ -22,14 +22,14 @@ import androidx.media3.extractor.ts.TsPayloadReader
  * - 192 (M2TS/MTS/AVCHD): штатный [TsExtractor] получает «очищенный» поток через
  *   [M2tsPacketInput]; позиции в seek-карте и в RESULT_SEEK переводятся 188↔192,
  *   поэтому длительность (по PCR в начале/конце файла) и бинарный поиск по PCR работают
- *   точно и для файлов в десятки ГБ — читаются только окна по ~110 КБ;
+ *   точно и для файлов в десятки ГБ - читаются только окна по ~110 КБ;
  * - 188 (обычный TS): [TsExtractor] работает напрямую.
  *
  * Окно поиска PCR (длительность, бинарный поиск) для M2TS расширено до [M2TS_TIMESTAMP_SEARCH_BYTES]:
  * на Blu-ray PCR идёт отдельным PID с интервалом до 100 мс, при 48 Мбит/с это ~600 КБ, а штатных
- * 600 × 188 = 110 КБ не хватает — без PCR в окне файл становится «не перематываемым».
+ * 600 × 188 = 110 КБ не хватает - без PCR в окне файл становится «не перематываемым».
  *
- * @param payloadReaderFactory фабрика читателей ES; аргумент — true, если поток M2TS
+ * @param payloadReaderFactory фабрика читателей ES; аргумент - true, если поток M2TS
  *   (тогда типы 0x80/0x86 трактуются по-блюрейному: LPCM и DTS-HD MA).
  */
 @OptIn(UnstableApi::class)
@@ -93,7 +93,7 @@ class M2tsExtractor(
 
     private fun createInner(input: ExtractorInput): TsExtractor? {
         val detected = detect(input)
-        // Не распознали — отдаём как обычный TS: TsExtractor сам найдёт sync-байты.
+        // Не распознали - отдаём как обычный TS: TsExtractor сам найдёт sync-байты.
         val (size, phase) = detected ?: Detection(TsExtractor.TS_PACKET_SIZE, 0)
         packetSize = size
         val isM2ts = size == M2tsPacketInput.M2TS_PACKET_SIZE
@@ -125,7 +125,7 @@ class M2tsExtractor(
 
     private data class Detection(val packetSize: Int, val phase: Int)
 
-    /** Ищет 5 подряд sync-байтов с шагом 192 (M2TS), затем 188 (TS). phase — абсолютная, mod 192. */
+    /** Ищет 5 подряд sync-байтов с шагом 192 (M2TS), затем 188 (TS). phase - абсолютная, mod 192. */
     private fun detect(input: ExtractorInput): Detection? {
         val probe = ByteArray(M2tsPacketInput.M2TS_PACKET_SIZE * (SNIFF_PACKETS + 1))
         input.resetPeekPosition()

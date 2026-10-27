@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import tv.p2160.core.i18n.tr
 
 /**
- * Порядок нажатий — порядок предпочтения. Языка нет в списке — его код можно дописать.
+ * Порядок нажатий - порядок предпочтения. Языка нет в списке - его код можно дописать.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

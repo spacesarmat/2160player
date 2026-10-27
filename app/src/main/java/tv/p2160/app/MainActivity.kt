@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
             .onFailure { toast(it.message ?: "error") }
     }
 
-    /** Разрешение на уведомления (Android 13+): запросы «… хочет подключиться» с кнопками. Отказ — запросы придут окном. */
+    /** Разрешение на уведомления (Android 13+): запросы «… хочет подключиться» с кнопками. Отказ - запросы придут окном. */
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     private fun askNotificationsOnce() {
@@ -97,9 +97,9 @@ class MainActivity : ComponentActivity() {
             val s by settings.state.collectAsStateWithLifecycle()
             val strings by i18n.strings.collectAsStateWithLifecycle()
             var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
-            // Экран настроек снимается с композиции, когда открыта справка. Состояние списка — здесь.
+            // Экран настроек снимается с композиции, когда открыта справка. Состояние списка - здесь.
             val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
-            // Нажали уведомление «Трансляция камеры» — сразу на её экран.
+            // Нажали уведомление «Трансляция камеры» - сразу на её экран.
             val camera by openCamera.collectAsStateWithLifecycle()
             androidx.compose.runtime.LaunchedEffect(camera) {
                 if (camera) {
@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
             var dlnaUdn by rememberSaveable { mutableStateOf<String?>(null) }
             val dlnaServers = remember { tv.p2160.core.source.dlna.DlnaServers.get(this) }
 
-            // «Назад» на вложенном экране — к родителю; на главном — выход только по второму нажатию,
+            // «Назад» на вложенном экране - к родителю; на главном - выход только по второму нажатию,
             // чтобы случайное нажатие на пульте или жест не сворачивали приложение.
             var lastHomeBack by remember { mutableStateOf(0L) }
             BackHandler {
@@ -217,7 +217,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Системный выбор файлов. false — его нет или это телевизор: тогда открывается встроенный обзор
+     * Системный выбор файлов. false - его нет или это телевизор: тогда открывается встроенный обзор
      * ([LocalBrowserScreen]), на приставках системного выбора часто нет или он не работает с пультом.
      */
     private fun pickMedia(): Boolean {

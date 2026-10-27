@@ -89,7 +89,7 @@ class Player2160Activity : ComponentActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // Контроллер может смениться (onNewIntent) — следим за актуальным.
+                // Контроллер может смениться (onNewIntent) - следим за актуальным.
                 snapshotFlow { vm.controller }.collectLatest { c ->
                     c?.state?.collect { s -> adjustOrientation(s.hasVideo, s.videoAspect) }
                 }
@@ -142,9 +142,9 @@ class Player2160Activity : ComponentActivity() {
             controller.player.pause()
             return
         }
-        // В PiP играем дальше; закрытие окна PiP тоже приходит сюда — тогда решаем как при сворачивании.
+        // В PiP играем дальше; закрытие окна PiP тоже приходит сюда - тогда решаем как при сворачивании.
         if (inPip && !isChangingConfigurations) return
-        // Аудио — если включено «Музыка и аудио в фоне», видео — если «Видео в фоне» (звук без картинки); иначе пауза.
+        // Аудио - если включено «Музыка и аудио в фоне», видео - если «Видео в фоне» (звук без картинки); иначе пауза.
         val s = controller.state.value
         val settings = PlayerSettings.get(this).current
         val background = controller.player.playWhenReady && (if (s.hasVideo) settings.backgroundPlayback else settings.backgroundAudio)

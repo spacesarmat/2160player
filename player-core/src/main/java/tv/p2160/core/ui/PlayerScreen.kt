@@ -97,6 +97,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.PlayerController
 import tv.p2160.core.engine.PlayerUiState
+import tv.p2160.core.engine.transportShowsRemaining
 import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.api.SkipSegment
 import tv.p2160.core.engine.TimeInput
@@ -130,7 +131,7 @@ fun PlayerScreen(
     inPictureInPicture: Boolean = false,
 ) {
     // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель читает снимок без них.
-    // У derivedStateOf без политики любое новое значение — изменение, поэтому сравнение по полям
+    // У derivedStateOf без политики любое новое значение - изменение, поэтому сравнение по полям
     // (structuralEqualityPolicy): пока равны остальные, экран не пересобирается. Иначе меню дёргалось два раза в секунду.
     val upstream = controller.state.collectAsStateWithLifecycle()
     val state by remember {
@@ -159,7 +160,7 @@ fun PlayerScreen(
         settingsStore.update { it.copy(resizeMode = mode) }
     }
     // PanelActions нестабилен, а strong skipping сравнивает такие параметры по ссылке.
-    // Один экземпляр на сеанс; меняющиеся лямбды — через rememberUpdatedState.
+    // Один экземпляр на сеанс; меняющиеся лямбды - через rememberUpdatedState.
     val pickSubtitle = rememberUpdatedState(onPickSubtitle)
     val resizeAction = rememberUpdatedState<(ResizeMode) -> Unit> { changeResize(it) }
     val panelActions = remember(controller, settingsStore) {
@@ -208,7 +209,7 @@ fun PlayerScreen(
     var zapTick by remember { mutableIntStateOf(0) }
     var zapVisible by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
-    // Когда панель скрыта, фокус держит сам экран — иначе пульт «теряется» и кнопки не работают.
+    // Когда панель скрыта, фокус держит сам экран - иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
 
     fun poke() { interaction++ }
@@ -225,6 +226,9 @@ fun PlayerScreen(
         rootFocus = rootFocus,
     )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
+    LaunchedEffect(state.error) {
+        if (state.error != null) panelState.value = null
+    }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
     LaunchedEffect(scrubTarget?.div(2_000)) {
         val target = scrubTarget ?: run { scrubFrame = null; return@LaunchedEffect }
@@ -246,7 +250,7 @@ fun PlayerScreen(
         zapVisible = false
     }
     fun zap(delta: Int) { controller.switchChannel(delta); zapTick++ }
-    // Цифры: в эфире — номер канала в списке, иначе — время.
+    // Цифры: в эфире - номер канала в списке, иначе - время.
     fun commit(value: String) {
         if (state.liveTv) {
             val target = value.toIntOrNull()?.minus(1)?.takeIf { it in 0 until state.playlistSize } ?: return
@@ -345,7 +349,7 @@ fun PlayerScreen(
                         Key.ChannelDown -> if (state.liveTv) { zap(-1); return@onPreviewKeyEvent true }
                     }
                     if (panelState.value != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
-                    // Цифры: одна — проценты, несколько — время.
+                    // Цифры: одна - проценты, несколько - время.
                     digitOf(e.key)?.let { d -> digits = (digits + d).takeLast(6); return@onPreviewKeyEvent true }
                     if (digits.isNotEmpty()) {
                         when (e.key) {
@@ -364,8 +368,8 @@ fun PlayerScreen(
                         else -> 6
                     }
                     val throttled = repeat > 0 && repeat % 3 != 0
-                    // Управление скрыто: стрелки перематывают, OK — пауза (или «Пропустить»), вверх/вниз — показать панель.
-                    // Телеканалы: влево/вправо — панель (перематывать эфир некуда), вверх/вниз — переключение.
+                    // Управление скрыто: стрелки перематывают, OK - пауза (или «Пропустить»), вверх/вниз - показать панель.
+                    // Телеканалы: влево/вправо - панель (перематывать эфир некуда), вверх/вниз - переключение.
                     if (state.liveTv && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) { show(); return@onPreviewKeyEvent true }
                     when (e.key) {
                         Key.DirectionLeft -> { if (!throttled) keyScrub(-step); true }
@@ -375,7 +379,7 @@ fun PlayerScreen(
                             if (seg != null) controller.skip(seg) else { controller.playPause(); show() }
                             true
                         }
-                        // Телеканалы: вверх — предыдущий, вниз — следующий.
+                        // Телеканалы: вверх - предыдущий, вниз - следующий.
                         Key.DirectionUp -> { if (state.liveTv && state.playlistSize > 1) zap(-1) else show(); true }
                         Key.DirectionDown -> { if (state.liveTv && state.playlistSize > 1) zap(1) else show(); true }
                         Key.Menu -> { show(); true }
@@ -400,7 +404,7 @@ fun PlayerScreen(
             MatchDisplayFrameRate(controller, settings.frameRateMatching && state.hasVideo, state.videoFrameRate)
             if (state.secondaryTextId != null) SecondarySubtitleLayer(controller, settings.subtitleStyle, panelState)
 
-            // Слой жестов: тап — показать/скрыть, двойной (и более) тап по краям — накопительная перемотка.
+            // Слой жестов: тап - показать/скрыть, двойной (и более) тап по краям - накопительная перемотка.
             if (!inPictureInPicture) {
                 TapSeekLayer(
                     stepMs = stepMs,
@@ -427,7 +431,7 @@ fun PlayerScreen(
                     },
                     onScrubEnd = { scrubTarget?.let(controller::seekTo); scrubTarget = null },
                     onSpeedBoost = controller::setSpeedBoost,
-                    // Щипок: развести пальцы — заполнить экран (с обрезкой), свести — вписать целиком.
+                    // Щипок: развести пальцы - заполнить экран (с обрезкой), свести - вписать целиком.
                     onPinch = pinch@{ zoom ->
                         val mode = when {
                             zoom > 1.15f -> ResizeMode.ZOOM
@@ -437,10 +441,6 @@ fun PlayerScreen(
                         changeResize(mode)
                     },
                 )
-            }
-
-            if (state.isBuffering && state.error == null) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center).size(56.dp), color = theme.accent, strokeWidth = 4.dp)
             }
 
             if (flashTotal != 0L) {
@@ -634,22 +634,7 @@ fun PlayerScreen(
                 }
             }
 
-            state.error?.let { message ->
-                Column(
-                    Modifier.align(Alignment.Center).clip(RoundedCornerShape(20.dp))
-                        .background(theme.surface).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(message, color = theme.onSurface, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.size(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = controller::retry) { Text(tr("player.retry"), color = theme.accent) }
-                        TextButton(onClick = onBack) { Text(tr("player.close"), color = theme.muted) }
-                    }
-                }
-            }
-
-            // Звук и скорость собраны заранее и остаются за краем. Сдвиг — translationX слоя,
+            // Звук и скорость собраны заранее и остаются за краем. Сдвиг - translationX слоя,
             // не offset и не ширина. Открытая панель рисуется выше закрытых.
             PlayerPanels(
                 panelState = panelState,
@@ -658,6 +643,26 @@ fun PlayerScreen(
                 resizeMode = resizeMode,
                 actions = panelActions,
             )
+            state.error?.let { message ->
+                // Выше панели (zIndex 1) и с непрозрачной подложкой: панель не просвечивает.
+                Box(
+                    Modifier.matchParentSize().zIndex(2f).background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        Modifier.widthIn(max = 420.dp).padding(24.dp).clip(RoundedCornerShape(20.dp))
+                            .background(theme.surface).padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(message, color = theme.onSurface, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.size(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = controller::retry) { Text(tr("player.retry"), color = theme.accent) }
+                            TextButton(onClick = onBack) { Text(tr("player.close"), color = theme.muted) }
+                        }
+                    }
+                }
+            }
         }
     }
     }
@@ -690,7 +695,7 @@ private fun ControlsAutoHide(
 
 /**
  * Кнопки и отступ полосы. Открытость читается только тут, поэтому смена панели не обходит
- * слот-таблицу экрана. Отступ — один padding в этом кадре, без анимации ширины.
+ * слот-таблицу экрана. Отступ - один padding в этом кадре, без анимации ширины.
  */
 @Composable
 private fun PanelBoundControls(
@@ -886,17 +891,17 @@ private fun BoxScope.ParkedPanel(
     actions: PanelActions,
     onParked: () -> Unit = StayParked,
 ) {
-    // 0 — открыта, 1 — за правым краем. value в композиции не читается: это был бы кадр анимации.
+    // 0 - открыта, 1 - за правым краем. value в композиции не читается: это был бы кадр анимации.
     val slide = remember { Animatable(1f) }
     val scrollReset = remember { PanelScrollReset() }
     LaunchedEffect(open) {
         if (open) {
-            // Список уже в нуле с прошлого простоя. Выезд — следующий кадр, без сброса и без лишних кадров.
+            // Список уже в нуле с прошлого простоя. Выезд - следующий кадр, без сброса и без лишних кадров.
             slide.animateTo(0f, tween(200))
         } else if (slide.value != 1f) {
             slide.animateTo(1f, tween(200))
             onParked()
-            // Уже за краем. Сброс, если список уезжал, — отдельный кадр и только когда смещение не ноль.
+            // Уже за краем. Сброс, если список уезжал, - отдельный кадр и только когда смещение не ноль.
             scrollReset.request()
         } else {
             // Уже за краем (прогрев): не запускать tween, иначе слой 200 мс числится анимируемым.
@@ -967,7 +972,7 @@ private fun Controls(
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            // Телефон в портрете: кнопки не помещаются рядом с названием — переносим их во второй ряд (с прокруткой).
+            // Телефон в портрете: кнопки не помещаются рядом с названием - переносим их во второй ряд (с прокруткой).
             val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
             val actionButtons: @Composable () -> Unit = {
                 val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
@@ -985,7 +990,7 @@ private fun Controls(
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
                 ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
                 ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
-                // Открывает панель масштаба и качества. Сама кнопка картинку не переключает — это щипок.
+                // Открывает панель масштаба и качества. Сама кнопка картинку не переключает - это щипок.
                 ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1009,7 +1014,7 @@ private fun Controls(
                 ) { actionButtons() }
             }
 
-            // Сдвиг полосы — один padding в том же кадре, что и старт выезда, без анимации ширины:
+            // Сдвиг полосы - один padding в том же кадре, что и старт выезда, без анимации ширины:
             // анимированный padding заново измерял бы полосу, кнопки и SurfaceView каждый кадр.
             val panelReserve = transportEndInsetDp(
                 panelOpen,
@@ -1026,18 +1031,24 @@ private fun Controls(
                 if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, accent = theme.accent)
                 if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, accent = theme.accent)
                 ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, size = 56.dp, accent = theme.accent)
-                ControlButton(
-                    icon = when {
-                        state.ended -> Icons.Default.Replay
-                        state.isPlaying -> Icons.Default.Pause
-                        else -> Icons.Default.PlayArrow
-                    },
-                    contentDescription = if (state.isPlaying) tr("player.pause") else tr("player.play"),
-                    onClick = onPlayPause,
-                    size = 76.dp,
-                    accent = theme.accent,
-                    modifier = Modifier.focusRequester(playFocus),
-                )
+                if (state.isBuffering && state.error == null) {
+                    Box(Modifier.size(76.dp).focusRequester(playFocus), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(56.dp), color = theme.accent, strokeWidth = 4.dp)
+                    }
+                } else {
+                    ControlButton(
+                        icon = when {
+                            state.ended -> Icons.Default.Replay
+                            state.isPlaying -> Icons.Default.Pause
+                            else -> Icons.Default.PlayArrow
+                        },
+                        contentDescription = if (state.isPlaying) tr("player.pause") else tr("player.play"),
+                        onClick = onPlayPause,
+                        size = 76.dp,
+                        accent = theme.accent,
+                        modifier = Modifier.focusRequester(playFocus),
+                    )
+                }
                 ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, size = 56.dp, accent = theme.accent)
                 if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, accent = theme.accent)
                 if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, accent = theme.accent)
@@ -1061,17 +1072,17 @@ internal const val CONTROLS_HIDE_MS = 150
  * Появление управления. Цепочка одна и та же во всех состояниях: смена «пусто → слой → parked»
  * заново измеряла оверлей (скрытие на POCO: recompose 14–22 мс). Альфа читается в лямбде слоя,
  * размер и место не меняются. `isRunning` / `targetValue` в композиции не читаются.
- * Альфа 0 сама не отключает касания, пульт и TalkBack — это свойства постоянных узлов.
+ * Альфа 0 сама не отключает касания, пульт и TalkBack - это свойства постоянных узлов.
  * Слой на весь экран не ловит касания: иначе под ним не работают тап, закрытие панели и
  * двойной тап. Попадание только у кнопок и полосы. Пока кнопки скрыты, слой ещё и сдвинут
  * на свою ширину, а их действия читают [InteractionGate].
- * [panelOpen] — параметр, не только захват лямбды: у лямбды стабильная ссылка, и без этого
+ * [panelOpen] - параметр, не только захват лямбды: у лямбды стабильная ссылка, и без этого
  * аргумента затухание пропускалось бы, а полоса сужалась лишь на следующей пересборке.
  * В лямбду слоя его не передаём: чтение там помечало весь слой кнопок, и кадр ждал render thread
  * (`postAndWait`), хотя отступ и так меняет раскладку один раз. `shadowElevation` даже нулевой
  * держал контур тени на каждом кадре. `CompositingStrategy` не задаём: значение по умолчанию уже
- * `Auto`, а не ModulateAlpha — градиенты под кнопками при модуляции альфы выглядят иначе.
- * Фокус и TalkBack — снаружи слоя, чтобы скрытие не перезаписывало его содержимое.
+ * `Auto`, а не ModulateAlpha - градиенты под кнопками при модуляции альфы выглядят иначе.
+ * Фокус и TalkBack - снаружи слоя, чтобы скрытие не перезаписывало его содержимое.
  */
 @Composable
 internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
@@ -1190,13 +1201,14 @@ internal fun TransportReadout(
             }.padding(vertical = 12.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
+            val durationKnown = state.durationMs > 0
             FixedTickText(
                 clock = clock,
-                sample = elapsedTimeSample(state.durationMs),
+                sample = if (durationKnown) elapsedTimeSample(state.durationMs) else UNKNOWN_TIME,
                 style = timeStyle,
                 color = Color.White,
                 textKey = state.durationMs,
-                label = { formatTime(it.shownMs()) },
+                label = { transportElapsedText(durationKnown, it.shownMs()) },
                 modifier = Modifier.testTag("time-elapsed"),
             )
         }
@@ -1216,27 +1228,19 @@ internal fun TransportReadout(
         }
         if (state.isLive) {
             LiveBadge()
-        } else {
+        } else if (transportShowsRemaining(isLive = false, durationMs = state.durationMs)) {
             val durationMs = state.durationMs
-            val liveLabel = tr("player.live")
-            val remainKey: Any = if (durationMs > 0) durationMs else if (state.isBuffering) -1L else liveLabel
             FixedTickText(
                 clock = clock,
-                sample = if (durationMs > 0) remainingTimeSample(durationMs) else if (state.isBuffering) " " else liveLabel,
+                sample = remainingTimeSample(durationMs),
                 style = timeStyle,
                 color = Color.White.copy(alpha = 0.85f),
-                textKey = remainKey,
-                alignEnd = durationMs > 0,
+                textKey = durationMs,
+                alignEnd = true,
                 modifier = Modifier.testTag("time-remaining"),
                 label = { tick ->
-                    if (durationMs > 0) {
-                        val positionMs = tick.shownMs()
-                        "−${formatTime(durationMs - positionMs)} / ${formatTime(durationMs)}"
-                    } else if (state.isBuffering) {
-                        ""
-                    } else {
-                        liveLabel
-                    }
+                    val positionMs = tick.shownMs()
+                    "−${formatTime(durationMs - positionMs)} / ${formatTime(durationMs)}"
                 },
             )
         }
@@ -1262,7 +1266,7 @@ private fun SleepClock(controller: PlayerController, theme: PlayerTheme, modifie
     )
 }
 
-/** Статистика обновляется чаще кадра интерфейса — только этот слой, не вся сцена. */
+/** Статистика обновляется чаще кадра интерфейса - только этот слой, не вся сцена. */
 @Composable
 private fun StatsLayer(controller: PlayerController, show: Boolean, modifier: Modifier = Modifier) {
     val stats by controller.stats.collectAsStateWithLifecycle()
@@ -1282,7 +1286,7 @@ private fun LiveBadge() {
     }
 }
 
-/** Номер, название канала и текущая передача — после переключения с пульта. */
+/** Номер, название канала и текущая передача - после переключения с пульта. */
 @Composable
 private fun ChannelBanner(number: Int, title: String, subtitle: String?, theme: PlayerTheme, modifier: Modifier = Modifier) {
     Row(
@@ -1349,7 +1353,7 @@ private fun VideoSurface(
         },
         update = { view ->
             viewRef.view = view
-            // FLAG_KEEP_SCREEN_ON на окне, пока поверхность прикреплена. Снятие флага — пауза/конец;
+            // FLAG_KEEP_SCREEN_ON на окне, пока поверхность прикреплена. Снятие флага - пауза/конец;
             // отсоединение view при выходе снимает его само.
             view.keepScreenOn = keepScreenOn
             if (view.player !== controller.player) view.player = controller.player
@@ -1362,8 +1366,8 @@ private fun VideoSurface(
             }
             if (view.resizeMode != mode) view.resizeMode = mode
             // PlayerController нестабилен: любая пересборка PlayerScreen заходит в update.
-            // Открытие панели сюда больше не приходит. setStyle верстает субтитры заново —
-            // не делать этого, если стиль тот же. Подъём над кнопками — отдельный эффект, не update.
+            // Открытие панели сюда больше не приходит. setStyle верстает субтитры заново -
+            // не делать этого, если стиль тот же. Подъём над кнопками - отдельный эффект, не update.
             if (view.getTag(TAG_SUBS) != style) {
                 view.setTag(TAG_SUBS, style)
                 view.subtitleView?.apply {
@@ -1414,7 +1418,7 @@ private fun applySubtitleChrome(
     sub.applyPanelInset(panelOpen, screenWidthDp, density)
 }
 
-/** Правый отступ субтитров — тот же, что у полосы. Один раз на открытие и закрытие, не на кадр выезда. */
+/** Правый отступ субтитров - тот же, что у полосы. Один раз на открытие и закрытие, не на кадр выезда. */
 @OptIn(UnstableApi::class)
 private fun SubtitleView.applyPanelInset(
     panelOpen: Boolean,
@@ -1445,7 +1449,7 @@ private fun digitOf(key: Key): Char? = when (key) {
     else -> null
 }
 
-/** Одна цифра — переход на N×10 % длительности, несколько — ко времени (1230 → 12:30). */
+/** Одна цифра - переход на N×10 % длительности, несколько - ко времени (1230 → 12:30). */
 private fun commitDigits(digits: String, durationMs: Long, seekTo: (Long) -> Unit) {
     val target = if (digits.length == 1) durationMs * digits.toInt() / 10 else TimeInput.parse(digits)
     target?.takeIf { durationMs <= 0 || it <= durationMs }?.let(seekTo)
@@ -1493,7 +1497,7 @@ private fun SecondarySubtitleLayer(
                 view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.sizeScale * 0.9f)
                 view.setApplyEmbeddedStyles(false)
             }
-            // Реплики те же — не перекладывать слой из-за открытия панели.
+            // Реплики те же - не перекладывать слой из-за открытия панели.
             if (view.getTag(TAG_SEC_CUES) !== cues) {
                 view.setTag(TAG_SEC_CUES, cues)
                 view.setCues(cues.map { cue ->

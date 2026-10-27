@@ -20,7 +20,7 @@ data class TrackOption(
     val selected: Boolean,
     val supported: Boolean,
     val external: Boolean,
-    /** Format.id — для выбора вторых субтитров. */
+    /** Format.id - для выбора вторых субтитров. */
     val formatId: String? = null,
 )
 

@@ -9,7 +9,7 @@ enum class StreamKind { VIDEO, AUDIO, SUBTITLE, INTERACTIVE, TEXT, UNKNOWN }
 
 /**
  * Элементарный поток из STN-таблицы плейлиста или ProgramInfo клипа.
- * [format]/[rate] — сырые коды: для видео формат кадра и частота, для аудио раскладка и частота.
+ * [format]/[rate] - сырые коды: для видео формат кадра и частота, для аудио раскладка и частота.
  */
 data class BlurayStream(
     val pid: Int,

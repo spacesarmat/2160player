@@ -17,7 +17,7 @@ object DeviceProfile {
         return am.isLowRamDevice || totalMemoryMb(context) in 1 until 2048
     }
 
-    /** Вся оперативная память устройства, МБ (0 — неизвестно). */
+    /** Вся оперативная память устройства, МБ (0 - неизвестно). */
     fun totalMemoryMb(context: Context): Long {
         val am = context.getSystemService(ActivityManager::class.java) ?: return 0
         return ActivityManager.MemoryInfo().also(am::getMemoryInfo).totalMem / (1024 * 1024)
@@ -35,8 +35,8 @@ object DeviceProfile {
 
     /**
      * Предел буфера плеера в байтах для [PlayerConfig.AUTO]: четверть кучи (буфер Media3 живёт в ней), но не
-     * больше 1/24 всей памяти устройства; от 24 до 128 МБ, на low-RAM — не больше 32 МБ.
-     * Примеры: телефон с 8 ГБ и largeHeap — 128 МБ; ТВ-приставка с 1,5 ГБ — ~32–64 МБ.
+     * больше 1/24 всей памяти устройства; от 24 до 128 МБ, на low-RAM - не больше 32 МБ.
+     * Примеры: телефон с 8 ГБ и largeHeap - 128 МБ; ТВ-приставка с 1,5 ГБ - ~32–64 МБ.
      */
     fun bufferTargetBytes(context: Context): Int {
         val heapPart = heapLimitMb(context) / 4

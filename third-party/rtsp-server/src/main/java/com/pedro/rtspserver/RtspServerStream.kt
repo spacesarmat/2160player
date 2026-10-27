@@ -34,7 +34,7 @@ class RtspServerStream(
     super.startStream("")
   }
 
-  /** 2160 Player: буфер отправки TCP для зрителей, которые подключатся дальше. 0 — размер ОС. */
+  /** 2160 Player: буфер отправки TCP для зрителей, которые подключатся дальше. 0 - размер ОС. */
   fun setSendBufferSize(bytes: Int) {
     rtspServer.sendBufferSize = bytes.coerceAtLeast(0)
   }

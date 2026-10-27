@@ -92,7 +92,7 @@ import java.util.Locale
 /** Накопитель в корне обзора: внутренняя память, флешка, карта памяти. */
 data class LocalRoot(
     val dir: File,
-    /** null — внутренняя память (название берётся из перевода). */
+    /** null - внутренняя память (название берётся из перевода). */
     val name: String?,
     val removable: Boolean,
     val freeBytes: Long,
@@ -103,7 +103,7 @@ enum class LocalKind { FOLDER, VIDEO, AUDIO, DISC, SUBTITLE, PLAYLIST, OTHER }
 
 val PLAYLIST_EXTENSIONS = setOf("m3u", "m3u8")
 
-/** Тип элемента по имени. Каталог BDMV — диск Blu-ray, образ .iso — тоже. */
+/** Тип элемента по имени. Каталог BDMV - диск Blu-ray, образ .iso - тоже. */
 fun localKind(file: File, isDirectory: Boolean = file.isDirectory): LocalKind {
     if (isDirectory) return if (file.name.equals("BDMV", true)) LocalKind.DISC else LocalKind.FOLDER
     return when (file.extension.lowercase()) {
@@ -147,7 +147,7 @@ val NaturalNameOrder: Comparator<String> = Comparator { a, b ->
 
 /**
  * Содержимое папки для обзора: сначала папки, потом медиафайлы, по имени; скрытые (с точкой) не показываются.
- * null — папку прочитать нельзя (нет доступа).
+ * null - папку прочитать нельзя (нет доступа).
  */
 fun listLocalMedia(dir: File): List<File>? {
     val files = dir.listFiles() ?: return null
@@ -160,7 +160,7 @@ fun listLocalMedia(dir: File): List<File>? {
         .toList()
 }
 
-/** Накопители устройства. Блокирующий вызов (statfs) — с фонового потока. */
+/** Накопители устройства. Блокирующий вызов (statfs) - с фонового потока. */
 fun localRoots(context: Context): List<LocalRoot> {
     val roots = LinkedHashMap<String, LocalRoot>()
     fun key(dir: File) = runCatching { dir.canonicalPath }.getOrDefault(dir.absolutePath)
@@ -244,7 +244,7 @@ internal fun resolvePlaylistFile(parent: File?, rawUrl: String): File? {
 /**
  * Встроенный обзор файлов на устройстве: внутренняя память, флешки, карты памяти.
  * Нужен на Android TV-приставках, где нет системного выбора файлов.
- * [onPlay] получает все видео/аудио папки и индекс выбранного — как в обзоре SMB.
+ * [onPlay] получает все видео/аудио папки и индекс выбранного - как в обзоре SMB.
  */
 @Composable
 fun LocalBrowserScreen(
@@ -271,7 +271,7 @@ fun LocalBrowserScreen(
             storagePermissions().none { activity.shouldShowRequestPermissionRationale(it) }
     }
 
-    // Корень, в который вошли, и текущая папка; null — список накопителей.
+    // Корень, в который вошли, и текущая папка; null - список накопителей.
     var rootPath by rememberSaveable { mutableStateOf<String?>(null) }
     var dirPath by rememberSaveable { mutableStateOf<String?>(null) }
     var roots by remember { mutableStateOf<List<LocalRoot>?>(null) }
@@ -280,7 +280,7 @@ fun LocalBrowserScreen(
     var reload by remember { mutableIntStateOf(0) }
     val lastFocus = remember { mutableStateMapOf<String, String>() }
 
-    // Вернулись из настроек или вставили флешку — перечитываем.
+    // Вернулись из настроек или вставили флешку - перечитываем.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val now = hasStoragePermission(context)
         if (now != granted) granted = now
@@ -484,7 +484,7 @@ fun LocalBrowserScreen(
                                             LocalKind.FOLDER -> openDir(file.path)
                                             LocalKind.DISC -> if (file.isDirectory) onPlayDisc(file, dir.name) else onPlayDisc(file, file.nameWithoutExtension)
                                             LocalKind.PLAYLIST -> playPlaylist(file)
-                                            // Субтитры подхватываются плеером сами — открываем видео, к которому они относятся.
+                                            // Субтитры подхватываются плеером сами - открываем видео, к которому они относятся.
                                             LocalKind.SUBTITLE -> {
                                                 val video = playable.firstOrNull { localKind(it) == LocalKind.VIDEO && file.name.startsWith(it.nameWithoutExtension) }
                                                 if (video != null) onPlay(playable, playable.indexOf(video))

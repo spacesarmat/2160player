@@ -3,7 +3,7 @@ package tv.p2160.app.handoff
 import java.net.URLDecoder
 
 /**
- * Разбор одного запроса сервера передачи без сокета. Сокетная обвязка — в [Handoff].
+ * Разбор одного запроса сервера передачи без сокета. Сокетная обвязка - в [Handoff].
  * Заголовки уже в нижнем регистре (так их собирает сервер).
  */
 internal enum class WatchGate { OK, BAD, LOCKED, NONE }
@@ -147,8 +147,8 @@ internal fun decodeQuery(raw: String): Map<String, String> {
 private fun urlDecode(s: String): String = runCatching { URLDecoder.decode(s, Charsets.UTF_8.name()) }.getOrDefault(s)
 
 /**
- * Поле-строка из небольшого JSON-объекта. Нет поля — пустая строка.
- * Битый JSON — исключение, как раньше у `JSONObject` на сокете.
+ * Поле-строка из небольшого JSON-объекта. Нет поля - пустая строка.
+ * Битый JSON - исключение, как раньше у `JSONObject` на сокете.
  */
 internal fun jsonString(json: String, key: String): String {
     var i = 0

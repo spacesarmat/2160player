@@ -67,14 +67,14 @@ class IntroMatcherTest {
         val a = fp.fingerprint(episode(21, 100, 62.0, 0.8))
         val b = fp.fingerprint(episode(22, 200, 95.0, 0.8))
         assertNull(IntroMatcher.findIntro(a, listOf(b)))
-        // Тема только в одном из двух соседей: пара с другим соседом не подтверждает, одна пара — только при высокой уверенности.
+        // Тема только в одном из двух соседей: пара с другим соседом не подтверждает, одна пара - только при высокой уверенности.
         val c = fp.fingerprint(episode(23, 300, 10.0, 0.8))
         assertNull(IntroMatcher.findIntro(a, listOf(b, c)))
     }
 
     @Test
     fun shortCommonSoundIsIgnored() {
-        // Общий джингл 8 с — меньше минимальных 15 с.
+        // Общий джингл 8 с - меньше минимальных 15 с.
         val a = fp.fingerprint(episode(31, 9, 50.0, 0.8, themeSec = 8.0))
         val b = fp.fingerprint(episode(32, 9, 120.0, 0.8, themeSec = 8.0))
         assertNull(IntroMatcher.findIntro(a, listOf(b)))
@@ -139,7 +139,7 @@ class IntroMatcherTest {
         }
         assertTrue("mean bits ${diff.toDouble() / loud.size}", diff.toDouble() / loud.size < 1.0)
         assertTrue("mask bits ${maskDiff.toDouble() / loud.size}", maskDiff.toDouble() / loud.size < 1.0)
-        // Тишина — пустые кадры.
+        // Тишина - пустые кадры.
         val silent = fp.fingerprint(ShortArray(rate * 5))
         assertTrue(silent.masks.all { it == 0 })
     }
@@ -150,7 +150,7 @@ class IntroMatcherTest {
         val x = FloatArray(from * 2) { (0.5 * sin(2 * PI * 1000.0 * it / from)).toFloat() }
         val y = SyntheticAudio.resample(x, from, rate)
         assertEquals(rate * 2.0, y.size.toDouble(), 20.0)
-        // Сравнение с идеальной синусоидой на выходной частоте (фаза совпадает — задержка компенсирована).
+        // Сравнение с идеальной синусоидой на выходной частоте (фаза совпадает - задержка компенсирована).
         var err = 0.0
         var ref = 0.0
         for (i in 200 until y.size - 200) {

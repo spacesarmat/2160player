@@ -23,7 +23,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Своя Activity с встроенным PlayerScreen. Тема и configChanges — как у Player2160Activity. -->
+        <!-- Своя Activity с встроенным PlayerScreen. Тема и configChanges - как у Player2160Activity. -->
         <activity
             android:name=".EmbeddedPlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"

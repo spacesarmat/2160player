@@ -27,7 +27,7 @@ data class NowNext(val now: EpgProgramme?, val next: EpgProgramme?)
 
 /**
  * Телепрограмма в памяти: передачи по id канала XMLTV (отсортированы по времени)
- * и отображаемые имена каналов — для сопоставления по названию.
+ * и отображаемые имена каналов - для сопоставления по названию.
  */
 class EpgData(
     val programmes: Map<String, List<EpgProgramme>>,
@@ -153,7 +153,7 @@ object XmltvParser {
     private const val MAX_PER_CHANNEL = 300
     private const val MAX_DESCRIPTION = 300
 
-    /** Если поток сжат gzip — распаковывает, иначе возвращает как есть. */
+    /** Если поток сжат gzip - распаковывает, иначе возвращает как есть. */
     fun maybeGunzip(input: InputStream): InputStream {
         val buffered = if (input.markSupported()) input else BufferedInputStream(input, 64 * 1024)
         buffered.mark(2)
@@ -289,7 +289,7 @@ object XmltvParser {
 
     /**
      * Время XMLTV: `20240115183000 +0300`, `20240115183000`, `202401151830 -0500`, `20240115183000Z`.
-     * Без часового пояса — UTC.
+     * Без часового пояса - UTC.
      */
     fun parseTime(raw: String?): Long? {
         val s = raw?.trim().orEmpty()

@@ -5,7 +5,7 @@ enum class SegmentType { INTRO, RECAP, CREDITS, PREVIEW }
 
 /**
  * Отрезок, который можно пропустить.
- * @param endMs `null` — до конца файла (типично для титров).
+ * @param endMs `null` - до конца файла (типично для титров).
  */
 data class SkipSegment(
     val type: SegmentType,

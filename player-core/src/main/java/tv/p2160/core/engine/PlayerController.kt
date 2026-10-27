@@ -41,6 +41,7 @@ import tv.p2160.core.bluray.DiscSessions
 import tv.p2160.core.intro.DetectionResult
 import tv.p2160.core.api.PlayerConfig
 import tv.p2160.core.intro.IntroDetector
+import tv.p2160.core.intro.IntroStart
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.NowPlaying
 import tv.p2160.core.api.PlayerExtensions
@@ -88,7 +89,7 @@ data class PlayerUiState(
     val segments: List<SkipSegment> = emptyList(),
     /** Отрезок, внутри которого сейчас позиция (для кнопки «Пропустить»). */
     val activeSegment: SkipSegment? = null,
-    /** Название сериала, если ручные отметки применяются ко всем сериям; null — только к этому файлу. */
+    /** Название сериала, если ручные отметки применяются ко всем сериям; null - только к этому файлу. */
     val seriesName: String? = null,
     val marks: ManualMarks = ManualMarks(),
     /** Временное ускорение (удержание пальца) включено. */
@@ -96,23 +97,23 @@ data class PlayerUiState(
     /** Format.id вторых субтитров или null. */
     val secondaryTextId: String? = null,
     val nightMode: Boolean = false,
-    /** «Как обычно: …» — дорожки выбраны по привычке. */
+    /** «Как обычно: …» - дорожки выбраны по привычке. */
     val smartHint: String? = null,
     /** Важные предупреждения о воспроизведении (показываются при старте). */
     val warnings: List<String> = emptyList(),
     /** Прямой эфир: длительность неизвестна или поток помечен как live. */
     val isLive: Boolean = false,
-    /** Запрос — телеканалы ([PlaybackRequest.liveTv]): стрелки вверх/вниз переключают каналы. */
+    /** Запрос - телеканалы ([PlaybackRequest.liveTv]): стрелки вверх/вниз переключают каналы. */
     val liveTv: Boolean = false,
-    /** Подпись под названием (для каналов — текущая передача из EPG). */
+    /** Подпись под названием (для каналов - текущая передача из EPG). */
     val subtitle: String? = null,
-    /** Задержка звука, мс (> 0 — звук позже картинки). */
+    /** Задержка звука, мс (> 0 - звук позже картинки). */
     val audioDelayMs: Int = 0,
-    /** Таймер сна: сколько осталось до паузы, мс; null — выключен (или стоит «в конце серии»). */
+    /** Таймер сна: сколько осталось до паузы, мс; null - выключен (или стоит «в конце серии»). */
     val sleepRemainingMs: Long? = null,
     /** Таймер сна «в конце серии»: пауза, когда закончится текущий файл. */
     val sleepAtEnd: Boolean = false,
-    /** Частота кадров текущего видео (для подбора частоты экрана); -1 — неизвестна. */
+    /** Частота кадров текущего видео (для подбора частоты экрана); -1 - неизвестна. */
     val videoFrameRate: Float = -1f,
 )
 
@@ -138,7 +139,7 @@ private const val PASSTHROUGH_RETRIES = 3
 class PlayerController(
     context: Context,
     private val request: PlaybackRequest,
-    /** Настройка движка; по умолчанию — глобальная [tv.p2160.core.api.Player2160.config]. */
+    /** Настройка движка; по умолчанию - глобальная [tv.p2160.core.api.Player2160.config]. */
     private val config: PlayerConfig = PlayerExtensions.config,
 ) {
     private val appContext = context.applicationContext
@@ -151,12 +152,12 @@ class PlayerController(
     /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
     private var passthroughRetryAt = 0L
     private var passthroughRetries = 0
-    /** Смена режима дисплея (частоту под видео переключает система или мы) — сбои звука после неё временные. */
+    /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
         override fun onDisplayRemoved(displayId: Int) = Unit
         override fun onDisplayChanged(displayId: Int) {
-            // Событие приходит и от яркости/состояния — интересует только смена режима (частоты, разрешения).
+            // Событие приходит и от яркости/состояния - интересует только смена режима (частоты, разрешения).
             val mode = displayMode(displayId)
             if (mode != lastDisplayMode) {
                 lastDisplayMode = mode
@@ -168,21 +169,21 @@ class PlayerController(
 
     private fun displayMode(displayId: Int): Int =
         appContext.getSystemService(android.hardware.display.DisplayManager::class.java)?.getDisplay(displayId)?.mode?.modeId ?: -1
-    /** Таймер сна: момент паузы (SystemClock.elapsedRealtime) или 0 — выключен. */
+    /** Таймер сна: момент паузы (SystemClock.elapsedRealtime) или 0 - выключен. */
     private var sleepAtMs = 0L
     private var sleepFadeJob: Job? = null
     private var coverJob: Job? = null
 
-    /** Все элементы — живые источники (камера по RTSP и т.п.): режим низкой задержки. */
+    /** Все элементы - живые источники (камера по RTSP и т.п.): режим низкой задержки. */
     private val lowLatency = request.items.isNotEmpty() && request.items.all { it.uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES }
 
     private val built = PlayerFactory.build(appContext, settings.current, request.headers, config, lowLatency = lowLatency)
     val player: ExoPlayer get() = built.player
-    /** Реплики вторых субтитров — рисуются отдельным слоем сверху. */
+    /** Реплики вторых субтитров - рисуются отдельным слоем сверху. */
     val secondaryCues get() = built.secondarySubtitles.cues
 
     private val _state = MutableStateFlow(PlayerUiState(playlistSize = request.items.size, liveTv = request.liveTv, nightMode = settings.current.nightModeAt(NightSchedule.nowMinute())))
-    /** Пользователь переключил ночной звук вручную в этом просмотре — расписание больше не вмешивается. */
+    /** Пользователь переключил ночной звук вручную в этом просмотре - расписание больше не вмешивается. */
     private var nightOverridden = false
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
@@ -211,14 +212,17 @@ class PlayerController(
     /** Отрезки, уже пропущенные автоматически: если пользователь вернулся назад, второй раз не прыгаем. */
     private val autoSkipped = mutableSetOf<SkipSegment>()
     private var analyzeJob: Job? = null
-    /** Вступление/титры, найденные по звуку, — самый низкий приоритет. */
+    /** Вступление/титры, найденные по звуку, - самый низкий приоритет. */
     private var autoSegments: List<SkipSegment> = emptyList()
     /** Найденные по звуку отрезки с низкой уверенностью: только кнопка, без автопропуска. */
     private val lowConfidence = mutableSetOf<SkipSegment>()
     private var introJob: Job? = null
+    /** Элемент, для которого поиск вступления уже разрешён готовностью плеера. -1 - ещё нет. */
+    private var introItem = -1
+    private var introAttempts = 0
     private var decoders = ActiveDecoders()
 
-    /** Какие декодеры реально выбраны — для сводки по файлу. */
+    /** Какие декодеры реально выбраны - для сводки по файлу. */
     private val analytics = object : AnalyticsListener {
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(video = decoderName)
@@ -240,7 +244,7 @@ class PlayerController(
     private var speedBeforeBoost: Float? = null
     /**
      * Скорость, выбранная пользователем или восстановленная из истории. Временные 2× (удержание)
-     * и догон живого края её не меняют — в историю пишется она, а не текущая скорость плеера.
+     * и догон живого края её не меняют - в историю пишется она, а не текущая скорость плеера.
      */
     private var playbackSpeed = 1f
     /** Сейчас играет ускорение догона живого края, а не [playbackSpeed]. */
@@ -260,7 +264,7 @@ class PlayerController(
         detectedFrameRate = fps
         scope.launch { refresh() }
     }
-    /** Живая статистика для слоя поверх видео; null — сбор выключен ([setStatsEnabled]). */
+    /** Живая статистика для слоя поверх видео; null - сбор выключен ([setStatsEnabled]). */
     val stats: StateFlow<PlaybackStats?> get() = statsCollector.stats
 
     /** UI переключает режим экрана (частота под видео): ближайшие 12 с сбои открытия звука временные. */
@@ -268,7 +272,7 @@ class PlayerController(
         built.passthrough.displaySwitchUntil = SystemClock.elapsedRealtime() + 12_000
     }
 
-    /** Включить/выключить сбор статистики (опрос памяти раз в 2 с — только пока слой виден). */
+    /** Включить/выключить сбор статистики (опрос памяти раз в 2 с - только пока слой виден). */
     fun setStatsEnabled(enabled: Boolean) {
         if (enabled) statsCollector.start(scope) else statsCollector.stop()
     }
@@ -302,6 +306,7 @@ class PlayerController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) scheduleIntro(player.currentMediaItemIndex)
             if (playbackState == Player.STATE_ENDED) {
                 completed = true
                 saveProgress()
@@ -318,7 +323,7 @@ class PlayerController(
             // Выход не открыл сжатый поток (AC3/DTS «на ресивер»). Сразу после переключения звука или смены
             // режима экрана (HDMI заново согласует звук с ресивером) это бывает временно: Realtek отвечает
             // createTrack -38 несколько секунд. Повторяем до 3 раз через 2 с (и без счёта, пока меняется режим
-            // экрана). Не вышло — ТВ действительно не умеет: декодируем сами, без ошибки.
+            // экрана). Не вышло - ТВ действительно не умеет: декодируем сами, без ошибки.
             if (error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED && !built.passthrough.disabled) {
                 val now = SystemClock.elapsedRealtime()
                 if (now - passthroughRetryAt > 30_000) passthroughRetries = 0
@@ -340,7 +345,7 @@ class PlayerController(
                 player.play()
                 return
             }
-            // Туннельный режим на этом устройстве не работает (ошибка декодера/вывода видео) — выключаем насовсем и продолжаем.
+            // Туннельный режим на этом устройстве не работает (ошибка декодера/вывода видео) - выключаем насовсем и продолжаем.
             val params = player.trackSelectionParameters
             if (params is androidx.media3.exoplayer.trackselection.DefaultTrackSelector.Parameters && params.tunnelingEnabled &&
                 error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_RESOURCES_RECLAIMED
@@ -359,6 +364,8 @@ class PlayerController(
                 player.prepare()
                 return
             }
+            cancelIntro()
+            introAttempts = IntroStart.MAX_ATTEMPTS
             _state.update { it.copy(error = describe(error)) }
         }
 
@@ -402,10 +409,13 @@ class PlayerController(
 
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
     private fun onItemStarted(index: Int, explicitStart: Long?) {
+        cancelIntro()
+        introItem = -1
+        introAttempts = 0
         completed = false
         detectedFrameRate = -1f
         frameRateProbe.reset()
-        // Телеканалы: ни продолжения с места, ни сохранённых дорожек — сразу эфир.
+        // Телеканалы: ни продолжения с места, ни сохранённых дорожек - сразу эфир.
         val entry = if (request.liveTv || !config.restoreFromHistory) null else keyAt(index)?.let(store::get)
         val s = settings.current
 
@@ -425,7 +435,7 @@ class PlayerController(
         player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
 
         pendingRestore = entry
-        // Своего сохранённого выбора у файла нет — попробуем привычку (сериал / набор языков).
+        // Своего сохранённого выбора у файла нет - попробуем привычку (сериал / набор языков).
         pendingSmart = entry == null && settings.current.smartTracks && config.restoreFromHistory
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
@@ -439,7 +449,7 @@ class PlayerController(
 
     /**
      * Обложка для «Продолжить просмотр» ([Covers]): встроенная, переданная источником или картинка рядом
-     * с файлом. Ищем один раз на запись и через 10 с — не мешаем буферизации.
+     * с файлом. Ищем один раз на запись и через 10 с - не мешаем буферизации.
      */
     private fun findCover(index: Int) {
         coverJob?.cancel()
@@ -461,7 +471,7 @@ class PlayerController(
         return runCatching { guide.describe(entry, System.currentTimeMillis()) }.getOrNull()?.ifBlank { null }
     }
 
-    /** Живой поток (камера по RTSP и т.п.): ни глав, ни поиска вступления — лишнее подключение к источнику. */
+    /** Живой поток (камера по RTSP и т.п.): ни глав, ни поиска вступления - лишнее подключение к источнику. */
     private fun isLiveSource(uri: Uri): Boolean = uri.scheme?.lowercase() in PlayerFactory.LOW_LATENCY_SCHEMES
 
     private fun loadChaptersAndSegments(index: Int) {
@@ -470,7 +480,6 @@ class PlayerController(
         autoSkipped.clear()
         autoSegments = emptyList()
         lowConfidence.clear()
-        introJob?.cancel()
         val title = titleAt(index)
         val fileName = SubtitleSupport.displayName(appContext, entry.uri) ?: title
         val series = SegmentDetector.seriesKey(fileName) ?: SegmentDetector.seriesKey(title)
@@ -482,7 +491,7 @@ class PlayerController(
         analyzeJob?.cancel()
         analyzeJob = scope.launch {
             val found = discs[index]?.let { d ->
-                // Главы диска — из плейлиста (FFmpeg в ISO не заглянет).
+                // Главы диска - из плейлиста (FFmpeg в ISO не заглянет).
                 val starts = d.title.chapters
                 starts.mapIndexed { i, start -> Chapter(null, start, starts.getOrElse(i + 1) { d.title.durationMs }) }
             } ?: if (config.readChapters && !isLiveSource(entry.uri)) runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList()) else emptyList()
@@ -492,24 +501,59 @@ class PlayerController(
             val explicitTypes = entry.segments.map { it.type }.toSet()
             baseSegments = entry.segments + SegmentDetector.fromChapters(found).filter { it.type !in explicitTypes }
             refresh()
-            startIntroDetection(index, series)
         }
+    }
+
+    private fun cancelIntro() {
+        introJob?.cancel()
+        introJob = null
+    }
+
+    /** Поиск вступления - только после первого успешного открытия (STATE_READY), не до него. */
+    private fun scheduleIntro(index: Int) {
+        if (player.playbackState != Player.STATE_READY || player.playerError != null) return
+        if (introItem == index && (introJob?.isActive == true || introAttempts >= IntroStart.MAX_ATTEMPTS)) return
+        if (introItem != index) {
+            introItem = index
+            introAttempts = 0
+        }
+        launchIntro(index)
     }
 
     /**
      * Поиск вступления/титров по звуку: сравниваем с соседними сериями того же сериала.
      * Не запускаем, если отрезки уже известны (главы, Intent, ручные отметки) или это диск Blu-ray.
+     * Ошибка открытия не зацикливается: несколько попыток с паузой, затем стоп.
      */
-    private fun startIntroDetection(index: Int, series: String?) {
-        if (!config.introDetection || series == null || discs[index] != null) return
-        if (request.items.getOrNull(index)?.uri?.let(::isLiveSource) == true) return
-        val known = (baseSegments + marks.toSegments(Long.MAX_VALUE / 4)).map { it.type }.toSet()
-        if (SegmentType.INTRO in known && SegmentType.CREDITS in known) return
+    private fun launchIntro(index: Int) {
+        if (request.liveTv || !config.introDetection || discs[index] != null) {
+            introAttempts = IntroStart.MAX_ATTEMPTS
+            return
+        }
+        if (!IntroStart.allowed(player.playbackState == Player.STATE_READY, player.playerError != null, introAttempts)) return
         val entry = request.items.getOrNull(index) ?: return
+        if (isLiveSource(entry.uri)) {
+            introAttempts = IntroStart.MAX_ATTEMPTS
+            return
+        }
+        val title = titleAt(index)
+        val fileName = SubtitleSupport.displayName(appContext, entry.uri) ?: title
+        val series = SegmentDetector.seriesKey(fileName) ?: SegmentDetector.seriesKey(title)
+        if (series == null) {
+            introAttempts = IntroStart.MAX_ATTEMPTS
+            return
+        }
+        val known = (baseSegments + marks.toSegments(Long.MAX_VALUE / 4)).map { it.type }.toSet()
+        if (SegmentType.INTRO in known && SegmentType.CREDITS in known) {
+            introAttempts = IntroStart.MAX_ATTEMPTS
+            return
+        }
         val detector = IntroDetector.get(appContext)
-
-        detector.cached(entry.uri)?.let { applyDetection(it, known); return }
-
+        detector.cached(entry.uri)?.let {
+            applyDetection(it, known)
+            introAttempts = IntroStart.MAX_ATTEMPTS
+            return
+        }
         val siblings = IntroDetector.pickSiblings(request.items.indices.toList(), index)
             .map { request.items[it] }
             .filter { sib ->
@@ -517,13 +561,18 @@ class PlayerController(
                 SegmentDetector.seriesKey(name) == series
             }
             .map { it.uri }
+        introJob?.cancel()
+        val attempt = introAttempts
         introJob = scope.launch {
-            // Не мешаем буферизации: на SMB/4K первые секунды — самые чувствительные.
-            delay(15_000)
+            delay(IntroStart.delayMs(attempt))
+            if (!isActive) return@launch
+            if (!IntroStart.allowed(player.playbackState == Player.STATE_READY, player.playerError != null, introAttempts)) return@launch
+            if (player.currentMediaItemIndex != index) return@launch
+            introAttempts++
             val language = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
                 .firstOrNull { it.selected }?.language
-            val result = runCatching {
-                detector.detect(
+            val pass = runCatching {
+                detector.detectReporting(
                     current = entry.uri,
                     siblings = siblings,
                     headers = request.headers,
@@ -531,9 +580,14 @@ class PlayerController(
                     durationMs = player.duration.takeIf { it > 0 } ?: -1,
                     preferredLanguage = language,
                 )
-            }.getOrNull() ?: return@launch
-            if (player.currentMediaItemIndex != index) return@launch
-            applyDetection(result, known)
+            }.getOrNull()
+            if (player.currentMediaItemIndex != index || player.playerError != null) return@launch
+            if (pass == null || !pass.sourceOpened) {
+                if (IntroStart.retryAfter(sourceOpened = false, attempts = introAttempts)) launchIntro(index)
+                return@launch
+            }
+            applyDetection(pass.result, known)
+            introAttempts = IntroStart.MAX_ATTEMPTS
         }
     }
 
@@ -712,7 +766,7 @@ class PlayerController(
             .build()
     }
 
-    /** Сбрасывает ручной выбор видеодорожки — плеер снова выбирает качество сам (важно для HLS/DASH). */
+    /** Сбрасывает ручной выбор видеодорожки - плеер снова выбирает качество сам (важно для HLS/DASH). */
     fun autoVideo() {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
@@ -756,7 +810,7 @@ class PlayerController(
         _state.update { it.copy(secondaryTextId = secondary.formatId) }
     }
 
-    /** «Ночной звук» на лету: при включении звук переходит на декодирование, при выключении — снова на ресивер. */
+    /** «Ночной звук» на лету: при включении звук переходит на декодирование, при выключении - снова на ресивер. */
     fun setNightMode(enabled: Boolean) {
         nightOverridden = true
         applyNight(enabled)
@@ -764,13 +818,13 @@ class PlayerController(
 
     private fun applyNight(enabled: Boolean) {
         built.night.enabled = enabled
-        // В offload обработка звука не работает — на время ночного звука offload выключаем.
+        // В offload обработка звука не работает - на время ночного звука offload выключаем.
         val offload = settings.current.audioOffload && !enabled
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setAudioOffloadPreferences(offloadPreferences(offload)).build()
         var reinit = false
         // Обход декодера (passthrough) следует за ночным звуком в обе стороны:
-        // включили — декодируем, чтобы обработка заработала; выключили — снова отдаём ресиверу многоканал.
+        // включили - декодируем, чтобы обработка заработала; выключили - снова отдаём ресиверу многоканал.
         // Если выход уже не смог принять сжатый поток (ТВ с AUDIO_TRACK_INIT_FAILED), остаёмся на декодировании.
         val decode = enabled || built.passthrough.failed
         // Вернуть passthrough можно всегда (даже если сейчас звук декодируется, например серию запустили
@@ -785,7 +839,7 @@ class PlayerController(
             built.night.downmixToStereo = enabled
             reinit = true
         }
-        // Видео не трогаем — звук прерывается меньше чем на секунду.
+        // Видео не трогаем - звук прерывается меньше чем на секунду.
         if (reinit) reinitAudio()
         _state.update { it.copy(nightMode = enabled) }
     }
@@ -803,14 +857,14 @@ class PlayerController(
         applyNightSchedule()
     }
 
-    /** Раз в минуту: наступило/закончилось время по расписанию — переключаем на лету. */
+    /** Раз в минуту: наступило/закончилось время по расписанию - переключаем на лету. */
     private fun applyNightSchedule() {
         if (nightOverridden) return
         val wanted = settings.current.nightModeAt(NightSchedule.nowMinute())
         if (wanted != built.night.enabled) applyNight(wanted)
     }
 
-    /** Задержка звука, мс (> 0 — звук позже картинки); сохраняется в настройках — общая для всех файлов. */
+    /** Задержка звука, мс (> 0 - звук позже картинки); сохраняется в настройках - общая для всех файлов. */
     fun setAudioDelay(ms: Int) {
         val value = ms.coerceIn(-AUDIO_DELAY_LIMIT_MS, AUDIO_DELAY_LIMIT_MS)
         built.passthrough.audioDelayUs = value * 1000L
@@ -820,7 +874,7 @@ class PlayerController(
 
     /**
      * Таймер сна: через [minutes] минут звук плавно затихает и плеер встаёт на паузу.
-     * null или 0 — выключить.
+     * null или 0 - выключить.
      */
     fun setSleepTimer(minutes: Int?) {
         cancelSleepTimer()
@@ -845,7 +899,7 @@ class PlayerController(
         _state.update { it.copy(sleepRemainingMs = null, sleepAtEnd = false) }
     }
 
-    /** Раз в полсекунды: обновить остаток таймера; время вышло — 8 секунд затихания и пауза. */
+    /** Раз в полсекунды: обновить остаток таймера; время вышло - 8 секунд затихания и пауза. */
     private fun tickSleepTimer() {
         if (sleepAtMs == 0L || sleepFadeJob != null) return
         val left = sleepAtMs - SystemClock.elapsedRealtime()
@@ -892,7 +946,7 @@ class PlayerController(
         chapters.firstOrNull { it.startMs > pos + 1_000 }?.let { seekTo(it.startMs) }
     }
 
-    /** Как на CD-плеере: в начале главы — к предыдущей, иначе — к началу текущей. */
+    /** Как на CD-плеере: в начале главы - к предыдущей, иначе - к началу текущей. */
     fun previousChapter() {
         val pos = player.currentPosition
         val current = chapters.indexOfLast { it.startMs <= pos }
@@ -935,9 +989,9 @@ class PlayerController(
         refresh()
     }
 
-    /** Кадр для превью при перемотке; null — источник не позволяет. */
+    /** Кадр для превью при перемотке; null - источник не позволяет. */
     suspend fun frameAt(positionMs: Long): Bitmap? {
-        // Кадр из бесконечного эфира FFmpeg не достанет — только зря нагрузит сеть.
+        // Кадр из бесконечного эфира FFmpeg не достанет - только зря нагрузит сеть.
         if (request.liveTv) return null
         val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri ?: return null
         return runCatching { analyzer.frameAt(uri, positionMs) }.getOrNull()
@@ -970,6 +1024,8 @@ class PlayerController(
     fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
 
     fun retry() {
+        introItem = -1
+        introAttempts = 0
         _state.update { it.copy(error = null) }
         player.prepare()
         player.play()
@@ -994,7 +1050,7 @@ class PlayerController(
 
     fun saveProgress() {
         val duration = player.duration
-        // Длительность неизвестна (поток ещё не открылся) — иначе в истории окажется «0:00».
+        // Длительность неизвестна (поток ещё не открылся) - иначе в истории окажется «0:00».
         if (duration == C.TIME_UNSET || duration <= 0) return
         val position = if (completed) duration else player.currentPosition
         saveFor(player.currentMediaItemIndex, position, duration)
@@ -1005,7 +1061,7 @@ class PlayerController(
         val key = keyAt(index) ?: return
         val entry = request.items.getOrNull(index) ?: return
         // Автопереход уже переключил плеер: дорожки и «это прямой эфир» относятся к текущему пункту,
-        // а не к сохраняемому. Живой текущий пункт историю не пишет; предыдущий фильм — пишет.
+        // а не к сохраняемому. Живой текущий пункт историю не пишет; предыдущий фильм - пишет.
         val current = index == player.currentMediaItemIndex
         if (current && player.isCurrentMediaItemLive) return
         val previous = if (current) null else store.get(key)
@@ -1057,8 +1113,8 @@ class PlayerController(
     }
 
     /**
-     * Живой источник: держим задержку около [LIVE_TARGET_MS]. Буфер вырос (сеть «плюнула» пачкой, плеер отстал) —
-     * ускоряемся (×1,1, сильно отстали — ×1,25; тон звука сохраняется), догнали — обычная скорость. Перемоткой
+     * Живой источник: держим задержку около [LIVE_TARGET_MS]. Буфер вырос (сеть «плюнула» пачкой, плеер отстал) -
+     * ускоряемся (×1,1, сильно отстали - ×1,25; тон звука сохраняется), догнали - обычная скорость. Перемоткой
      * не прыгаем: у RTSP она переоткрывает поток, а камерам-серверам переходы по времени обычно не нужны.
      */
     private fun keepLiveEdge() {
@@ -1100,12 +1156,12 @@ class PlayerController(
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()
-                // Подпись обновляем раз в 30 с; пока телегид грузится — чаще.
+                // Подпись обновляем раз в 30 с; пока телегид грузится - чаще.
                 if (request.liveTv && ticks % (if (_state.value.subtitle == null) 10 else 60) == 0) {
                     val subtitle = liveSubtitle(player.currentMediaItemIndex)
                     if (subtitle != _state.value.subtitle) _state.update { it.copy(subtitle = subtitle) }
                 }
-                // Через пару секунд после старта, когда декодеры выбраны, — показываем важные предупреждения.
+                // Через пару секунд после старта, когда декодеры выбраны, - показываем важные предупреждения.
                 if (warningsShownFor != player.currentMediaItemIndex && player.isPlaying && player.currentPosition > 2_000) {
                     warningsShownFor = player.currentMediaItemIndex
                     val w = runCatching { report().warnings }.getOrDefault(emptyList())
@@ -1175,7 +1231,11 @@ class PlayerController(
                 } else prev.videoAspect,
                 hasNext = if (request.liveTv) p.mediaItemCount > 1 else p.hasNextMediaItem(),
                 hasPrevious = if (request.liveTv) p.mediaItemCount > 1 else p.hasPreviousMediaItem(),
-                isLive = p.isCurrentMediaItemLive || (request.liveTv && duration <= 0),
+                isLive = transportIsLive(
+                    isCurrentMediaItemLive = p.isCurrentMediaItemLive,
+                    isCurrentMediaItemDynamic = p.isCurrentMediaItemDynamic,
+                    hasLiveConfiguration = p.currentMediaItem?.liveConfiguration != null,
+                ),
                 playlistIndex = p.currentMediaItemIndex,
                 title = if (includeTracks) titleAt(p.currentMediaItemIndex) else prev.title,
                 chapters = chapters,
@@ -1191,7 +1251,7 @@ class PlayerController(
     private suspend fun buildMediaItem(index: Int): MediaItem {
         val entry: MediaEntry = request.items[index]
         val external = subtitles[index]
-        // Субтитры рядом с локальным файлом — у каждого пункта плейлиста, не только у стартового.
+        // Субтитры рядом с локальным файлом - у каждого пункта плейлиста, не только у стартового.
         if (external.isEmpty()) {
             withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.forEach { uri ->
                 val name = uri.lastPathSegment
@@ -1215,13 +1275,14 @@ class PlayerController(
         } else null
         disc?.disc?.discTitle?.let { if (entry.title.isNullOrBlank()) titles[index] = it }
         val title = withContext(Dispatchers.IO) { titleFor(entry) }
-        return MediaItem.Builder()
+        val builder = MediaItem.Builder()
             .setUri(disc?.titleUri ?: entry.uri)
             .setMediaId(keyAt(index) ?: entry.uri.toString())
             .setMimeType(adaptiveMime(entry))
             .setSubtitleConfigurations(configs)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
-            .build()
+        if (request.liveTv) builder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+        return builder.build()
     }
 
     private fun externalId(index: Int, sub: ExternalSubtitle): String =

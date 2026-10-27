@@ -22,7 +22,7 @@ data class DlnaResource(
     /** DLNA.ORG_PN (профиль), например `AVC_MP4_HP_HD_AAC` или `JPEG_TN`. */
     val dlnaProfile: String? get() = dlnaParam("DLNA.ORG_PN")
 
-    /** DLNA.ORG_CI=1 — сервер перекодирует на лету (не оригинал). */
+    /** DLNA.ORG_CI=1 - сервер перекодирует на лету (не оригинал). */
     val isConverted: Boolean get() = dlnaParam("DLNA.ORG_CI") == "1"
 
     val isSubtitle: Boolean get() = subtitleFormat(mimeType) != null || mimeType?.let { it.startsWith("text/") && !it.contains("html") } == true
@@ -34,7 +34,7 @@ data class DlnaResource(
         additional.split(';').firstOrNull { it.startsWith("$name=", true) }?.substringAfter('=')?.trim()
 }
 
-/** Внешние субтитры элемента. [format] — расширение (`srt`, `ass`, `vtt`…). */
+/** Внешние субтитры элемента. [format] - расширение (`srt`, `ass`, `vtt`…). */
 data class DlnaSubtitle(val url: String, val format: String, val language: String? = null)
 
 enum class DlnaMediaKind { VIDEO, AUDIO, IMAGE, OTHER }
@@ -78,7 +78,7 @@ data class DlnaItem(
                 c.startsWith("object.item.audioitem") -> DlnaMediaKind.AUDIO
                 c.startsWith("object.item.imageitem") -> DlnaMediaKind.IMAGE
                 else -> {
-                    // Класс не указан или нестандартный — судим по MIME ресурсов.
+                    // Класс не указан или нестандартный - судим по MIME ресурсов.
                     val res = resources.filterNot { it.isSubtitle }
                     when {
                         res.any { it.isVideo } -> DlnaMediaKind.VIDEO
@@ -90,7 +90,7 @@ data class DlnaItem(
             }
         }
 
-    /** Ресурс для воспроизведения — см. [DidlParser.bestResource]. */
+    /** Ресурс для воспроизведения - см. [DidlParser.bestResource]. */
     val bestResource: DlnaResource? by lazy { DidlParser.bestResource(this) }
 
     val durationMs: Long? get() = bestResource?.durationMs ?: resources.firstNotNullOfOrNull { it.durationMs }
@@ -221,7 +221,7 @@ object DidlParser {
     }
 
     /**
-     * Лучший ресурс для воспроизведения: только http, без субтитров и миниатюр; предпочтение — оригинал
+     * Лучший ресурс для воспроизведения: только http, без субтитров и миниатюр; предпочтение - оригинал
      * (без DLNA.ORG_CI=1), затем наибольшее разрешение, размер и битрейт, затем порядок сервера.
      */
     fun bestResource(item: DlnaItem): DlnaResource? {

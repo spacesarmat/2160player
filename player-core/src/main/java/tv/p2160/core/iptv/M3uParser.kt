@@ -4,11 +4,11 @@ import java.net.URI
 
 /** Канал из IPTV-плейлиста. */
 data class IptvChannel(
-    /** Стабильный ключ внутри плейлиста (для избранного и «последнего канала»): URL, у повторов — с суффиксом. */
+    /** Стабильный ключ внутри плейлиста (для избранного и «последнего канала»): URL, у повторов - с суффиксом. */
     val id: String,
     val name: String,
     val url: String,
-    /** Группы из `group-title` (через `;`) или `#EXTGRP`; пусто — без группы. */
+    /** Группы из `group-title` (через `;`) или `#EXTGRP`; пусто - без группы. */
     val groups: List<String> = emptyList(),
     val tvgId: String? = null,
     val tvgName: String? = null,
@@ -61,7 +61,7 @@ object M3uParser {
     private val UA_KEYS = setOf("user-agent", "http-user-agent", "tvg-user-agent")
     private val REFERRER_KEYS = setOf("http-referrer", "http-referer", "referrer", "referer")
 
-    /** @param baseUrl адрес самого плейлиста — для относительных ссылок на потоки. */
+    /** @param baseUrl адрес самого плейлиста - для относительных ссылок на потоки. */
     fun parse(text: String, baseUrl: String? = null): M3uPlaylist {
         val lines = text.removePrefix("\uFEFF").split("\r\n", "\n", "\r")
         val channels = ArrayList<IptvChannel>()
@@ -170,7 +170,7 @@ object M3uParser {
 
     /** `-1 tvg-id="x" group-title="A, B",Название, с запятой` */
     private fun parseExtInf(body: String): ExtInf {
-        // Длительность — до первого пробела или запятой.
+        // Длительность - до первого пробела или запятой.
         var i = 0
         while (i < body.length && body[i] != ' ' && body[i] != ',' && body[i] != '\t') i++
         val (attrs, end) = parseAttributes(body.substring(i))
@@ -194,7 +194,7 @@ object M3uParser {
             while (i < n && s[i] != '=' && s[i] != ',' && !s[i].isWhitespace()) i++
             val key = s.substring(keyStart, i).lowercase()
             if (i >= n || s[i] != '=') {
-                // Слово без значения — пропускаем.
+                // Слово без значения - пропускаем.
                 continue
             }
             i++ // '='
@@ -261,7 +261,7 @@ object M3uParser {
     private fun splitUrls(v: String): List<String> =
         v.split(',', ' ').map { it.trim() }.filter { it.isNotEmpty() }
 
-    /** Строка после #EXTINF — адрес, а не перенесённое название. */
+    /** Строка после #EXTINF - адрес, а не перенесённое название. */
     private fun looksLikeUrl(line: String): Boolean {
         if (line.any { it == '<' || it == '>' || it == '"' }) return false
         return "://" in line || line.startsWith("/") || (' ' !in line && ('.' in line || '/' in line))

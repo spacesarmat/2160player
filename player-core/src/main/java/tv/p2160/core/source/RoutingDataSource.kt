@@ -13,8 +13,8 @@ import tv.p2160.core.source.smb.SmbDataSource
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Выбирает источник по схеме URI: `smb://` — наш SMB, схемы из [registerScheme] — внешние
- * модули (например, торренты), остальное — стандартный DefaultDataSource.
+ * Выбирает источник по схеме URI: `smb://` - наш SMB, схемы из [registerScheme] - внешние
+ * модули (например, торренты), остальное - стандартный DefaultDataSource.
  */
 @OptIn(UnstableApi::class)
 class RoutingDataSource(
@@ -41,7 +41,7 @@ class RoutingDataSource(
         val source = when (scheme) {
             "smb" -> smb ?: SmbDataSource(context).also { s -> listeners.forEach(s::addTransferListener); smb = s }
             DiscSession.SCHEME -> disc ?: DiscDataSource().also { s -> listeners.forEach(s::addTransferListener); disc = s }
-            // udp://адрес:порт — MPEG-TS по UDP (ffmpeg/OBS, IPTV-мультикаст).
+            // udp://адрес:порт - MPEG-TS по UDP (ffmpeg/OBS, IPTV-мультикаст).
             "udp" -> udp ?: androidx.media3.datasource.UdpDataSource().also { s -> listeners.forEach(s::addTransferListener); udp = s }
             else -> schemes[scheme]?.let { factory ->
                 custom.getOrPut(scheme!!) { factory.createDataSource().also { s -> listeners.forEach(s::addTransferListener) } }

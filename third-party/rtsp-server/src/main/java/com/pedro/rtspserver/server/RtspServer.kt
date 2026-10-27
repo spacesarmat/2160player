@@ -53,7 +53,7 @@ class RtspServer(
   private var socketTimeout: Long = StreamSocket.DEFAULT_TIMEOUT
 
   /**
-   * 2160 Player: SO_SNDBUF новых зрителей, байт. 0 — буфер ОС.
+   * 2160 Player: SO_SNDBUF новых зрителей, байт. 0 - буфер ОС.
    * Имеет смысл до [startServer]; уже принятые сокеты не меняются.
    */
   var sendBufferSize: Int = 0
@@ -184,7 +184,7 @@ class RtspServer(
               // Размер буфера читается перед каждым accept: переключатель задержки меняет его на лету.
               sock.sendBufferSize = sendBufferSize
               val clientSocket = sock.accept()
-              // 2160 Player: только локальная сеть — подключения через мобильный интерфейс закрываем.
+              // 2160 Player: только локальная сеть - подключения через мобильный интерфейс закрываем.
               if (allowLocal?.invoke(clientSocket.local) == false) {
                 Log.w(TAG, "Client rejected (not LAN): ${clientSocket.host}")
                 runCatching { clientSocket.socket.close() }
@@ -194,7 +194,7 @@ class RtspServer(
               val client = ServerClient(delay, socketType, clientSocket.host, clientSocket.socket, serverIp, port,
                 socketTimeout, serverCommandManager, this@RtspServer)
               client.setLogs(isEnableLogs)
-              // 2160 Player: размер очереди — и для новых зрителей (иначе у них 400 кадров ≈ 5 с задержки).
+              // 2160 Player: размер очереди - и для новых зрителей (иначе у них 400 кадров ≈ 5 с задержки).
               cacheSizeForNew?.let { client.resizeCache(it) }
               client.startClient()
               synchronized(clients) {
@@ -444,13 +444,13 @@ class RtspServer(
 
   companion object {
     /**
-     * 2160 Player: фильтр входящих по локальному адресу подключения (интерфейсу). false — закрыть: так сервер
-     * не обслуживает зрителей, пришедших через мобильную сеть. null — без фильтра (как в оригинале).
+     * 2160 Player: фильтр входящих по локальному адресу подключения (интерфейсу). false - закрыть: так сервер
+     * не обслуживает зрителей, пришедших через мобильную сеть. null - без фильтра (как в оригинале).
      */
     @JvmStatic @Volatile var allowLocal: ((java.net.InetAddress?) -> Boolean)? = null
     /**
-     * 2160 Player: адреса, на которых слушать. null — все интерфейсы (как в оригинале).
-     * Пустой список — не стартовать. Иначе по сокету на каждый адрес, один и тот же порт.
+     * 2160 Player: адреса, на которых слушать. null - все интерфейсы (как в оригинале).
+     * Пустой список - не стартовать. Иначе по сокету на каждый адрес, один и тот же порт.
      */
     @JvmStatic @Volatile var bindAddresses: (() -> List<java.net.InetAddress>)? = null
     private const val VPN_INTERFACE = "tun"

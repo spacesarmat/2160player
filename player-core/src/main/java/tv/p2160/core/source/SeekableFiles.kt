@@ -23,7 +23,7 @@ object SeekableFiles {
 
     private val thread by lazy { HandlerThread("p2160-proxy-fd").apply { start() } }
 
-    /** null — схема не поддерживается или Android < 8.0. */
+    /** null - схема не поддерживается или Android < 8.0. */
     fun open(context: Context, uri: Uri): ParcelFileDescriptor? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val path = SmbPath.fromUri(uri) ?: return null

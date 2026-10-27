@@ -17,7 +17,7 @@ import androidx.media3.extractor.ts.TsPayloadReader
  * - байт 2: channel_assignment (4 бита) | sampling_frequency (4 бита: 1=48k, 4=96k, 5=192k);
  * - байт 3: bits_per_sample (2 бита: 1=16, 2=20, 3=24) | прочее.
  *
- * Нечётное число каналов в потоке дополнено до чётного «пустым» каналом. На выходе —
+ * Нечётное число каналов в потоке дополнено до чётного «пустым» каналом. На выходе -
  * AUDIO_RAW little-endian (ENCODING_PCM_16BIT / ENCODING_PCM_24BIT, 20 бит идут как 24) без
  * канала-заполнителя: это самый «штатный» путь для MediaCodecAudioRenderer/DefaultAudioSink.
  * Порядок каналов BD (L R C LFE Ls Rs [Lb Rb]) совпадает с порядком Android для 5.1/7.1.

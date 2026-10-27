@@ -17,8 +17,8 @@ object Fixtures {
 
     /**
      * Синтетический M2TS (12 с) от ffmpeg в режиме m2ts:
-     * PID 0x1100 — LPCM 3.0 24 бит (0x80, нечётные каналы → заполнитель),
-     * 0x1101 — TrueHD 5.1 (0x83), 0x1102 — DTS 5.1 (0x82), 0x1103 — E-AC-3 моно (0x84).
+     * PID 0x1100 - LPCM 3.0 24 бит (0x80, нечётные каналы → заполнитель),
+     * 0x1101 - TrueHD 5.1 (0x83), 0x1102 - DTS 5.1 (0x82), 0x1103 - E-AC-3 моно (0x84).
      */
     val synthetic: File? by lazy {
         val out = File(workDir, "synth-bd-audio.m2ts")

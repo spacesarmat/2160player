@@ -36,8 +36,8 @@ internal fun Context.findActivity(): Activity? {
 }
 
 /**
- * Частота экрана под видео: пока [enabled] и частота кадров известна — режим дисплея с подходящей
- * частотой; при выходе из плеера — режим по умолчанию.
+ * Частота экрана под видео: пока [enabled] и частота кадров известна - режим дисплея с подходящей
+ * частотой; при выходе из плеера - режим по умолчанию.
  */
 @Composable
 internal fun MatchDisplayFrameRate(controller: tv.p2160.core.engine.PlayerController, enabled: Boolean, fps: Float) {

@@ -89,7 +89,7 @@ class DiscMediaSourceFactory(private val delegate: MediaSource.Factory) : MediaS
         session.title.items.forEachIndexed { index, clip ->
             val clipItem = MediaItem.Builder()
                 .setUri(session.clipUri(index))
-                // Субтитры, подключённые вручную, относятся ко всему фильму — вешаем их на первый клип.
+                // Субтитры, подключённые вручную, относятся ко всему фильму - вешаем их на первый клип.
                 .setSubtitleConfigurations(if (index == 0) mediaItem.localConfiguration?.subtitleConfigurations.orEmpty() else emptyList())
                 .build()
             builder.add(delegate.createMediaSource(clipItem), clip.durationMs)
@@ -110,7 +110,7 @@ class DiscMediaSourceFactory(private val delegate: MediaSource.Factory) : MediaS
     override fun getSupportedTypes(): IntArray = delegate.supportedTypes
 
     companion object {
-        /** Языки дорожек по PID из плейлиста диска — для [tv.p2160.core.m2ts.M2tsExtractorsFactory]. */
+        /** Языки дорожек по PID из плейлиста диска - для [tv.p2160.core.m2ts.M2tsExtractorsFactory]. */
         fun hintsFor(uri: Uri?): PidTrackHints? {
             val session = uri?.takeIf { it.scheme == DiscSession.SCHEME }?.let { DiscSessions[it] } ?: return null
             return PidTrackHints(languageForPid = session::languageForPid)

@@ -12,7 +12,7 @@ import tv.p2160.core.source.dlna.SsdpDiscovery
 /**
  * Живой поиск в локальной сети (только чтение). Запуск:
  * `P2160_DLNA_IT=1 ./gradlew :player-core:testDebugUnitTest --tests '*DlnaLiveTest*' -i`
- * Дополнительно `P2160_DLNA_LOCATION=host1,host:port,url` — серверы, не видимые по SSDP (через [DlnaProbe]).
+ * Дополнительно `P2160_DLNA_LOCATION=host1,host:port,url` - серверы, не видимые по SSDP (через [DlnaProbe]).
  */
 class DlnaLiveTest {
 
@@ -42,7 +42,7 @@ class DlnaLiveTest {
                     is DlnaItem -> println("  [item] ${o.title} ${o.kind} ${o.bestResource?.mimeType}")
                 }
             }
-            // Спускаемся по первым папкам до видео (не глубже 4 уровней) — проверка разбора элементов.
+            // Спускаемся по первым папкам до видео (не глубже 4 уровней) - проверка разбора элементов.
             var level = root
             repeat(4) {
                 val items = level.filterIsInstance<DlnaItem>()

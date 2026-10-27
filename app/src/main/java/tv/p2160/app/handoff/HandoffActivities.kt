@@ -60,7 +60,7 @@ internal fun ComponentActivity.dialogContent(content: @androidx.compose.runtime.
     }
 }
 
-/** «Galaxy S21 предлагает продолжить здесь: Фильм, 12:44» — подтверждение входящей передачи. */
+/** «Galaxy S21 предлагает продолжить здесь: Фильм, 12:44» - подтверждение входящей передачи. */
 class HandoffReceiveActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,9 +115,9 @@ class HandoffReceiveActivity : ComponentActivity() {
 }
 
 /**
- * Подключение к [peer]: при открытии отправляем запрос — на [peer] появляется уведомление
+ * Подключение к [peer]: при открытии отправляем запрос - на [peer] появляется уведомление
  * «Разрешить / Отклонить», и мы ждём ответа. Параллельно можно ввести код с того устройства.
- * [onPaired] — после «Разрешить» или верного кода.
+ * [onPaired] - после «Разрешить» или верного кода.
  */
 @androidx.compose.runtime.Composable
 internal fun PairCodeDialog(peer: Peer, onDismiss: () -> Unit, onPaired: () -> Unit) {
@@ -222,7 +222,7 @@ class HandoffSendActivity : ComponentActivity() {
                         return@launch
                     }
                     val ok = result == PushResult.OK
-                    // Просмотр продолжился на другом устройстве — здесь ставим на паузу.
+                    // Просмотр продолжился на другом устройстве - здесь ставим на паузу.
                     if (ok) Player2160.pause()
                     Toast.makeText(
                         this@HandoffSendActivity,

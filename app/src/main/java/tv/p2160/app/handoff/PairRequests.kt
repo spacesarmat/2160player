@@ -34,7 +34,7 @@ import tv.p2160.core.i18n.tr
 
 /**
  * «Устройство X хочет подключиться» на стороне хозяина: уведомление с кнопками «Разрешить» и
- * «Отклонить». На ТВ (уведомления почти не видны) и без разрешения на уведомления — диалог
+ * «Отклонить». На ТВ (уведомления почти не видны) и без разрешения на уведомления - диалог
  * [PairRequestActivity] с теми же кнопками. Сервер передачи работает, только пока приложение на
  * экране, поэтому диалог всегда можно показать.
  */
@@ -78,7 +78,7 @@ object PairRequests {
         try {
             NotificationManagerCompat.from(context).notify(notificationId(nonce), notification)
         } catch (_: SecurityException) {
-            // Разрешение отозвали между проверкой и показом — спрашиваем окном.
+            // Разрешение отозвали между проверкой и показом - спрашиваем окном.
             context.startActivity(
                 Intent(context, PairRequestActivity::class.java)
                     .putExtra(EXTRA_NONCE, nonce)
@@ -90,7 +90,7 @@ object PairRequests {
 
     fun cancel(context: Context, nonce: String) = NotificationManagerCompat.from(context).cancel(notificationId(nonce))
 
-    /** Решение хозяина — из уведомления или диалога. */
+    /** Решение хозяина - из уведомления или диалога. */
     internal fun decide(context: Context, nonce: String, name: String, allow: Boolean) {
         cancel(context, nonce)
         if (allow) {
@@ -149,7 +149,7 @@ class PairActionReceiver : BroadcastReceiver() {
     }
 }
 
-/** Тот же запрос диалогом — на ТВ, без разрешения на уведомления или по нажатию на уведомление. */
+/** Тот же запрос диалогом - на ТВ, без разрешения на уведомления или по нажатию на уведомление. */
 class PairRequestActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -18,17 +18,17 @@ import java.security.MessageDigest
  * [ResumeStore] ([ResumeStore.keyFor]). Удаляются вместе с записью.
  *
  * Откуда берём (по порядку, см. [find]):
- * 1. встроенная в файл (обложка MP4/MP3/FLAC — `MediaMetadata.artworkData`);
- * 2. переданная источником — [tv.p2160.core.api.MediaEntry.artworkUri] (DLNA-сервер, встраивающее приложение);
+ * 1. встроенная в файл (обложка MP4/MP3/FLAC - `MediaMetadata.artworkData`);
+ * 2. переданная источником - [tv.p2160.core.api.MediaEntry.artworkUri] (DLNA-сервер, встраивающее приложение);
  * 3. картинка рядом с файлом (file, smb, http): `<имя>.jpg`, `<имя>-poster.jpg`, `<имя>-thumb.jpg`, `poster.jpg`, `folder.jpg`,
- *    `cover.jpg`; для серий из папки сезона (`Season 1`, `Сезон 1`, `S01`) — ещё и постер папкой выше.
+ *    `cover.jpg`; для серий из папки сезона (`Season 1`, `Сезон 1`, `S01`) - ещё и постер папкой выше.
  */
 object Covers {
     private const val MAX_SOURCE_BYTES = 6 * 1024 * 1024
     private const val TARGET_PX = 480
 
     private val _changes = MutableStateFlow(0L)
-    /** Меняется при сохранении/удалении обложки — для перерисовки списков. */
+    /** Меняется при сохранении/удалении обложки - для перерисовки списков. */
     val changes: StateFlow<Long> = _changes.asStateFlow()
 
     private fun dir(context: Context) = File(context.applicationContext.filesDir, "covers")
@@ -70,8 +70,8 @@ object Covers {
     }
 
     /**
-     * Найти и сохранить обложку для записи [key], если её ещё нет. Блокирует (сеть, SMB) — вызывать
-     * с фонового потока. true — обложка есть (была или нашлась).
+     * Найти и сохранить обложку для записи [key], если её ещё нет. Блокирует (сеть, SMB) - вызывать
+     * с фонового потока. true - обложка есть (была или нашлась).
      */
     suspend fun find(
         context: Context,
@@ -102,7 +102,7 @@ object Covers {
         val folder = segments.dropLast(1)
         val names = listOf("$base.jpg", "$base-poster.jpg", "$base-thumb.jpg", "$base.png", "poster.jpg", "folder.jpg", "cover.jpg", "poster.png", "folder.png")
         val result = names.map { child(uri, folder, it) }.toMutableList()
-        // Серия в папке сезона — постер сериала обычно папкой выше.
+        // Серия в папке сезона - постер сериала обычно папкой выше.
         val season = folder.lastOrNull().orEmpty()
         if (folder.size > 1 && SEASON.containsMatchIn(season)) {
             listOf("poster.jpg", "folder.jpg", "cover.jpg", "poster.png").forEach { result += child(uri, folder.dropLast(1), it) }

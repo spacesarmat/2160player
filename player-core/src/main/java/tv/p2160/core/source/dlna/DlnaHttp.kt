@@ -10,7 +10,7 @@ import java.nio.charset.Charset
 /** Ответ HTTP: код и тело в виде строки. */
 data class HttpResult(val code: Int, val body: String)
 
-/** Минимальный HTTP-клиент для DLNA — подменяется в тестах. */
+/** Минимальный HTTP-клиент для DLNA - подменяется в тестах. */
 interface DlnaHttp {
     fun get(url: String): HttpResult
     fun post(url: String, headers: Map<String, String>, body: String): HttpResult
@@ -18,7 +18,7 @@ interface DlnaHttp {
 
 class DlnaException(message: String, val code: Int? = null) : IOException(message)
 
-/** Реализация на [HttpURLConnection] — без сторонних зависимостей. */
+/** Реализация на [HttpURLConnection] - без сторонних зависимостей. */
 class UrlConnectionHttp(
     private val connectTimeoutMs: Int = 4000,
     private val readTimeoutMs: Int = 15000,

@@ -28,7 +28,7 @@ object IntentApi {
     const val EXTRA_VIDEO_LIST = "video_list"
     const val EXTRA_VIDEO_LIST_NAME = "video_list.name"
     const val EXTRA_TITLES = "tv.p2160.extra.TITLES"
-    /** Плейлист строками (String[] URI) — удобно из adb, веб-оболочек и скриптов. */
+    /** Плейлист строками (String[] URI) - удобно из adb, веб-оболочек и скриптов. */
     const val EXTRA_PLAYLIST = "tv.p2160.extra.PLAYLIST"
     const val EXTRA_MIME_TYPES = "tv.p2160.extra.MIME_TYPES"
     /** Отрезки для текущего файла: `intro:0-90000;credits:1320000-` (мс). */
@@ -36,11 +36,11 @@ object IntentApi {
     const val EXTRA_INTRO_START = "tv.p2160.extra.INTRO_START"
     const val EXTRA_INTRO_END = "tv.p2160.extra.INTRO_END"
     const val EXTRA_CREDITS_START = "tv.p2160.extra.CREDITS_START"
-    /** Обложка текущего файла (String URI) — для «Продолжить просмотр». */
+    /** Обложка текущего файла (String URI) - для «Продолжить просмотр». */
     const val EXTRA_ARTWORK = "tv.p2160.extra.ARTWORK"
-    /** Обложки элементов плейлиста (String[] URI, по порядку; пустая строка — нет). */
+    /** Обложки элементов плейлиста (String[] URI, по порядку; пустая строка - нет). */
     const val EXTRA_ARTWORKS = "tv.p2160.extra.ARTWORKS"
-    /** Boolean: плейлист — телеканалы (см. [PlaybackRequest.liveTv]). */
+    /** Boolean: плейлист - телеканалы (см. [PlaybackRequest.liveTv]). */
     const val EXTRA_LIVE = "tv.p2160.extra.LIVE"
 
     /** Результат в формате MX Player. */

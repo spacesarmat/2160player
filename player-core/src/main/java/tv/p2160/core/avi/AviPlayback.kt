@@ -26,15 +26,59 @@ import java.io.ByteArrayOutputStream
 @OptIn(UnstableApi::class)
 internal object AviPlayback {
     fun factory(delegate: ExtractorsFactory): ExtractorsFactory = object : ExtractorsFactory by delegate {
-        override fun createExtractors(): Array<Extractor> =
-            delegate.createExtractors().map(::wrap).toTypedArray()
+        override fun createExtractors(): Array<Extractor> = ordered(delegate.createExtractors())
 
         override fun createExtractors(uri: Uri, responseHeaders: Map<String, List<String>>): Array<Extractor> =
-            delegate.createExtractors(uri, responseHeaders).map(::wrap).toTypedArray()
+            ordered(delegate.createExtractors(uri, responseHeaders))
+    }
+
+    /**
+     * Media3 ставит Mp3Extractor раньше AviExtractor. У cab-view AVI в movi лежат
+     * подряд валидные кадры MP3 (Eurostar: с байта 10260), а content:// не даёт тип файла,
+     * и файл открывается как звук. RIFF....AVI  забирает только наш экстрактор.
+     */
+    internal fun ordered(raw: Array<Extractor>): Array<Extractor> {
+        val wrapped = raw.map(::wrap)
+        val avi = wrapped.filterIsInstance<AviFixExtractor>()
+        val rest = wrapped.filter { it !is AviFixExtractor }.map { RiffAviBlocked(it) }
+        val head = if (avi.isEmpty()) listOf(AviFixExtractor(AviExtractor())) else avi
+        return (head + rest).toTypedArray()
     }
 
     fun wrap(extractor: Extractor): Extractor =
         if (extractor is AviExtractor) AviFixExtractor(extractor) else extractor
+}
+
+/** Чужой экстрактор не должен забирать файл, который начинается с RIFF....AVI . */
+@OptIn(UnstableApi::class)
+internal class RiffAviBlocked(private val delegate: Extractor) : Extractor by delegate {
+    override fun sniff(input: ExtractorInput): Boolean {
+        if (input.looksLikeRiffAvi()) return false
+        return delegate.sniff(input)
+    }
+}
+
+@OptIn(UnstableApi::class)
+internal fun ExtractorInput.looksLikeRiffAvi(): Boolean {
+    val header = ByteArray(12)
+    return try {
+        if (!peekFully(header, 0, 12, true)) false
+        else header[0] == 'R'.code.toByte() &&
+            header[1] == 'I'.code.toByte() &&
+            header[2] == 'F'.code.toByte() &&
+            header[3] == 'F'.code.toByte() &&
+            header[8] == 'A'.code.toByte() &&
+            header[9] == 'V'.code.toByte() &&
+            header[10] == 'I'.code.toByte() &&
+            header[11] == ' '.code.toByte()
+    } catch (_: Throwable) {
+        false
+    } finally {
+        try {
+            resetPeekPosition()
+        } catch (_: Throwable) {
+        }
+    }
 }
 
 @OptIn(UnstableApi::class)

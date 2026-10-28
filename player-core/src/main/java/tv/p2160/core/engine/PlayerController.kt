@@ -178,6 +178,8 @@ class PlayerController(
     private var passthroughRetries = 0
     /** Повтор декодера уже поставлен в очередь: дорожки на этот миг ещё без видео, ошибку не показываем. */
     private var videoRetryPending = false
+    /** onTracksChanged пришёл, пока шёл повтор prepare: проверку видео нельзя пропустить. */
+    private var unsupportedCheckDeferred = false
     /** Звуковые часы AVI+MP3 не идут: не больше двух попыток на файл, дальше ошибка. */
     private var ffmpegAudioTried = false
     private var audioDiscontinuityCount = 0
@@ -1598,6 +1600,7 @@ class PlayerController(
             mime = mime,
             failedDecoder = decoders.video,
             allowFallback = settings.current.decoder == tv.p2160.core.settings.DecoderPreference.AUTO,
+            softwareAvailable = softwareVideoDecoderExists(mime),
         ) ?: return false
         val label = codecLabel(mime)
         Log.i(PLAYER_LOG_TAG, "video retry mime=$mime stage=$next was=${decoders.video} audio=${decoders.audio}")
@@ -1618,9 +1621,8 @@ class PlayerController(
                 if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
                 if (play) player.play()
             } finally {
-                videoRetryPending = false
+                finishVideoRetry()
             }
-            reportUnsupportedVideo(player.currentTracks)
         }
         return true
     }
@@ -1644,9 +1646,22 @@ class PlayerController(
         }
     }
 
+    private fun finishVideoRetry() {
+        videoRetryPending = false
+        if (!unsupportedCheckDeferred) return
+        unsupportedCheckDeferred = false
+        val tracks = player.currentTracks
+        reportMissingAviVideo(tracks)
+        reportUnsupportedVideo(tracks)
+    }
+
     /** В контейнере видео объявлено, а экстрактор дорожку не создал. Звук без ошибки больше не оставляем. */
     private fun reportMissingAviVideo(tracks: Tracks) {
-        if (videoRetryPending || _state.value.error != null || !currentItemIsAvi()) return
+        if (videoRetryPending) {
+            unsupportedCheckDeferred = true
+            return
+        }
+        if (_state.value.error != null || !currentItemIsAvi()) return
         val declared = AviProbe.video ?: return
         val extracted = tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
         if (extracted) return
@@ -1660,7 +1675,11 @@ class PlayerController(
     }
 
     private fun reportUnsupportedVideo(tracks: Tracks) {
-        if (videoRetryPending || _state.value.error != null) return
+        if (videoRetryPending) {
+            unsupportedCheckDeferred = true
+            return
+        }
+        if (_state.value.error != null) return
         val mime = unsupportedVideoMime(
             tracks.groups,
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
@@ -1790,7 +1809,7 @@ class PlayerController(
                 if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
                 if (play) player.play()
             } finally {
-                videoRetryPending = false
+                finishVideoRetry()
             }
         }
         return true

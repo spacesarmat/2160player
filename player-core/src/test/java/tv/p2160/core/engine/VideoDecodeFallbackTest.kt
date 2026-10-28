@@ -43,6 +43,36 @@ class VideoDecodeFallbackTest {
     }
 
     @Test
+    fun missingSoftwareDecoderDoesNotDropTheVideoTrack() {
+        val gate = VideoDecoderGate()
+        assertNull(
+            gate.advance(
+                MimeTypes.VIDEO_MP43,
+                null,
+                allowFallback = true,
+                ffmpegAvailable = false,
+                softwareAvailable = false,
+            ),
+        )
+        assertEquals(VideoDecoderGate.DEFAULT, gate.stage(MimeTypes.VIDEO_MP43))
+        assertEquals(
+            "error.decoder_codec_no_ffmpeg",
+            decoderErrorKey(MimeTypes.VIDEO_MP43, DecoderPreference.AUTO, gate.stage(MimeTypes.VIDEO_MP43)),
+        )
+        val withFfmpeg = VideoDecoderGate()
+        assertEquals(
+            VideoDecoderGate.FFMPEG,
+            withFfmpeg.advance(
+                MimeTypes.VIDEO_MP4V,
+                null,
+                allowFallback = true,
+                ffmpegAvailable = true,
+                softwareAvailable = false,
+            ),
+        )
+    }
+
+    @Test
     fun hardwarePreferenceDoesNotSwitchAndUnknownCodecStopsBeforeFfmpeg() {
         val gate = VideoDecoderGate()
         assertNull(gate.advance(MimeTypes.VIDEO_MP4V, "OMX.allwinner.video.decoder.mpeg4", allowFallback = false))

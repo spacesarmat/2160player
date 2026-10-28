@@ -77,7 +77,10 @@ internal object MpegAudio {
     private enum class Header { NONE, FRAME, FREE }
 }
 
-/** Сколько PCM-сэмплов было до каждого куска. Ключ - метка куска, которую ставит ChunkReader. */
+/**
+ * Сколько PCM-сэмплов было до каждого куска. Ключ - метка куска, которую ставит ChunkReader.
+ * Куски дописывает поток загрузки, перемотка читает их с потока воспроизведения.
+ */
 internal class AviMp3Index {
     data class Entry(
         val containerTimeUs: Long,
@@ -87,45 +90,87 @@ internal class AviMp3Index {
         val samplesInChunk: Long,
     )
 
+    private val lock = Any()
     private val entries = ArrayList<Entry>()
-    var sampleRate: Int = 0
-        private set
+    private val seenTimes = HashSet<Long>()
+    @Volatile private var rateHz: Int = 0
+
+    var sampleRate: Int
+        get() = rateHz
+        private set(value) { rateHz = value }
 
     fun noteRate(rate: Int) {
-        if (sampleRate == 0 && rate > 0) sampleRate = rate
+        if (rate <= 0) return
+        synchronized(lock) {
+            if (rateHz == 0) rateHz = rate
+        }
     }
 
     fun add(containerTimeUs: Long, offset: Long, payload: Long, samplesInChunk: Long) {
         if (samplesInChunk <= 0) return
-        if (entries.any { it.containerTimeUs == containerTimeUs }) return
-        val before = if (entries.isEmpty()) 0L else entries.last().samplesBefore + entries.last().samplesInChunk
-        entries += Entry(containerTimeUs, offset, payload, before, samplesInChunk)
+        synchronized(lock) {
+            if (!seenTimes.add(containerTimeUs)) return
+            val before = if (entries.isEmpty()) 0L else entries.last().samplesBefore + entries.last().samplesInChunk
+            entries += Entry(containerTimeUs, offset, payload, before, samplesInChunk)
+        }
     }
 
-    fun samplesBefore(containerTimeUs: Long): Long? =
-        entries.firstOrNull { it.containerTimeUs == containerTimeUs }?.samplesBefore
+    fun samplesBefore(containerTimeUs: Long): Long? = synchronized(lock) {
+        val index = binarySearchTime(containerTimeUs)
+        if (index >= 0) entries[index].samplesBefore else null
+    }
 
     /** По смещению заголовка или полезной нагрузки, если метка ChunkReader после seek сдвинута. */
-    fun samplesBeforePosition(position: Long): Long? =
+    fun samplesBeforePosition(position: Long): Long? = synchronized(lock) {
         entries.firstOrNull {
             it.offset == position || it.payload == position ||
                 (it.payload >= 8 && it.payload - 8 == position) ||
                 (it.offset >= 0 && it.offset + 8 == position)
         }?.samplesBefore
-
-    /** Кусок, чьё время по сэмплам не позже [timeUs]. null, пока индекс пуст. */
-    fun seekEntry(timeUs: Long): Entry? {
-        if (sampleRate <= 0 || entries.isEmpty()) return null
-        var best: Entry? = null
-        for (entry in entries) {
-            val at = entry.samplesBefore * 1_000_000L / sampleRate
-            if (at <= timeUs) best = entry else break
-        }
-        return best ?: entries.first()
     }
 
-    fun sampleTimeUs(entry: Entry): Long =
-        if (sampleRate <= 0) 0L else entry.samplesBefore * 1_000_000L / sampleRate
+    /**
+     * Кусок, чьё время по сэмплам не позже [timeUs]. null, пока индекс пуст.
+     * Список под замком уже отсортирован по samplesBefore: двоичный поиск.
+     */
+    fun seekEntry(timeUs: Long): Entry? = synchronized(lock) {
+        if (rateHz <= 0 || entries.isEmpty()) return null
+        var lo = 0
+        var hi = entries.lastIndex
+        var best = -1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            val at = entries[mid].samplesBefore * 1_000_000L / rateHz
+            if (at <= timeUs) {
+                best = mid
+                lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        entries[if (best >= 0) best else 0]
+    }
+
+    fun sampleTimeUs(entry: Entry): Long {
+        val rate = rateHz
+        return if (rate <= 0) 0L else entry.samplesBefore * 1_000_000L / rate
+    }
+
+    /** entries отсортирован по containerTimeUs: куски AVI дописываются по порядку. */
+    private fun binarySearchTime(time: Long): Int {
+        var lo = 0
+        var hi = entries.lastIndex
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            val at = entries[mid].containerTimeUs
+            when {
+                at == time -> return mid
+                at < time -> lo = mid + 1
+                else -> hi = mid - 1
+            }
+        }
+        return -1
+    }
 }
 
 /**

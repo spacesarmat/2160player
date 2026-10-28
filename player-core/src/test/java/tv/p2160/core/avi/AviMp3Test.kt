@@ -8,8 +8,12 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.extractor.TrackOutput
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class AviMp3Test {
     @Test
@@ -105,6 +109,59 @@ class AviMp3Test {
         assertEquals(1152L * 1_000_000L / 44100L, out.times[0])
         assertEquals(2304L * 1_000_000L / 44100L, out.times[1])
         assertEquals(3456L * 1_000_000L / 44100L, out.times[2])
+    }
+
+    @Test
+    fun seekEntryUsesBinarySearchOnSampleTime() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        val step = 1152L * 1_000_000L / 44100L
+        repeat(8) { i -> index.add(i * 10_000L, i * 400L, i * 400L + 8, 1152) }
+        index.add(10_000L, 1, 1, 1152)
+        assertEquals(0L, index.seekEntry(0)?.containerTimeUs)
+        assertEquals(0L, index.seekEntry(step - 1)?.containerTimeUs)
+        assertEquals(10_000L, index.seekEntry(step)?.containerTimeUs)
+        assertEquals(70_000L, index.seekEntry(step * 100)?.containerTimeUs)
+        assertEquals(1152L, index.samplesBefore(10_000L))
+        assertNull(index.samplesBefore(15_000L))
+        assertEquals(0L, index.samplesBeforePosition(0L))
+    }
+
+    @Test
+    fun seekWhileLoadingDoesNotThrow() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        val error = AtomicReference<Throwable>()
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        Thread {
+            try {
+                start.await()
+                repeat(30_000) { i -> index.add(i.toLong(), i * 8L, i * 8L + 8, 1152) }
+            } catch (t: Throwable) {
+                error.set(t)
+            } finally {
+                done.countDown()
+            }
+        }.start()
+        Thread {
+            try {
+                start.await()
+                repeat(30_000) { i ->
+                    index.seekEntry(i * 1_000L)
+                    index.samplesBefore(i.toLong())
+                    index.samplesBeforePosition(i * 8L)
+                }
+            } catch (t: Throwable) {
+                error.set(t)
+            } finally {
+                done.countDown()
+            }
+        }.start()
+        start.countDown()
+        assertTrue(done.await(20, TimeUnit.SECONDS))
+        assertNull(error.get())
+        assertEquals(29_999L, index.seekEntry(Long.MAX_VALUE)?.containerTimeUs)
     }
 
     private fun emit(audio: AviMp3AudioOutput, frame: ByteArray, count: Int, containerUs: Long) {

@@ -42,16 +42,20 @@ internal class VideoDecoderGate {
         failedDecoder: String?,
         allowFallback: Boolean,
         ffmpegAvailable: Boolean = ffmpegCanDecode(mime),
+        softwareAvailable: Boolean = true,
     ): Int? {
         if (!allowFallback || !MimeTypes.isVideo(mime)) return null
         if (failedDecoder != null && "ffmpeg" in failedDecoder.lowercase()) return null
         val now = stage[mime] ?: DEFAULT
         if (now >= FFMPEG) return null
-        val next = when {
+        var next = when {
             now == DEFAULT && failedDecoder != null && MediaReporter.isSoftware(failedDecoder) -> FFMPEG
             now == DEFAULT -> SOFTWARE
             else -> FFMPEG
         }
+        // Пустой программный список не запоминаем: иначе повтор prepare выкидывает видео
+        // и остаётся один звук (DIV3 на Dune, OMX.realtek.video.dec.mp43).
+        if (next == SOFTWARE && !softwareAvailable) next = FFMPEG
         if (next == FFMPEG && !ffmpegAvailable) return null
         stage[mime] = next
         return next
@@ -164,6 +168,25 @@ internal fun unsupportedVideoMime(groups: List<Tracks.Group>, videoDisabled: Boo
  */
 internal fun isMsMpeg4Mime(mimeType: String): Boolean =
     mimeType == MimeTypes.VIDEO_MP43 || mimeType == MimeTypes.VIDEO_MP42 || mimeType == AviHeader.MIME_DIVX3
+
+/**
+ * Есть ли программный MediaCodec этого MIME (c2.android / OMX.google).
+ * На Dune для video/divx3 и video/mp43 его нет: в списке только OMX.realtek.video.dec.mp43,
+ * и OMX отказывает в создании с InvalidComponentName ещё до KEY_MIME. Пустой запасной
+ * проход тогда нельзя запускать.
+ */
+@OptIn(UnstableApi::class)
+internal fun softwareVideoDecoderExists(mime: String): Boolean {
+    for (probe in decoderMimesFor(mime)) {
+        val infos = try {
+            MediaCodecSelector.DEFAULT.getDecoderInfos(probe, false, false)
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        if (infos.any { it.softwareOnly }) return true
+    }
+    return false
+}
 
 internal fun decoderMimesFor(mimeType: String): List<String> = when {
     mimeType == AviHeader.MIME_DIVX3 -> listOf(AviHeader.MIME_DIVX3, MimeTypes.VIDEO_MP43, "video/divx", "video/x-divx")

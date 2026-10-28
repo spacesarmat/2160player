@@ -1,6 +1,7 @@
 package tv.p2160.core.ui
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,10 +9,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,7 +28,6 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,20 +36,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.api.SegmentType
 import tv.p2160.core.engine.TimeInput
@@ -138,30 +147,89 @@ fun SkipButton(type: SegmentType, onClick: () -> Unit, theme: PlayerTheme, modif
     }
 }
 
-/** Карточка «Следующая серия через N с». */
+/**
+ * Карточка «Дальше» в углу. Фокус не забирает, пока [takeFocus] ложь:
+ * пульт попадает на кнопки, только если пользователь сам навёлся.
+ */
 @Composable
-fun NextEpisodeCard(secondsLeft: Int, totalSeconds: Int, onPlayNow: () -> Unit, onCancel: () -> Unit, theme: PlayerTheme, modifier: Modifier = Modifier) {
+fun NextEpisodeCard(
+    title: String?,
+    coverPath: String?,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit,
+    theme: PlayerTheme,
+    modifier: Modifier = Modifier,
+    takeFocus: Boolean = false,
+) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(takeFocus) { if (takeFocus) runCatching { focus.requestFocus() } }
+    val context = LocalContext.current
+    val preview by produceState<ImageBitmap?>(null, coverPath) {
+        value = coverPath?.let { path ->
+            withContext(Dispatchers.IO) { runCatching { decodePreview(context, path) }.getOrNull() }
+        }
+    }
     Column(
-        modifier.widthIn(max = 360.dp).clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.96f))
+        modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.96f))
             .border(1.dp, theme.accent.copy(alpha = 0.4f), RoundedCornerShape(16.dp)).padding(16.dp),
     ) {
-        Text(tr("player.next_episode_in", secondsLeft), color = theme.onSurface, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.size(10.dp))
-        LinearProgressIndicator(
-            progress = { 1f - secondsLeft.toFloat() / totalSeconds },
-            color = theme.accent,
-            trackColor = theme.onSurface.copy(alpha = 0.15f),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Text(tr("player.up_next"), color = theme.muted, style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.size(6.dp))
+        Box(
+            Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(10.dp)).background(theme.scrim),
+            contentAlignment = Alignment.Center,
+        ) {
+            val image = preview
+            if (image != null) {
+                Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                Text(
+                    title ?: tr("player.up_next"),
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
+        if (preview != null && !title.isNullOrBlank()) {
+            Spacer(Modifier.size(8.dp))
+            Text(title, color = theme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+        }
         Spacer(Modifier.size(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onPlayNow, modifier = Modifier.focusRequester(focus)) { Text(tr("player.play_now"), color = theme.accent) }
-            TextButton(onClick = onCancel) { Text(tr("player.cancel"), color = theme.muted) }
+            TextButton(
+                onClick = onPlayNow,
+                modifier = Modifier.focusRequester(focus).focusProperties { canFocus = takeFocus },
+            ) { Text(tr("player.play_now"), color = theme.accent) }
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.focusProperties { canFocus = takeFocus },
+            ) { Text(tr("player.cancel"), color = theme.muted) }
         }
     }
 }
+
+private fun decodePreview(context: android.content.Context, source: String): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    openPreview(context, source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 480) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val bitmap = openPreview(context, source)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
+    return bitmap.asImageBitmap()
+}
+
+private fun openPreview(context: android.content.Context, source: String): java.io.InputStream? =
+    if ("://" in source) {
+        val uri = android.net.Uri.parse(source)
+        runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+            ?: runCatching { java.net.URL(source).openStream() }.getOrNull()
+    } else {
+        java.io.File(source).takeIf { it.isFile }?.inputStream()
+    }
 
 @Composable
 fun GoToTimeDialog(durationMs: Long, onGo: (Long) -> Unit, onDismiss: () -> Unit) {

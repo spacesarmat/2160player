@@ -127,6 +127,14 @@ data class PlayerUiState(
     val endDim: Boolean = false,
     /** Плеер просит активность закрыться. */
     val requestClose: Boolean = false,
+    /** Последний файл плейлиста: короткая надпись и возврат в папку. */
+    val playlistFinished: Boolean = false,
+    /** Сохранённая позиция, если перед стартом надо спросить. */
+    val resumePromptMs: Long? = null,
+    /** Название следующего файла для карточки. */
+    val nextTitle: String? = null,
+    /** Файл или URI обложки следующего файла. */
+    val nextCoverPath: String? = null,
 )
 
 /**
@@ -462,14 +470,14 @@ class PlayerController(
         val mediaItems = request.items.indices.map { buildMediaItem(it) }
         val startIndex = request.startIndex.coerceIn(mediaItems.indices)
         player.setMediaItems(mediaItems, startIndex, C.TIME_UNSET)
-        onItemStarted(startIndex, explicitStart = request.startPositionMs)
+        onItemStarted(startIndex, explicitStart = request.startPositionMs, opening = true)
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = _state.value.resumePromptMs == null
         startProgressLoop()
     }
 
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
-    private fun onItemStarted(index: Int, explicitStart: Long?) {
+    private fun onItemStarted(index: Int, explicitStart: Long?, opening: Boolean = false) {
         cancelIntro()
         introItem = -1
         introAttempts = 0
@@ -514,14 +522,28 @@ class PlayerController(
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
+        val offer = if (opening) {
+            resumeOfferMs(
+                autoResume = s.autoResume,
+                explicitStart = explicitStart,
+                savedMs = resumeFrom,
+                finished = entry?.finished == true,
+                live = request.liveTv || isLiveSource(request.items[index].uri),
+            )
+        } else null
+        val next = request.items.getOrNull(index + 1)
         _state.update {
             it.copy(
-                resumedFromMs = resumeFrom,
+                resumedFromMs = if (offer != null) null else resumeFrom,
+                resumePromptMs = offer,
                 error = null,
                 title = titleAt(index),
                 subtitle = liveSubtitle(index),
+                nextTitle = next?.title?.takeIf { t -> t.isNotBlank() } ?: next?.uri?.lastPathSegment,
+                nextCoverPath = if (next != null) previewSource(index + 1) else null,
                 endCountdownSec = null,
                 showEndScreen = false,
+                playlistFinished = false,
                 endDim = false,
                 requestClose = false,
             )
@@ -811,6 +833,15 @@ class PlayerController(
     fun next() {
         if (request.liveTv) return switchChannel(1)
         if (player.hasNextMediaItem()) { saveProgress(); player.seekToNextMediaItem() }
+    }
+
+    /** Карточка «Дальше»: следующий файл и сразу воспроизведение. */
+    fun playNextNow() {
+        if (player.hasNextMediaItem()) {
+            saveProgress()
+            player.seekToNextMediaItem()
+            player.play()
+        }
     }
 
     fun previous() {
@@ -1122,6 +1153,17 @@ class PlayerController(
 
     fun dismissResumeHint() = _state.update { it.copy(resumedFromMs = null) }
 
+    fun continueFromPrompt() {
+        _state.update { it.copy(resumePromptMs = null, resumedFromMs = it.resumePromptMs) }
+        player.play()
+    }
+
+    fun startOverFromPrompt() {
+        _state.update { it.copy(resumePromptMs = null, resumedFromMs = null) }
+        player.seekTo(0)
+        player.play()
+    }
+
     fun cancelEndCountdown() {
         endHoldSince = SystemClock.elapsedRealtime()
         _state.update { it.copy(endCountdownSec = null, endDim = false) }
@@ -1149,7 +1191,9 @@ class PlayerController(
     fun acknowledgeClose() = _state.update { it.copy(requestClose = false) }
 
     fun dismissEndDim() {
-        endHoldSince = SystemClock.elapsedRealtime()
+        val now = SystemClock.elapsedRealtime()
+        if (endHoldSince != 0L) endHoldSince = now
+        pausedSince = now
         _state.update { it.copy(endDim = false) }
     }
 
@@ -1168,7 +1212,7 @@ class PlayerController(
             completed = true
             saveProgress()
         }
-        val plan = endPlan(settings.current.endAction, player.hasNextMediaItem(), live)
+        val plan = endPlan(settings.current.endAction, player.hasNextMediaItem(), request.items.size, live)
         when {
             plan.repeat -> {
                 naturalEndHandled = false
@@ -1177,11 +1221,12 @@ class PlayerController(
                 player.play()
             }
             plan.closeNow -> requestClose()
-            plan.countdown -> _state.update { it.copy(endCountdownSec = END_COUNTDOWN_SEC, showEndScreen = false, endDim = false) }
-            plan.endScreen -> _state.update { it.copy(showEndScreen = true, endCountdownSec = null, endDim = false) }
+            plan.countdown -> _state.update { it.copy(endCountdownSec = END_COUNTDOWN_SEC, showEndScreen = false, playlistFinished = false, endDim = false) }
+            plan.playlistDone -> _state.update { it.copy(playlistFinished = true, endCountdownSec = null, showEndScreen = false, endDim = false) }
+            plan.endScreen -> _state.update { it.copy(showEndScreen = true, endCountdownSec = null, playlistFinished = false, endDim = false) }
             plan.stay -> {
                 endHoldSince = if (live) 0L else SystemClock.elapsedRealtime()
-                _state.update { it.copy(endCountdownSec = null, showEndScreen = false, endDim = false) }
+                _state.update { it.copy(endCountdownSec = null, showEndScreen = false, playlistFinished = false, endDim = false) }
             }
         }
     }
@@ -1192,16 +1237,56 @@ class PlayerController(
         return uri != null && isLiveSource(uri)
     }
 
+    private var pausedSince = 0L
+
     private fun tickEndHold() {
-        if (endHoldSince == 0L || isLivePlayback() || player.isPlaying) {
-            if (player.isPlaying && _state.value.endDim) _state.update { it.copy(endDim = false) }
-            if (player.isPlaying) endHoldSince = 0L
+        val live = isLivePlayback()
+        val ui = _state.value
+        val blocked = live || ui.error != null || ui.showEndScreen || ui.endCountdownSec != null ||
+            ui.playlistFinished || ui.resumePromptMs != null
+        if (player.isPlaying || blocked) {
+            if (player.isPlaying) {
+                endHoldSince = 0L
+                pausedSince = 0L
+            }
+            if (ui.endDim && (player.isPlaying || blocked)) _state.update { it.copy(endDim = false) }
             return
         }
-        if (_state.value.showEndScreen || _state.value.endCountdownSec != null) return
-        if (endShouldDim(true, false, SystemClock.elapsedRealtime() - endHoldSince) && !_state.value.endDim) {
+        val now = SystemClock.elapsedRealtime()
+        if (endHoldSince == 0L) {
+            if (!settings.current.oledSaver) {
+                pausedSince = 0L
+                if (ui.endDim) _state.update { it.copy(endDim = false) }
+                return
+            }
+            if (pausedSince == 0L) pausedSince = now
+            if (endShouldDim(true, false, now - pausedSince) && !ui.endDim) {
+                _state.update { it.copy(endDim = true) }
+            }
+            return
+        }
+        if (endShouldDim(true, false, now - endHoldSince) && !ui.endDim) {
             _state.update { it.copy(endDim = true) }
         }
+    }
+
+    /** Обложка следующего пункта: уже сохранённая, переданная или картинка рядом с локальным файлом. */
+    private fun previewSource(index: Int): String? {
+        val item = request.items.getOrNull(index) ?: return null
+        keyAt(index)?.let { key -> Covers.get(appContext, key)?.absolutePath }?.let { return it }
+        val art = item.artworkUri
+        if (art != null) {
+            when (art.scheme?.lowercase()) {
+                "file" -> art.path?.takeIf { java.io.File(it).isFile }?.let { return it }
+                "http", "https", "content" -> return art.toString()
+            }
+        }
+        if (item.uri.scheme?.lowercase() == "file") {
+            return Covers.sidecarCandidates(item.uri).firstNotNullOfOrNull { candidate ->
+                candidate.path?.takeIf { java.io.File(it).isFile }
+            }
+        }
+        return null
     }
 
     /** Начать текущий файл с начала (кнопка в подсказке «Продолжено с …»). */
@@ -1212,12 +1297,17 @@ class PlayerController(
 
     // endregion
 
-    fun result(): PlaybackResult = PlaybackResult(
-        uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
-        positionMs = player.currentPosition,
-        durationMs = player.duration.coerceAtLeast(0),
-        completed = completed,
-    )
+    fun result(): PlaybackResult {
+        val duration = player.duration.coerceAtLeast(0)
+        val position = if (completed) duration else player.currentPosition.coerceAtLeast(0)
+        val watched = completed || ResumeStore.isFinished(position, duration)
+        return PlaybackResult(
+            uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
+            positionMs = if (watched) duration else position,
+            durationMs = duration,
+            completed = watched,
+        )
+    }
 
     fun saveProgress() {
         val duration = player.duration

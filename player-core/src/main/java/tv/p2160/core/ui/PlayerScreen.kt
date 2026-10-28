@@ -96,7 +96,9 @@ import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.END_IDLE_CLOSE_MS
+import tv.p2160.core.engine.PLAYLIST_DONE_MS
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.engine.showUpNext
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.transportShowsRemaining
 import tv.p2160.core.api.PlayerExtensions
@@ -206,6 +208,8 @@ fun PlayerScreen(
     var goToDialog by remember { mutableStateOf(false) }
     // Карточка «Следующая серия»: отменена для текущего элемента плейлиста.
     var nextDismissedFor by remember { mutableIntStateOf(-1) }
+    var upNextArmed by remember { mutableStateOf(false) }
+    val resumeFocus = remember { FocusRequester() }
     // Плашка канала после переключения стрелками (IPTV).
     var zapTick by remember { mutableIntStateOf(0) }
     var zapVisible by remember { mutableStateOf(false) }
@@ -304,11 +308,25 @@ fun PlayerScreen(
             onBack()
         }
     }
+    LaunchedEffect(state.playlistIndex) { upNextArmed = false }
+    LaunchedEffect(state.playlistFinished) {
+        if (!state.playlistFinished) return@LaunchedEffect
+        delay(PLAYLIST_DONE_MS)
+        if (controller.state.value.playlistFinished) onBack()
+    }
+    LaunchedEffect(state.resumePromptMs) {
+        if (state.resumePromptMs != null) runCatching { resumeFocus.requestFocus() }
+    }
 
     BackHandler {
         when {
             state.endDim -> controller.dismissEndDim()
             state.endCountdownSec != null -> controller.cancelEndCountdown()
+            state.resumePromptMs != null -> controller.continueFromPrompt()
+            upNextArmed -> {
+                upNextArmed = false
+                runCatching { rootFocus.requestFocus() }
+            }
             panelState.value != null -> panelState.value = null
             else -> onBack()
         }
@@ -341,16 +359,23 @@ fun PlayerScreen(
         flashTick++
     }
 
-    // «Почти конец» меняется один раз за ролик, а не на каждом тике позиции.
-    val nearEnd by remember {
+    // Карточка «Дальше» переключается один раз, а не на каждом тике позиции.
+    val showNextCard by remember(inPictureInPicture) {
         derivedStateOf(structuralEqualityPolicy()) {
             val s = upstream.value
-            !s.isLive && !s.liveTv && s.hasNext && s.durationMs > 60_000L && s.durationMs - s.positionMs in 1L..15_000L
+            s.endCountdownSec == null && !s.showEndScreen && !s.playlistFinished && showUpNext(
+                action = settings.endAction,
+                hasNext = s.hasNext && nextDismissedFor != s.playlistIndex,
+                live = s.isLive || s.liveTv,
+                ended = s.ended,
+                positionMs = s.positionMs,
+                durationMs = s.durationMs,
+                inLastChapter = s.chapters.size > 1 && s.chapterIndex == s.chapters.lastIndex,
+                lastChapterTitle = s.chapters.lastOrNull()?.title,
+            ) && !inPictureInPicture
         }
     }
-    val creditsWithNext = !state.liveTv && state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
-    val showNextCard = creditsWithNext && nextDismissedFor != state.playlistIndex && !inPictureInPicture && settings.autoPlayNext
-    val skippable = state.activeSegment?.takeIf { !creditsWithNext }
+    val skippable = state.activeSegment?.takeIf { !showNextCard }
 
     CompositionLocalProvider(LocalStrings provides strings) {
     P2160Theme(theme) {
@@ -368,7 +393,15 @@ fun PlayerScreen(
                     }
                     if (state.showEndScreen) endIdle++
                     // Диалоги сами держат фокус. Не отдаём OK спрятанной кнопке панели.
-                    if (state.showEndScreen || state.endCountdownSec != null || state.error != null) {
+                    if (state.showEndScreen || state.endCountdownSec != null || state.resumePromptMs != null || state.error != null) {
+                        return@onPreviewKeyEvent false
+                    }
+                    if (upNextArmed && showNextCard) {
+                        if (e.type == KeyEventType.KeyDown && (e.key == Key.Back || e.key == Key.Escape)) {
+                            upNextArmed = false
+                            runCatching { rootFocus.requestFocus() }
+                            return@onPreviewKeyEvent true
+                        }
                         return@onPreviewKeyEvent false
                     }
                     if (e.type == KeyEventType.KeyUp) {
@@ -405,6 +438,10 @@ fun PlayerScreen(
                             }
                             Key.Back, Key.Escape, Key.Backspace -> { digits = ""; return@onPreviewKeyEvent true }
                         }
+                    }
+                    if (showNextCard && !upNextArmed && e.key == Key.DirectionDown && panelState.value == null && !goToDialog) {
+                        upNextArmed = true
+                        return@onPreviewKeyEvent true
                     }
                     if (controlsVisible.value) { poke(); return@onPreviewKeyEvent false }
                     // Удержание стрелки ускоряет перемотку; обрабатываем каждый 3-й повтор, чтобы не улетать.
@@ -517,7 +554,12 @@ fun PlayerScreen(
             // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
             // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
-            PanelBoundControls(panelState = panelState, visible = controlsVisible, allowFocus = state.error == null) { panelOpen ->
+            PanelBoundControls(
+                panelState = panelState,
+                visible = controlsVisible,
+                allowFocus = state.error == null && !state.showEndScreen && state.endCountdownSec == null &&
+                    state.resumePromptMs == null && !state.playlistFinished && !state.endDim,
+            ) { panelOpen ->
                 Controls(
                     controller = controller,
                     state = state,
@@ -575,12 +617,17 @@ fun PlayerScreen(
                     controlsVisible = controlsVisible,
                     skippable = skippable,
                     showNextCard = showNextCard,
-                    playlistIndex = state.playlistIndex,
-                    isPlaying = state.isPlaying,
+                    nextTitle = state.nextTitle,
+                    nextCoverPath = state.nextCoverPath,
+                    upNextArmed = upNextArmed,
                     theme = theme,
                     onSkip = { seg -> controller.skip(seg); poke() },
-                    onNext = controller::next,
-                    onDismissNext = { nextDismissedFor = state.playlistIndex },
+                    onPlayNow = controller::playNextNow,
+                    onDismissNext = {
+                        upNextArmed = false
+                        nextDismissedFor = state.playlistIndex
+                        runCatching { rootFocus.requestFocus() }
+                    },
                 )
             }
 
@@ -763,6 +810,41 @@ fun PlayerScreen(
                     }
                 }
             }
+            if (!inPictureInPicture && state.playlistFinished) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.72f))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = onBack,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(tr("player.playlist_done"), color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                }
+            }
+            state.resumePromptMs?.let { saved ->
+                if (!inPictureInPicture) {
+                    Box(
+                        Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.55f))
+                            .focusGroup()
+                            .focusProperties { onExit = { cancelFocusChange() } },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            Modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(20.dp)).background(theme.surface).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            TextButton(onClick = controller::continueFromPrompt, modifier = Modifier.focusRequester(resumeFocus)) {
+                                Text(tr("player.continue_from", formatTime(saved)), color = theme.accent)
+                            }
+                            TextButton(onClick = controller::startOverFromPrompt) {
+                                Text(tr("player.start_over"), color = theme.muted)
+                            }
+                        }
+                    }
+                }
+            }
             if (state.endDim) {
                 Box(
                     Modifier.matchParentSize().zIndex(4f).background(Color.Black)
@@ -861,11 +943,12 @@ private fun BoxScope.EdgeActions(
     controlsVisible: State<Boolean>,
     skippable: SkipSegment?,
     showNextCard: Boolean,
-    playlistIndex: Int,
-    isPlaying: Boolean,
+    nextTitle: String?,
+    nextCoverPath: String?,
+    upNextArmed: Boolean,
     theme: PlayerTheme,
     onSkip: (SkipSegment) -> Unit,
-    onNext: () -> Unit,
+    onPlayNow: () -> Unit,
     onDismissNext: () -> Unit,
 ) {
     if (panelState.value != null) return
@@ -876,22 +959,19 @@ private fun BoxScope.EdgeActions(
             type = seg.type,
             onClick = { onSkip(seg) },
             theme = theme,
-            takeFocus = !shown,
+            takeFocus = !shown && !upNextArmed,
             modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(end = 24.dp, bottom = bottomOffset),
         )
     }
     if (showNextCard) {
-        var left by remember(playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
-        LaunchedEffect(playlistIndex, isPlaying) {
-            while (isPlaying && left > 0) { delay(1_000); left-- }
-        }
         NextEpisodeCard(
-            secondsLeft = left,
-            totalSeconds = NEXT_COUNTDOWN_SEC,
-            onPlayNow = onNext,
+            title = nextTitle,
+            coverPath = nextCoverPath,
+            onPlayNow = onPlayNow,
             onCancel = onDismissNext,
             theme = theme,
+            takeFocus = upNextArmed,
             modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(end = 24.dp, bottom = bottomOffset),
         )
@@ -1552,8 +1632,6 @@ private fun SubtitleView.applyPanelInset(
     val insetPx = with(density) { transportEndInsetDp(panelOpen, screenWidthDp).dp.roundToPx() }
     if (paddingRight != insetPx) setPadding(paddingLeft, paddingTop, insetPx, paddingBottom)
 }
-
-private const val NEXT_COUNTDOWN_SEC = 10
 
 private const val TAG_SUBS = 0x2160_0001
 private const val TAG_SEC_STYLE = 0x2160_0002

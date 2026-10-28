@@ -9,6 +9,7 @@ internal fun endActionFromLegacy(autoPlayNext: Boolean): EndAction =
 internal data class EndPlan(
     val countdown: Boolean = false,
     val endScreen: Boolean = false,
+    val playlistDone: Boolean = false,
     val repeat: Boolean = false,
     val closeNow: Boolean = false,
     val stay: Boolean = false,
@@ -17,16 +18,58 @@ internal data class EndPlan(
 /**
  * План на конец файла.
  * [live] глушит всё: эфир не закрываем и не листаем.
- * Последний файл плейлиста и одиночный файл - экран конца.
+ * Один файл - экран конца. Последний в плейлисте из нескольких - короткая надпись и возврат в папку.
  */
-internal fun endPlan(action: EndAction, hasNext: Boolean, live: Boolean): EndPlan {
+internal fun endPlan(action: EndAction, hasNext: Boolean, playlistSize: Int, live: Boolean): EndPlan {
     if (live) return EndPlan(stay = true)
     return when (action) {
         EndAction.REPEAT -> EndPlan(repeat = true)
         EndAction.CLOSE -> EndPlan(closeNow = true)
         EndAction.STAY -> EndPlan(stay = true)
-        EndAction.NEXT -> if (hasNext) EndPlan(countdown = true) else EndPlan(endScreen = true)
+        EndAction.NEXT -> when {
+            hasNext -> EndPlan(countdown = true)
+            playlistSize > 1 -> EndPlan(playlistDone = true)
+            else -> EndPlan(endScreen = true)
+        }
     }
+}
+
+/** Карточка «Дальше» за 15 с до конца или на последней главе, похожей на титры. Фокус сама не берёт. */
+internal fun showUpNext(
+    action: EndAction,
+    hasNext: Boolean,
+    live: Boolean,
+    ended: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    inLastChapter: Boolean,
+    lastChapterTitle: String?,
+): Boolean {
+    if (live || ended || !hasNext || action != EndAction.NEXT) return false
+    if (inLastChapter && looksLikeCredits(lastChapterTitle)) return true
+    if (durationMs <= 0 || positionMs <= 0) return false
+    val remaining = durationMs - positionMs
+    return remaining in 1..UP_NEXT_WINDOW_MS
+}
+
+internal fun looksLikeCredits(title: String?): Boolean {
+    if (title.isNullOrBlank()) return false
+    val t = title.lowercase()
+    return "credit" in t || "титр" in t || "ending" in t || "конец" in t
+}
+
+/** Частично просмотренный файл: предложить продолжить. Явный старт и выключенное автопродолжение не трогаем. */
+internal fun resumeOfferMs(
+    autoResume: Boolean,
+    explicitStart: Long?,
+    savedMs: Long?,
+    finished: Boolean,
+    live: Boolean,
+): Long? {
+    if (!autoResume || explicitStart != null || live || finished) return null
+    val saved = savedMs ?: return null
+    if (saved <= 5_000L) return null
+    return saved
 }
 
 /** «Остаться на кадре» и отменённый отсчёт нельзя держать на OLED бесконечно. */
@@ -36,3 +79,5 @@ internal fun endShouldDim(holdingEnd: Boolean, live: Boolean, heldForMs: Long): 
 internal const val END_COUNTDOWN_SEC = 5
 internal const val END_IDLE_CLOSE_MS = 12_000L
 internal const val END_DIM_MS = 3 * 60_000L
+internal const val PLAYLIST_DONE_MS = 2_500L
+internal const val UP_NEXT_WINDOW_MS = 15_000L

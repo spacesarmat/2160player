@@ -243,6 +243,7 @@ fun SettingsScreen(
                     }
                 }
             }
+            item { ToggleRow(tr("settings.oled_saver"), tr("settings.oled_saver_hint"), s.oledSaver) { v -> update { it.copy(oledSaver = v) } } }
             item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
             item {
                 ToggleRow(

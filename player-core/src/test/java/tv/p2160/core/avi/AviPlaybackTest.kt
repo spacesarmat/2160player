@@ -123,6 +123,21 @@ class AviPlaybackTest {
     }
 
     @Test
+    fun msMpeg4CodecInfoKeepsSampleMimeAndDeviceKeyMime() {
+        val info = tv.p2160.core.engine.msMpeg4CodecInfo(
+            "OMX.realtek.video.dec.divx3",
+            androidx.media3.common.MimeTypes.VIDEO_MP43,
+            "video/divx3",
+            null,
+        )
+        assertEquals("OMX.realtek.video.dec.divx3", info.name)
+        assertEquals(androidx.media3.common.MimeTypes.VIDEO_MP43, info.mimeType)
+        assertEquals("video/divx3", info.codecMimeType)
+        assertTrue(info.hardwareAccelerated)
+        assertTrue(!info.softwareOnly)
+    }
+
+    @Test
     fun ac3AudioIsKept() {
         val output = drive(File(dir, "xvid-unpacked-ac3.avi"), wrap = true)
         val audio = output.tracks.values.first { it.type == C.TRACK_TYPE_AUDIO }

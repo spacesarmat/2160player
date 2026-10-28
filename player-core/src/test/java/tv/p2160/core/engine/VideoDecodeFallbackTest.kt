@@ -56,6 +56,27 @@ class VideoDecodeFallbackTest {
         assertEquals("MS-MPEG4 DIV3", codecLabel(MimeTypes.VIDEO_MP43))
         assertEquals(listOf(MimeTypes.VIDEO_MP43, "video/divx3", "video/divx", "video/x-divx"), decoderMimesFor(MimeTypes.VIDEO_MP43))
         assertEquals(listOf(MimeTypes.VIDEO_H264), decoderMimesFor(MimeTypes.VIDEO_H264))
+        val dune = listOf(
+            DeviceCodec("OMX.realtek.video.dec.avc", listOf("video/avc")),
+            DeviceCodec("OMX.realtek.video.dec.divx3", listOf("video/divx3")),
+            DeviceCodec("OMX.google.mp3.decoder", listOf("audio/mpeg")),
+            DeviceCodec("OMX.realtek.video.dec.mp43", listOf("video/mp43")),
+        )
+        assertEquals(
+            listOf(
+                DeviceCodecChoice("OMX.realtek.video.dec.mp43", "video/mp43"),
+                DeviceCodecChoice("OMX.realtek.video.dec.divx3", "video/divx3"),
+            ),
+            msMpeg4Candidates(dune, MimeTypes.VIDEO_MP43),
+        )
+        assertEquals(emptyList<DeviceCodecChoice>(), msMpeg4Candidates(dune, MimeTypes.VIDEO_H264))
+        assertEquals(
+            listOf(DeviceCodecChoice("OMX.realtek.video.dec.divx3", "video/x-ms-wmv")),
+            msMpeg4Candidates(
+                listOf(DeviceCodec("OMX.realtek.video.dec.divx3", listOf("video/x-ms-wmv"))),
+                MimeTypes.VIDEO_MP43,
+            ),
+        )
         assertEquals(
             "error.decoder_codec_no_ffmpeg",
             decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.HARDWARE, VideoDecoderGate.DEFAULT),

@@ -1212,17 +1212,22 @@ internal fun TransportReadout(
                 modifier = Modifier.testTag("time-elapsed"),
             )
         }
-        state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
-            Text(
-                "  ·  " + (ch.title ?: tr("player.chapter_n", state.chapterIndex + 1)),
-                color = Color.White.copy(alpha = 0.75f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
+        // Один вес на всю середину. Свой weight у главы (ещё и fill = false) делил
+        // свободное место пополам и не занимал свою долю, поэтому остаток не доходил
+        // до конца полосы. Длинное название режется многоточием и время не двигает.
+        // Тик позиции эту строку не измеряет.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            state.chapters.getOrNull(state.chapterIndex)?.let { ch ->
+                Text(
+                    "  ·  " + (ch.title ?: tr("player.chapter_n", state.chapterIndex + 1)),
+                    color = Color.White.copy(alpha = 0.75f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("chapter-title"),
+                )
+            }
         }
-        Spacer(Modifier.weight(1f))
         if (state.speed != 1f) {
             Text("${formatSpeed(state.speed)}×  ", color = theme.accent, style = MaterialTheme.typography.bodyMedium)
         }

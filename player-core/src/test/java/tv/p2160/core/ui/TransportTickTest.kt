@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import tv.p2160.core.api.Chapter
 import tv.p2160.core.engine.PlayerUiState
 
 /**
@@ -322,6 +323,121 @@ class TransportTickTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun remainingStaysFlushWithTheBarWithAndWithoutChapters() {
+        val duration = 9_391_000L
+        val clock = TransportClock(236_000L, 0L)
+        val width = mutableStateOf(800.dp)
+        val fontScale = mutableStateOf(1f)
+        val chapters = mutableStateOf<List<Chapter>>(emptyList())
+        val measures = intArrayOf(0)
+        val titleWidthPx = intArrayOf(0)
+        val longTitle = "Очень длинное название главы ".repeat(16)
+        rule.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = base.density, fontScale = fontScale.value),
+            ) {
+                MaterialTheme {
+                    val measurer = rememberTextMeasurer()
+                    val style = MaterialTheme.typography.bodyMedium
+                    val shown = chapters.value.getOrNull(0)?.title
+                    SideEffect {
+                        if (shown == null) return@SideEffect
+                        val layout = measurer.measure(
+                            "  ·  $shown",
+                            style = style,
+                            maxLines = 1,
+                            softWrap = false,
+                            constraints = Constraints(maxWidth = Constraints.Infinity),
+                        )
+                        titleWidthPx[0] = textWidthPx(layout)
+                    }
+                    Column(
+                        Modifier.width(width.value).layout { measurable, constraints ->
+                            measures[0]++
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                        },
+                    ) {
+                        TransportReadout(
+                            clock = clock,
+                            state = PlayerUiState(
+                                durationMs = duration,
+                                isBuffering = false,
+                                chapters = chapters.value,
+                                chapterIndex = if (chapters.value.isEmpty()) -1 else 0,
+                            ),
+                            theme = PlayerThemes.Cinema,
+                            stepMs = 10_000L,
+                            onSeek = {},
+                            onInteraction = {},
+                            onScrub = {},
+                            onGoTo = {},
+                        )
+                    }
+                }
+            }
+        }
+        fun assertFlush(label: String, chapter: Boolean) {
+            rule.waitForIdle()
+            val bar = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot()
+            val elapsed = rule.onNodeWithTag("time-elapsed", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val remaining = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            assertEquals("$label remaining", bar.right.value, remaining.right.value, 1f)
+            assertEquals("$label elapsed", bar.left.value, elapsed.left.value, 1f)
+            assertEquals("3:56", description("time-elapsed"))
+            assertEquals("−2:32:35 / 2:36:31", description("time-remaining"))
+            if (!chapter) {
+                assertEquals(0, rule.onAllNodesWithTag("chapter-title", useUnmergedTree = true).fetchSemanticsNodes().size)
+                return
+            }
+            val title = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            assertTrue("$label chapter overlaps elapsed", title.left.value >= elapsed.right.value - 1f)
+            assertTrue("$label chapter overlaps remaining", title.right.value <= remaining.left.value + 1f)
+            val titlePx = (title.right - title.left).value * rule.density.density
+            assertTrue(
+                "$label title ${titlePx}px is wider than the text ${titleWidthPx[0]}px",
+                titlePx <= titleWidthPx[0] + 1f,
+            )
+        }
+        fun remainingWidth(): Float {
+            val bounds = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            return (bounds.right - bounds.left).value
+        }
+        assertFlush("landscape, no chapter", chapter = false)
+        val landscapeRemaining = remainingWidth()
+        chapters.value = listOf(Chapter("Chapter 01", 0L, duration))
+        assertFlush("landscape, short chapter", chapter = true)
+        val shortTitle = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val shortRemaining = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertEquals(landscapeRemaining, (shortRemaining.right - shortRemaining.left).value, 0.5f)
+        assertTrue(shortTitle.right.value < shortRemaining.left.value - 8f)
+        chapters.value = listOf(Chapter(longTitle, 0L, duration))
+        assertFlush("landscape, long chapter", chapter = true)
+        val longNode = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(
+            "landscape title was not ellipsized (${(longNode.right - longNode.left).value} dp vs ${titleWidthPx[0]} px)",
+            (longNode.right - longNode.left).value * rule.density.density < titleWidthPx[0] - 1f,
+        )
+        assertEquals(landscapeRemaining, remainingWidth(), 0.5f)
+        width.value = 360.dp
+        fontScale.value = 1.3f
+        chapters.value = emptyList()
+        assertFlush("portrait, no chapter, font 1.3", chapter = false)
+        val portraitRemaining = remainingWidth()
+        chapters.value = listOf(Chapter(longTitle, 0L, duration))
+        assertFlush("portrait, long chapter, font 1.3", chapter = true)
+        val narrow = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue((narrow.right - narrow.left).value * rule.density.density < titleWidthPx[0] - 1f)
+        assertEquals(portraitRemaining, remainingWidth(), 0.5f)
+        val before = measures[0]
+        clock.publish(237_000L, 0L)
+        rule.waitForIdle()
+        assertEquals(before, measures[0])
+        assertEquals("3:57", description("time-elapsed"))
     }
 
     private fun description(tag: String): String =

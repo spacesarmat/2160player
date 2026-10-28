@@ -107,6 +107,8 @@ import tv.p2160.core.engine.TimeInput
 import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowLeft
@@ -315,14 +317,21 @@ fun PlayerScreen(
         if (controller.state.value.playlistFinished) onBack()
     }
     LaunchedEffect(state.resumePromptMs) {
-        if (state.resumePromptMs != null) runCatching { resumeFocus.requestFocus() }
+        if (state.resumePromptMs != null) {
+            upNextArmed = false
+            runCatching { resumeFocus.requestFocus() }
+        }
     }
 
     BackHandler {
         when {
+            state.error != null -> onBack()
             state.endDim -> controller.dismissEndDim()
             state.endCountdownSec != null -> controller.cancelEndCountdown()
-            state.resumePromptMs != null -> controller.continueFromPrompt()
+            state.resumePromptMs != null -> {
+                controller.continueFromPrompt()
+                runCatching { rootFocus.requestFocus() }
+            }
             upNextArmed -> {
                 upNextArmed = false
                 runCatching { rootFocus.requestFocus() }
@@ -359,11 +368,12 @@ fun PlayerScreen(
         flashTick++
     }
 
-    // Карточка «Дальше» переключается один раз, а не на каждом тике позиции.
+    // Карточка «Далее» только у конца ролика и не вместе с вопросом «Продолжить».
     val showNextCard by remember(inPictureInPicture) {
         derivedStateOf(structuralEqualityPolicy()) {
             val s = upstream.value
-            s.endCountdownSec == null && !s.showEndScreen && !s.playlistFinished && showUpNext(
+            s.resumePromptMs == null && s.error == null &&
+                s.endCountdownSec == null && !s.showEndScreen && !s.playlistFinished && showUpNext(
                 action = settings.endAction,
                 hasNext = s.hasNext && nextDismissedFor != s.playlistIndex,
                 live = s.isLive || s.liveTv,
@@ -397,6 +407,19 @@ fun PlayerScreen(
                     if (state.endCountdownSec != null && (e.key == Key.Back || e.key == Key.Escape)) {
                         if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
                             controller.cancelEndCountdown()
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                    // Диалог ошибки: Назад как «Закрыть». Иначе пульт уводит фокус с кнопок и замирает.
+                    if (state.error != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) onBack()
+                        return@onPreviewKeyEvent true
+                    }
+                    // Вопрос «Продолжить»: Назад принимает продолжение, как и обработчик Back.
+                    if (state.resumePromptMs != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            controller.continueFromPrompt()
+                            runCatching { rootFocus.requestFocus() }
                         }
                         return@onPreviewKeyEvent true
                     }
@@ -750,15 +773,12 @@ fun PlayerScreen(
                 actions = panelActions,
             )
             state.error?.let { message ->
-                // Выше панели (zIndex 1). Фокус остаётся внутри: OK не попадает в кнопки под диалогом.
+                // Выше панели. Подложка не берёт фокус: иначе Назад сажает его мимо «Повторить» и «Закрыть».
                 Box(
                     Modifier.matchParentSize().zIndex(2f).background(Color.Black)
+                        .consumeTouches()
                         .focusGroup()
-                        .focusProperties { onExit = { cancelFocusChange() } }
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                        ) {},
+                        .focusProperties { onExit = { cancelFocusChange() } },
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -866,6 +886,11 @@ fun PlayerScreen(
         }
     }
     }
+}
+
+/** Касание не проходит к плееру под диалогом и не делает подложку целью пульта. */
+private fun Modifier.consumeTouches(): Modifier = pointerInput(Unit) {
+    detectTapGestures(onPress = { tryAwaitRelease() })
 }
 
 /** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */

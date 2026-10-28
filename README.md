@@ -9,7 +9,7 @@ Jetpack Compose. Играет почти всё - от IPTV-потоков до 
 
 ## Возможности
 
-- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MPEG-2, VC-1, MPEG-4 Part 2 (XviD/DivX) и MS-MPEG4 (DIV3) там, где устройство их не умеет; passthrough на ресивер.
+- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MPEG-2, VC-1, MPEG-4 Part 2 (XviD/DivX), MS-MPEG4 (DIV3) и WMV/VC-1 в AVI там, где устройство их не умеет; passthrough на ресивер. Контейнер ASF/WMV (не AVI) пока не читается.
 - **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок; **DLNA/UPnP**-серверы (Jellyfin, Plex, Kodi, NAS) с автопоиском в сети.
 - **IPTV:** M3U-плейлисты с группами и логотипами, телегид XMLTV, режим эфира (без перемотки, текущая передача под названием канала).
 - **Торренты:** magnet-ссылки и `.torrent`-файлы, просмотр во время загрузки (libtorrent), выбор файла из раздачи, остановка и продолжение раздач (свайпом влево/вправо или кнопкой); состояние раздачи видно по цвету и метке («Качается», «Раздаётся», «Остановлена»…), со скоростью, пирами и прогрессом. Настройки раздач: сеть («Везде», «Раздача по Wi-Fi» - по умолчанию,
@@ -217,7 +217,7 @@ The `player-core` module is an embeddable library:
   activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
   `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
   results are returned in MX Player and VLC formats.
-- **Library** - `implementation("tv.p2160:player-core:0.2.16")` (module, composite build, mavenLocal
+- **Library** - `implementation("tv.p2160:player-core:0.2.17")` (module, composite build, mavenLocal
   or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
   `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
   Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for

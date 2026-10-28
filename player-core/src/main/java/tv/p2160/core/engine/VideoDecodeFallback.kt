@@ -58,6 +58,7 @@ internal fun ffmpegMaps(mime: String?): Boolean = when (mime) {
     "video/avc", "video/hevc", "video/av01", "video/mpeg", "video/mpeg2",
     "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9",
     "video/mp4v-es", "video/mp42", "video/mp43", "video/3gpp",
+    "video/wvc1", "video/x-ms-wmv", "video/wmv1", "video/wmv2",
     -> true
     else -> false
 }
@@ -74,6 +75,10 @@ internal fun codecLabel(mime: String?): String = when (mime) {
     MimeTypes.VIDEO_VP9 -> "VP9"
     MimeTypes.VIDEO_AV1 -> "AV1"
     MimeTypes.VIDEO_H263 -> "H.263"
+    MimeTypes.VIDEO_VC1 -> "VC-1"
+    "video/x-ms-wmv" -> "WMV3"
+    "video/wmv1" -> "WMV1"
+    "video/wmv2" -> "WMV2"
     MimeTypes.AUDIO_AC3 -> "AC-3"
     MimeTypes.AUDIO_E_AC3 -> "E-AC-3"
     MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD -> "DTS"

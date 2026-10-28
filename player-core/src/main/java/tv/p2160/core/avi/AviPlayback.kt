@@ -38,22 +38,24 @@ internal object AviPlayback {
 @OptIn(UnstableApi::class)
 private class AviFixExtractor(private val delegate: Extractor) : Extractor by delegate {
     private val unpackers = ArrayList<Mpeg4PackedUnpacker>()
+    private val header = AviHeaderState()
 
     override fun init(output: ExtractorOutput) {
         unpackers.clear()
+        header.reset()
         delegate.init(object : ExtractorOutput by output {
             override fun track(id: Int, type: Int): TrackOutput {
                 val track = output.track(id, type)
                 if (type != C.TRACK_TYPE_VIDEO) return track
                 val unpacker = Mpeg4PackedUnpacker()
                 unpackers += unpacker
-                return UnpackingTrackOutput(track, unpacker)
+                return UnpackingTrackOutput(track, unpacker, header)
             }
         })
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int =
-        delegate.read(AviFourccInput(input), seekPosition)
+        delegate.read(AviFourccInput(input, header), seekPosition)
 
     override fun seek(position: Long, timeUs: Long) {
         unpackers.forEach { it.reset() }
@@ -94,45 +96,53 @@ internal object AviFourcc {
 }
 
 @OptIn(UnstableApi::class)
-private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorInput by delegate {
+private class AviFourccInput(
+    private val delegate: ExtractorInput,
+    private val header: AviHeaderState,
+) : ExtractorInput by delegate {
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         val at = delegate.position
         val n = delegate.read(buffer, offset, length)
-        if (n > 0) AviFourcc.rewrite(buffer, offset, n, at)
+        if (n > 0) rewrite(buffer, offset, n, at)
         return n
     }
 
     override fun readFully(target: ByteArray, offset: Int, length: Int) {
         val at = delegate.position
         delegate.readFully(target, offset, length)
-        AviFourcc.rewrite(target, offset, length, at)
+        rewrite(target, offset, length, at)
     }
 
     override fun readFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
         val at = delegate.position
         val ok = delegate.readFully(target, offset, length, allowEndOfInput)
-        if (ok) AviFourcc.rewrite(target, offset, length, at)
+        if (ok) rewrite(target, offset, length, at)
         return ok
     }
 
     override fun peek(buffer: ByteArray, offset: Int, length: Int): Int {
         val at = delegate.peekPosition
         val n = delegate.peek(buffer, offset, length)
-        if (n > 0) AviFourcc.rewrite(buffer, offset, n, at)
+        if (n > 0) rewrite(buffer, offset, n, at)
         return n
     }
 
     override fun peekFully(target: ByteArray, offset: Int, length: Int) {
         val at = delegate.peekPosition
         delegate.peekFully(target, offset, length)
-        AviFourcc.rewrite(target, offset, length, at)
+        rewrite(target, offset, length, at)
     }
 
     override fun peekFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
         val at = delegate.peekPosition
         val ok = delegate.peekFully(target, offset, length, allowEndOfInput)
-        if (ok) AviFourcc.rewrite(target, offset, length, at)
+        if (ok) rewrite(target, offset, length, at)
         return ok
+    }
+
+    private fun rewrite(buffer: ByteArray, offset: Int, length: Int, at: Long) {
+        AviWmv.claim(buffer, offset, length, at, header)
+        AviFourcc.rewrite(buffer, offset, length, at)
     }
 }
 
@@ -140,17 +150,33 @@ private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorIn
 private class UnpackingTrackOutput(
     private val delegate: TrackOutput,
     private val unpacker: Mpeg4PackedUnpacker,
+    private val header: AviHeaderState,
 ) : TrackOutput {
     private val pending = ByteArrayOutputStream()
 
     override fun format(format: Format) {
-        unpacker.setMime(format.sampleMimeType)
-        if (!unpacker.enabled || format.initializationData.isEmpty()) {
-            delegate.format(format)
+        val adjusted = applyWmv(format)
+        unpacker.setMime(adjusted.sampleMimeType)
+        if (!unpacker.enabled || adjusted.initializationData.isEmpty()) {
+            delegate.format(adjusted)
             return
         }
-        val stripped = format.initializationData.map { Mpeg4PackedUnpacker.stripMarker(it) }
-        delegate.format(format.buildUpon().setInitializationData(stripped).build())
+        val stripped = adjusted.initializationData.map { Mpeg4PackedUnpacker.stripMarker(it) }
+        delegate.format(adjusted.buildUpon().setInitializationData(stripped).build())
+    }
+
+    private fun applyWmv(format: Format): Format {
+        val wmv = header.wmv.removeFirstOrNull() ?: return format
+        if (format.sampleMimeType != MimeTypes.VIDEO_MJPEG) {
+            header.wmv.addFirst(wmv)
+            return format
+        }
+        val builder = format.buildUpon()
+            .setSampleMimeType(wmv.mime)
+            .setWidth(kotlin.math.abs(wmv.width))
+            .setHeight(kotlin.math.abs(wmv.height))
+        if (wmv.initializationData.isNotEmpty()) builder.setInitializationData(listOf(wmv.initializationData))
+        return builder.build()
     }
 
     override fun sampleData(input: DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int {

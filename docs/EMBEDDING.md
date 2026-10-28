@@ -71,7 +71,7 @@ includeBuild("../2160player") {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.16") }
+dependencies { implementation("tv.p2160:player-core:0.2.17") }
 ```
 
 Gradle соберёт библиотеку из исходников со своим каталогом версий; правки в `../2160player`
@@ -84,10 +84,10 @@ Gradle соберёт библиотеку из исходников со сво
 
 ```sh
 ./gradlew :player-core:publishReleasePublicationToMavenLocal
-# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.16-SNAPSHOT
+# другая версия: ./gradlew :player-core:publishReleasePublicationToMavenLocal -PplayerCoreVersion=0.2.17-SNAPSHOT
 ```
 
-Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.16/` (AAR, POM, Gradle module metadata, sources).
+Артефакт появится в `~/.m2/repository/tv/p2160/player-core/0.2.17/` (AAR, POM, Gradle module metadata, sources).
 
 ```kotlin
 // settings.gradle.kts вашего проекта
@@ -100,7 +100,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.16") }
+dependencies { implementation("tv.p2160:player-core:0.2.17") }
 ```
 
 ### 1d. GitHub Packages
@@ -110,7 +110,7 @@ dependencies { implementation("tv.p2160:player-core:0.2.16") }
 ```sh
 export GITHUB_ACTOR=<логин>
 export GITHUB_TOKEN=<токен>
-./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.16
+./gradlew :player-core:publishReleasePublicationToGitHubPackagesRepository -PplayerCoreVersion=0.2.17
 ```
 
 Вместо переменных окружения можно задать `gpr.user` / `gpr.key` в `~/.gradle/gradle.properties`.
@@ -137,7 +137,7 @@ dependencyResolutionManagement {
 }
 
 // app/build.gradle.kts
-dependencies { implementation("tv.p2160:player-core:0.2.16") }
+dependencies { implementation("tv.p2160:player-core:0.2.17") }
 ```
 
 ---
@@ -171,7 +171,7 @@ android {
 }
 ```
 
-**FFmpeg и MPEG-4.** Не подключайте `io.github.anilbeesetti:nextlib-media3ext` сами. Этот класс уже внутри `player-core`: `FfmpegLibrary` собирается из исходников модуля и попадает в classes AAR и в `classes.dex` приложения. Остальные классы nextlib лежат jar-ом рядом, без второй копии `FfmpegLibrary` (иначе сборка падает на duplicate class). Задача `patchNextlib` только вынимает jar и `jni/` из AAR nextlib; отдельный нативный декодер не пишется. MIME `video/mp4v-es`, `video/mp42`, `video/mp43` и `video/3gpp` смотрят на декодеры, которые уже есть в `libavcodec` (`mpeg4`, `msmpeg4v2`, `msmpeg4v3`, `h263`). То же самое, если модуль подключён как `project(":player-core")` (сабмодуль) и если берёте опубликованный AAR: правка внутри артефакта, не в `:app`. `nextlib-mediainfo` по-прежнему транзитивная зависимость (главы и превью).
+**FFmpeg и MPEG-4.** Не подключайте `io.github.anilbeesetti:nextlib-media3ext` сами. Этот класс уже внутри `player-core`: `FfmpegLibrary` собирается из исходников модуля и попадает в classes AAR и в `classes.dex` приложения. Остальные классы nextlib лежат jar-ом рядом, без второй копии `FfmpegLibrary` (иначе сборка падает на duplicate class). Задача `patchNextlib` только вынимает jar и `jni/` из AAR nextlib; отдельный нативный декодер не пишется. MIME `video/mp4v-es`, `video/mp42`, `video/mp43`, `video/3gpp`, `video/wvc1`, `video/x-ms-wmv`, `video/wmv1` и `video/wmv2` смотрят на декодеры, которые уже есть в `libavcodec` (`mpeg4`, `msmpeg4v2`, `msmpeg4v3`, `h263`, `vc1`, `wmv3`, `wmv1`, `wmv2`). Контейнер ASF (`.wmv`) эта сборка не разбирает. То же самое, если модуль подключён как `project(":player-core")` (сабмодуль) и если берёте опубликованный AAR: правка внутри артефакта, не в `:app`. `nextlib-mediainfo` по-прежнему транзитивная зависимость (главы и превью).
 
 Манифест трогать не нужно: библиотека сама добавит `Player2160Activity`, сервис медиасессии
 `PlaybackService` (уведомление с управлением, экран блокировки, гарнитура, фоновое воспроизведение),

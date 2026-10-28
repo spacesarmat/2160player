@@ -48,5 +48,11 @@ class VideoDecodeFallbackTest {
         assertEquals("h263", method.invoke(null, MimeTypes.VIDEO_H263))
         assertEquals("h264", method.invoke(null, MimeTypes.VIDEO_H264))
         assertEquals("mp3", method.invoke(null, MimeTypes.AUDIO_MPEG))
+        assertEquals("vc1", method.invoke(null, MimeTypes.VIDEO_VC1))
+        assertEquals("wmv3", method.invoke(null, "video/x-ms-wmv"))
+        assertEquals("wmv1", method.invoke(null, "video/wmv1"))
+        assertEquals("wmv2", method.invoke(null, "video/wmv2"))
+        assertEquals(true, ffmpegMaps(MimeTypes.VIDEO_VC1))
+        assertEquals(true, ffmpegMaps("video/x-ms-wmv"))
     }
 }

@@ -46,7 +46,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Возможность | Подробности |
 |---|---|
-| Форматы | Всё, что умеет Media3 (MP4, MKV, WebM, TS, AVI, FLV, OGG, MP3, FLAC…), плюс FFmpeg-декодеры (nextlib) для того, чего не умеет устройство: DTS/DTS-HD, TrueHD, AC-3/E-AC-3 без лицензии, FLAC/ALAC/Opus в MKV, MPEG-2/VC-1, MPEG-4 Part 2 (XviD/DivX) и MS-MPEG4 (DIV3). Режим декодеров выбирается в настройках (`DecoderPreference`). |
+| Форматы | Всё, что умеет Media3 (MP4, MKV, WebM, TS, AVI, FLV, OGG, MP3, FLAC…), плюс FFmpeg-декодеры (nextlib) для того, чего не умеет устройство: DTS/DTS-HD, TrueHD, AC-3/E-AC-3 без лицензии, FLAC/ALAC/Opus в MKV, MPEG-2, VC-1 (`WVC1` в AVI), WMV1/WMV2/WMV3 в AVI, MPEG-4 Part 2 (XviD/DivX) и MS-MPEG4 (DIV3). Контейнер ASF (`.wmv`) не читается. Режим декодеров выбирается в настройках (`DecoderPreference`). |
 | Сетевые потоки | HLS (`.m3u8`), DASH, SmoothStreaming, RTSP, прогрессивный HTTP(S) с заголовками (`User-Agent`, `Referer`, `Authorization`…). Разрешён cleartext HTTP. |
 | Blu-ray | Образы `.iso` и папки `BDMV` с файлов, `content://`, SMB и HTTP(S) (для ISO). Основной фильм выбирается автоматически, главы берутся из плейлиста диска. |
 | M2TS | Свой экстрактор 192-байтных пакетов: TrueHD (+ AC-3 ядро), LPCM, DTS-HD HRA/MA, E-AC-3, субтитры PGS, языки дорожек из MPLS. |
@@ -281,7 +281,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.16")
+    implementation("tv.p2160:player-core:0.2.17")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) - Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -961,7 +961,7 @@ Player2160.settings(context).update {
 
 Перечисления:
 
-- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` - аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg. В «Авто» ошибка видео посреди потока (декодер уже отдал кадры) для этого MIME переключает на программный MediaCodec, затем на FFmpeg. MPEG-4 Part 2 и MS-MPEG4 FFmpeg умеет: декодеры уже были в `libavcodec`, с 0.2.16 они сопоставлены с MIME. Размер APK от этого не растёт.
+- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` - аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg. В «Авто» ошибка видео посреди потока (декодер уже отдал кадры) для этого MIME переключает на программный MediaCodec, затем на FFmpeg. MPEG-4 Part 2, MS-MPEG4 и WMV/VC-1 в AVI FFmpeg умеет: декодеры уже были в `libavcodec`, с 0.2.16 (MPEG-4) и 0.2.17 (WMV) они сопоставлены с MIME. `WVC1` - `video/wvc1` (`vc1`), `WMV3` - `video/x-ms-wmv` (`wmv3`), `WMV1`/`WMV2` - `video/wmv1` и `video/wmv2`: один MIME не выбирает три декодера. Если у устройства есть MediaCodec на `video/wvc1`, «Авто» пробует его первым. Размер APK от этого не растёт. ASF не разбирается.
 - `ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }` - целиком / по ширине / по высоте / заполнить экран с обрезкой / растянуть. В плеере: панель «Видео» (кнопка-рамка, TalkBack «Масштаб и качество»; само нажатие режим не крутит) и щипок двумя пальцами (развести - `ZOOM`, свести - `FIT`).
 - `SkipMode { OFF, BUTTON, AUTO }` - не показывать / кнопка «Пропустить» / автоматически (титры с переходом к следующей серии - всегда через обратный отсчёт).
 - `SubtitleEdge { NONE, OUTLINE, SHADOW }`.

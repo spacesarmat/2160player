@@ -130,6 +130,14 @@ public final class FfmpegLibrary {
                 return "msmpeg4v3";
             case "video/3gpp":
                 return "h263";
+            case "video/wvc1":
+                return "vc1";
+            case "video/x-ms-wmv":
+                return "wmv3";
+            case "video/wmv1":
+                return "wmv1";
+            case "video/wmv2":
+                return "wmv2";
             default:
                 return null;
         }

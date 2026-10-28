@@ -18,7 +18,8 @@ Jetpack Compose. Играет почти всё - от IPTV-потоков до 
 - **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) - автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
 - **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео, задержка, стиль, **двойные субтитры**.
 - **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
-- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению.
+- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению. Файл, досмотренный до конца (или до последних 2 % / 30 с), в следующий раз открывается с начала.
+- **Конец файла:** по умолчанию плейлист через 5 с переходит к следующему (Назад или «Отмена» останавливают отсчёт), один файл и последний в плейлисте показывают «Смотреть снова» и «Закрыть». Без нажатий плеер закрывается примерно через 12 с. В настройках «По окончании»: следующий, закрыть, остаться на кадре или повтор. «Остаться на кадре» через 3 минуты гасит картинку. Прямой эфир это не трогает.
 - **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
 - **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
 - **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне - щипком двумя пальцами.
@@ -201,7 +202,9 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 **2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
 decoders and a Jetpack Compose UI. It plays local files (with a built-in file browser for Android TV boxes, USB drives and SD cards), HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
-intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
+intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory
+(a finished file opens from the start; when playback ends, a playlist counts down 5 s to the next item,
+and a single file offers Watch again and Close),
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
 themes, JSON language packs and self-updates from GitHub Releases (if the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry). It can also stream the phone camera or screen
 (RTSP server, SRT to OBS, NDI®, RTMP to YouTube/Twitch; LAN/Wi-Fi only, never mobile data; optional Lowest latency shortens send queues) with a per-session RTSP password that is not the pairing PIN, shows cameras of other 2160 Players on the

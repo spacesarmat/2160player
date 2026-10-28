@@ -22,6 +22,18 @@ enum class ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }
 /** Что делать с вступлениями и титрами. */
 enum class SkipMode { OFF, BUTTON, AUTO }
 
+/** Что делать, когда файл доигран. Живые потоки это не используют. */
+enum class EndAction {
+    /** Плейлист: отсчёт 5 с и следующий. Один файл и последний в плейлисте: экран конца. */
+    NEXT,
+    /** Сразу закрыть плеер. */
+    CLOSE,
+    /** Остаться на последнем кадре. Через несколько минут кадр гаснет, чтобы не выжечь OLED. */
+    STAY,
+    /** Начать этот же файл сначала. */
+    REPEAT,
+}
+
 enum class SubtitleEdge { NONE, OUTLINE, SHADOW }
 
 data class SubtitleStyle(
@@ -47,6 +59,8 @@ data class Settings(
     val seekStepSeconds: Int = 10,
     val resizeMode: ResizeMode = ResizeMode.FIT,
     val autoPlayNext: Boolean = true,
+    /** [EndAction.NEXT], если ключ ещё не записан и [autoPlayNext] включено. */
+    val endAction: EndAction = EndAction.NEXT,
     val skipMode: SkipMode = SkipMode.BUTTON,
     /** «Ночной звук»: сжатие динамики и выделение диалогов. */
     val nightMode: Boolean = false,
@@ -147,6 +161,8 @@ class PlayerSettings private constructor(context: Context) {
             seekStepSeconds = prefs.getInt("seek_step", d.seekStepSeconds),
             resizeMode = enumOr(prefs.getString("resize", null), d.resizeMode),
             autoPlayNext = prefs.getBoolean("auto_next", d.autoPlayNext),
+            endAction = prefs.getString("end_action", null)?.let { runCatching { EndAction.valueOf(it) }.getOrNull() }
+                ?: if (prefs.getBoolean("auto_next", d.autoPlayNext)) EndAction.NEXT else EndAction.STAY,
             skipMode = enumOr(prefs.getString("skip_mode", null), d.skipMode),
             nightMode = prefs.getBoolean("night_mode", d.nightMode),
             nightAuto = prefs.getBoolean("night_auto", d.nightAuto),
@@ -183,6 +199,7 @@ class PlayerSettings private constructor(context: Context) {
             .putInt("seek_step", s.seekStepSeconds)
             .putString("resize", s.resizeMode.name)
             .putBoolean("auto_next", s.autoPlayNext)
+            .putString("end_action", s.endAction.name)
             .putString("skip_mode", s.skipMode.name)
             .putBoolean("night_mode", s.nightMode)
             .putBoolean("night_auto", s.nightAuto)

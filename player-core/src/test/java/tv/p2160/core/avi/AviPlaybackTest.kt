@@ -49,10 +49,25 @@ class AviPlaybackTest {
     }
 
     @Test
+    fun div3StrfBeforeStrhStillOpensVideoAndUsesStrhDuration() {
+        val file = File.createTempFile("div3-order", ".avi")
+        file.writeBytes(div3StrfFirstAvi())
+        try {
+            val output = drive(file, wrap = true)
+            val video = output.tracks.values.first { it.type == C.TRACK_TYPE_VIDEO }
+            assertEquals(AviHeader.MIME_DIVX3, video.format?.sampleMimeType)
+            val expected = 32_981L * 1001L * 1_000_000L / 30_000L
+            assertEquals(expected, checkNotNull(output.seekMap).durationUs)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun div3FourccIsReadAsMsMpeg4() {
         val output = drive(File(dir, "msmpeg4-div3-mp3.avi"), wrap = true)
         val video = output.tracks.values.first { it.type == C.TRACK_TYPE_VIDEO }
-        assertEquals(MimeTypes.VIDEO_MP43, video.format?.sampleMimeType)
+        assertEquals(AviHeader.MIME_DIVX3, video.format?.sampleMimeType)
         val tagged = drive(File(dir, "msmpeg4-mp43-mp3.avi"), wrap = true)
         val video2 = tagged.tracks.values.first { it.type == C.TRACK_TYPE_VIDEO }
         assertEquals(MimeTypes.VIDEO_MP43, video2.format?.sampleMimeType)
@@ -163,6 +178,43 @@ class AviPlaybackTest {
             return output
         }
     }
+}
+
+/** DIV3, strf раньше strh, avih считает все чанки, video strh - 30000/1001. */
+private fun div3StrfFirstAvi(): ByteArray {
+    val strh = ByteArray(56)
+    "vids".toByteArray(Charsets.US_ASCII).copyInto(strh, 0)
+    "DIV3".toByteArray(Charsets.US_ASCII).copyInto(strh, 4)
+    aviLe32(1001).copyInto(strh, 20)
+    aviLe32(30_000).copyInto(strh, 24)
+    aviLe32(32_981).copyInto(strh, 32)
+    aviLe32(1_036_800).copyInto(strh, 44)
+    val strf = ByteArray(40)
+    aviLe32(40).copyInto(strf, 0)
+    aviLe32(672).copyInto(strf, 4)
+    aviLe32(480).copyInto(strf, 8)
+    strf[12] = 1
+    strf[14] = 24
+    "DIV3".toByteArray(Charsets.US_ASCII).copyInto(strf, 16)
+    val avih = ByteArray(56)
+    aviLe32(33_367).copyInto(avih, 0)
+    aviLe32(0x10).copyInto(avih, 12)
+    aviLe32(78_833).copyInto(avih, 16)
+    val hdrl = aviList(
+        "hdrl",
+        aviBox("avih", avih) + aviList("strl", aviBox("strf", strf) + aviBox("strh", strh)),
+    )
+    val payload = ByteArray(8)
+    val moviStart = 12 + hdrl.size
+    val cursor = moviStart + 12
+    val idx = java.io.ByteArrayOutputStream()
+    idx.write("00dc".toByteArray(Charsets.US_ASCII))
+    idx.write(aviLe32(0x10))
+    idx.write(aviLe32(cursor))
+    idx.write(aviLe32(payload.size))
+    val movi = aviList("movi", aviBox("00dc", payload))
+    val body = "AVI ".toByteArray(Charsets.US_ASCII) + hdrl + movi + aviBox("idx1", idx.toByteArray())
+    return "RIFF".toByteArray(Charsets.US_ASCII) + aviLe32(body.size) + body
 }
 
 /** AVI: видео 25 к/с и MP3 кусками по 1, 3, 2 и 1 кадру. dwLength звука не равен числу кусков. */

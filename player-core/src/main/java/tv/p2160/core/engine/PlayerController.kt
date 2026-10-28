@@ -38,6 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.Bitmap
+import tv.p2160.core.avi.AviProbe
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.bluray.DiscSessions
@@ -138,6 +139,7 @@ private const val LIVE_FAR_SPEED = 1.25f
 /** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
 private const val PASSTHROUGH_RETRIES = 3
 private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
+private const val SEEK_QUIET_MS = 2_000L
 private const val MAX_STALL_RECOVERIES = 2
 private const val PLAYER_LOG_TAG = "Player2160"
 
@@ -169,6 +171,9 @@ class PlayerController(
     private var stallStopped = false
     private var watchdogArmedAt = 0L
     private var watchdogBaseFrames = -1
+    private var watchdogBaseInput = -1
+    /** После перемотки кадры не считаются зависанием. */
+    private var seekQuietUntil = 0L
     private var videoCounters: DecoderCounters? = null
     /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
@@ -326,6 +331,8 @@ class PlayerController(
                 recordChoiceOnTracks = false
                 rememberChoice(tracks)
             }
+            logAviTracks(tracks)
+            reportMissingAviVideo(tracks)
             reportUnsupportedVideo(tracks)
             refresh()
         }
@@ -338,7 +345,7 @@ class PlayerController(
 
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
-                resetWatchdogClock()
+                armSeekQuiet()
             }
             // Переход к следующему элементу: сохраняем прогресс предыдущего как досмотренный.
             if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION && old.mediaItemIndex != new.mediaItemIndex) {
@@ -776,6 +783,7 @@ class PlayerController(
 
     fun seekTo(positionMs: Long) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        armSeekQuiet()
         player.seekTo(positionMs.coerceIn(0, duration))
         refresh()
     }
@@ -1430,6 +1438,36 @@ class PlayerController(
      * Видео в файле есть, а декодера нет. Иначе селектор дорожек оставляет звук и рисует обложку
      * без ошибки (так было с DIV3 и с FFmpeg-режимом на XviD: libavcodec без mpeg4).
      */
+    private fun logAviTracks(tracks: Tracks) {
+        if (!currentItemIsAvi()) return
+        if (tracks.groups.isEmpty()) return
+        for (group in tracks.groups) {
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                Log.i(
+                    PLAYER_LOG_TAG,
+                    "AVI player track type=${group.type} mime=${format.sampleMimeType} " +
+                        "id=${format.id} selected=${group.isTrackSelected(i)} supported=${group.isTrackSupported(i)}",
+                )
+            }
+        }
+    }
+
+    /** В контейнере видео объявлено, а экстрактор дорожку не создал. Звук без ошибки больше не оставляем. */
+    private fun reportMissingAviVideo(tracks: Tracks) {
+        if (videoRetryPending || _state.value.error != null || !currentItemIsAvi()) return
+        val declared = AviProbe.video ?: return
+        val extracted = tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+        if (extracted) return
+        val name = declared.compression.ifBlank { declared.handler }.ifBlank { "AVI" }
+        Log.i(PLAYER_LOG_TAG, "AVI declares video $name but no video track was exposed")
+        val message = i18n.current.format("error.avi_video_missing", name)
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
+    }
+
     private fun reportUnsupportedVideo(tracks: Tracks) {
         if (videoRetryPending || _state.value.error != null) return
         val mime = unsupportedVideoMime(
@@ -1465,37 +1503,54 @@ class PlayerController(
     }
 
     /**
-     * Нет новых кадров 8 с. Счётчик берётся из DecoderCounters, не из позиции плеера.
-     * Пауза, стоп, перемотка и подавление воспроизведения часы сбрасывают.
+     * Нет новых кадров 8 с, и в декодер за это время тоже ничего не пришло.
+     * Буферизация, пауза, перемотка и удержание D-pad часы не копят.
+     * Если вход декодера не растёт, это экстрактор: звуковой декодер не переключаем.
      */
     private fun maybeRecoverStall() {
         if (stallStopped || _state.value.error != null || videoRetryPending) return
         if (request.liveTv) return
-        if (!playbackIsDriving()) {
+        val now = SystemClock.elapsedRealtime()
+        if (!player.isPlaying || player.playbackState != Player.STATE_READY || now < seekQuietUntil) {
             resetWatchdogClock()
             return
         }
-        if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return
         val video = player.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
         if (!video) return
+        videoCounters?.ensureUpdated()
         val frames = renderedFrames()
-        val now = SystemClock.elapsedRealtime()
+        val input = videoCounters?.queuedInputBufferCount ?: 0
         if (watchdogArmedAt == 0L) {
             watchdogArmedAt = now
             watchdogBaseFrames = frames
+            watchdogBaseInput = input
             return
         }
         if (frames > watchdogBaseFrames) {
             watchdogBaseFrames = frames
+            watchdogBaseInput = input
             watchdogArmedAt = now
             return
         }
         if (now - watchdogArmedAt < FIRST_FRAME_TIMEOUT_MS) return
-        Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms rendered=$frames audio=${decoders.audio} video=${decoders.video}")
+        val snap = "rendered=$frames input=$input dropped=${videoCounters?.droppedBufferCount ?: -1} " +
+            "state=${player.playbackState} pos=${player.currentPosition} audio=${decoders.audio} video=${decoders.video}"
+        val inputAdvanced = watchdogBaseInput >= 0 && input > watchdogBaseInput
+        Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms $snap inputAdvanced=$inputAdvanced")
+        if (!inputAdvanced) {
+            Log.i(PLAYER_LOG_TAG, "video input stalled, decoder switch skipped")
+            showStallError()
+            return
+        }
         recoverStall()
     }
 
     private fun renderedFrames(): Int = videoCounters?.renderedOutputBufferCount ?: 0
+
+    private fun armSeekQuiet() {
+        seekQuietUntil = SystemClock.elapsedRealtime() + SEEK_QUIET_MS
+        resetWatchdogClock()
+    }
 
     private fun playbackIsDriving(): Boolean =
         player.playWhenReady && player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
@@ -1503,6 +1558,7 @@ class PlayerController(
     private fun resetWatchdogClock() {
         watchdogArmedAt = 0L
         watchdogBaseFrames = -1
+        watchdogBaseInput = -1
         audioDiscontinuityCount = 0
     }
 

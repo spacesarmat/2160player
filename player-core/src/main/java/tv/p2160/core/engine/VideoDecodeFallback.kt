@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+import tv.p2160.core.avi.AviHeader
 import tv.p2160.core.settings.DecoderPreference
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -95,7 +96,7 @@ internal fun ffmpegMaps(mime: String?): Boolean = when (mime) {
 @OptIn(UnstableApi::class)
 internal fun codecLabel(mime: String?): String = when (mime) {
     MimeTypes.VIDEO_MP4V -> "MPEG-4 XviD/DivX"
-    MimeTypes.VIDEO_MP42, MimeTypes.VIDEO_MP43 -> "MS-MPEG4 DIV3"
+    MimeTypes.VIDEO_MP42, MimeTypes.VIDEO_MP43, AviHeader.MIME_DIVX3 -> "MS-MPEG4 DIV3"
     MimeTypes.VIDEO_H264 -> "H.264"
     MimeTypes.VIDEO_H265 -> "H.265"
     MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
@@ -161,8 +162,13 @@ internal fun unsupportedVideoMime(groups: List<Tracks.Group>, videoDisabled: Boo
  * MS-MPEG4 v3 на части приставок объявлен не как video/mp43, а как video/divx3
  * (OMX.realtek.video.dec.mp43 и OMX.realtek.video.dec.divx3).
  */
-internal fun decoderMimesFor(mimeType: String): List<String> = when (mimeType) {
-    MimeTypes.VIDEO_MP43, MimeTypes.VIDEO_MP42 -> listOf(mimeType, "video/divx3", "video/divx", "video/x-divx").distinct()
+internal fun isMsMpeg4Mime(mimeType: String): Boolean =
+    mimeType == MimeTypes.VIDEO_MP43 || mimeType == MimeTypes.VIDEO_MP42 || mimeType == AviHeader.MIME_DIVX3
+
+internal fun decoderMimesFor(mimeType: String): List<String> = when {
+    mimeType == AviHeader.MIME_DIVX3 -> listOf(AviHeader.MIME_DIVX3, MimeTypes.VIDEO_MP43, "video/divx", "video/x-divx")
+    mimeType == MimeTypes.VIDEO_MP43 || mimeType == MimeTypes.VIDEO_MP42 ->
+        listOf(mimeType, AviHeader.MIME_DIVX3, "video/divx", "video/x-divx").distinct()
     else -> listOf(mimeType)
 }
 
@@ -180,7 +186,8 @@ private val MS_MPEG4_TYPES = listOf("video/mp43", "video/divx3", "video/divx", "
  * даже если строка типа чуть другая.
  */
 internal fun msMpeg4Candidates(codecs: List<DeviceCodec>, sampleMime: String): List<DeviceCodecChoice> {
-    if (sampleMime != MimeTypes.VIDEO_MP43 && sampleMime != MimeTypes.VIDEO_MP42) return emptyList()
+    if (!isMsMpeg4Mime(sampleMime)) return emptyList()
+    val preferDivx3 = sampleMime == AviHeader.MIME_DIVX3
     val ranked = ArrayList<Pair<Int, DeviceCodecChoice>>()
     for (codec in codecs) {
         val name = codec.name
@@ -195,10 +202,13 @@ internal fun msMpeg4Candidates(codecs: List<DeviceCodec>, sampleMime: String): L
             alias != null -> types.first { it.equals(alias, ignoreCase = true) }
             else -> types.firstOrNull { it.startsWith("video/", ignoreCase = true) } ?: "video/divx3"
         }
-        val rank = when (codecMime.lowercase()) {
-            "video/mp43", "video/mp42" -> 0
-            "video/divx3" -> 1
-            "video/divx", "video/x-divx" -> 2
+        val lowerMime = codecMime.lowercase()
+        val rank = when {
+            preferDivx3 && lowerMime == "video/divx3" -> 0
+            preferDivx3 && (lowerMime == "video/mp43" || lowerMime == "video/mp42") -> 1
+            !preferDivx3 && (lowerMime == "video/mp43" || lowerMime == "video/mp42") -> 0
+            lowerMime == "video/divx3" -> 1
+            lowerMime == "video/divx" || lowerMime == "video/x-divx" -> 2
             else -> 3
         }
         ranked += rank to DeviceCodecChoice(name, codecMime)
@@ -241,7 +251,7 @@ private val msMpeg4ScanCache = HashMap<String, List<MediaCodecInfo>>()
 
 @OptIn(UnstableApi::class)
 private fun scanMsMpeg4Decoders(sampleMime: String): List<MediaCodecInfo> {
-    if (sampleMime != MimeTypes.VIDEO_MP43 && sampleMime != MimeTypes.VIDEO_MP42) return emptyList()
+    if (!isMsMpeg4Mime(sampleMime)) return emptyList()
     synchronized(msMpeg4ScanCache) {
         msMpeg4ScanCache[sampleMime]?.let { return it }
     }
@@ -306,7 +316,7 @@ internal class VideoMimeFallbackSelector(private val gate: VideoDecoderGate) : M
                 emptyList()
             }
             for (info in found) {
-                val adapted = if (mimeType == MimeTypes.VIDEO_MP43 || mimeType == MimeTypes.VIDEO_MP42) {
+                val adapted = if (isMsMpeg4Mime(mimeType)) {
                     msMpeg4CodecInfo(info.name, mimeType, info.codecMimeType, info.capabilities)
                 } else {
                     info
@@ -314,7 +324,7 @@ internal class VideoMimeFallbackSelector(private val gate: VideoDecoderGate) : M
                 merged.putIfAbsent(adapted.name, adapted)
             }
         }
-        if (merged.isNotEmpty() && (mimeType == MimeTypes.VIDEO_MP43 || mimeType == MimeTypes.VIDEO_MP42) &&
+        if (merged.isNotEmpty() && isMsMpeg4Mime(mimeType) &&
             msMpeg4Logged.compareAndSet(false, true)
         ) {
             Log.i(

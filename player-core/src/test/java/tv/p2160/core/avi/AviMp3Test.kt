@@ -13,6 +13,25 @@ import org.junit.Test
 
 class AviMp3Test {
     @Test
+    fun frameAt48kHzIs24msAndPaddingDoesNotDropIt() {
+        val frame = ByteArray(384)
+        frame[0] = 0xFF.toByte()
+        frame[1] = 0xFB.toByte()
+        frame[2] = 0x94.toByte()
+        assertEquals(384, MpegAudio.frameAt(frame, 0)?.size)
+        val step = 1152L * 1_000_000L / 48000L
+        assertEquals(24_000L, step)
+        val chunk = frame + ByteArray(16)
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, AviMp3Index()) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).setSampleRate(48000).build())
+        audio.sampleData(ParsableByteArray(chunk), chunk.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, chunk.size, 0, null)
+        assertEquals(listOf(0L), out.times)
+        assertEquals(listOf(384), out.sizes)
+    }
+
+    @Test
     fun frameHeaderGives1152SamplesAt44100() {
         val frame = mpeg1Layer3Frame()
         val parsed = MpegAudio.frameAt(frame, 0)

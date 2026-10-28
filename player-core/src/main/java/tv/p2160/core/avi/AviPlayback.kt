@@ -1,6 +1,7 @@
 package tv.p2160.core.avi
 
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.DataReader
@@ -47,8 +48,10 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
         unpackers.clear()
         mp3.clear()
         rawSeekMap = null
+        AviProbe.clear()
         delegate.init(object : ExtractorOutput by output {
             override fun track(id: Int, type: Int): TrackOutput {
+                Log.i(TAG, "AVI track id=$id type=$type")
                 val track = output.track(id, type)
                 if (type == C.TRACK_TYPE_AUDIO) {
                     val audio = AviMp3AudioOutput(track, mp3Index) { rawSeekMap }
@@ -61,10 +64,19 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
                 return UnpackingTrackOutput(track, unpacker)
             }
 
+            override fun endTracks() {
+                Log.i(TAG, "AVI endTracks")
+                output.endTracks()
+            }
+
             override fun seekMap(seekMap: SeekMap) {
                 // Сырая карта нужна, чтобы запомнить смещение куска. Наружу отдаём карту по сэмплам.
                 rawSeekMap = seekMap
-                output.seekMap(AviMp3SeekMap(seekMap, mp3Index))
+                val wrapped = AviMp3SeekMap(seekMap, mp3Index)
+                val duration = AviProbe.durationUs
+                if (duration > 0) wrapped.overrideDurationUs = duration
+                Log.i(TAG, "AVI seekMap durationUs=${wrapped.getDurationUs()} raw=${seekMap.durationUs}")
+                output.seekMap(wrapped)
             }
         })
     }
@@ -79,80 +91,42 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
     }
 }
 
-/** В заголовке AVI (до movi) DIV3/div3/DIV4/div4 читаются как MP43. В кадрах байты не трогаем. */
-internal object AviFourcc {
-    const val HEADER_LIMIT = 2 * 1024 * 1024
-    private val rules = listOf(
-        "DIV3".encodeToByteArray() to "MP43".encodeToByteArray(),
-        "div3".encodeToByteArray() to "mp43".encodeToByteArray(),
-        "DIV4".encodeToByteArray() to "MP43".encodeToByteArray(),
-        "div4".encodeToByteArray() to "mp43".encodeToByteArray(),
-    )
-
-    fun rewrite(buffer: ByteArray, offset: Int, length: Int, filePosition: Long) {
-        if (length < 4 || filePosition >= HEADER_LIMIT) return
-        val window = minOf(length, (HEADER_LIMIT - filePosition).toInt())
-        val start = offset
-        val end = offset + window
-        for ((from, to) in rules) {
-            var i = start
-            while (i + 4 <= end) {
-                if (buffer[i] == from[0] && buffer[i + 1] == from[1] && buffer[i + 2] == from[2] && buffer[i + 3] == from[3]) {
-                    buffer[i] = to[0]
-                    buffer[i + 1] = to[1]
-                    buffer[i + 2] = to[2]
-                    buffer[i + 3] = to[3]
-                    i += 4
-                } else {
-                    i++
-                }
-            }
-        }
-    }
-}
-
 @OptIn(UnstableApi::class)
 private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorInput by delegate {
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        val at = delegate.position
-        val n = delegate.read(buffer, offset, length)
-        if (n > 0) AviFourcc.rewrite(buffer, offset, n, at)
-        return n
-    }
-
     override fun readFully(target: ByteArray, offset: Int, length: Int) {
-        val at = delegate.position
         delegate.readFully(target, offset, length)
-        AviFourcc.rewrite(target, offset, length, at)
+        note(target, offset, length)
     }
 
     override fun readFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
-        val at = delegate.position
         val ok = delegate.readFully(target, offset, length, allowEndOfInput)
-        if (ok) AviFourcc.rewrite(target, offset, length, at)
+        if (ok) note(target, offset, length)
         return ok
     }
 
-    override fun peek(buffer: ByteArray, offset: Int, length: Int): Int {
-        val at = delegate.peekPosition
-        val n = delegate.peek(buffer, offset, length)
-        if (n > 0) AviFourcc.rewrite(buffer, offset, n, at)
-        return n
-    }
-
-    override fun peekFully(target: ByteArray, offset: Int, length: Int) {
-        val at = delegate.peekPosition
-        delegate.peekFully(target, offset, length)
-        AviFourcc.rewrite(target, offset, length, at)
-    }
-
-    override fun peekFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
-        val at = delegate.peekPosition
-        val ok = delegate.peekFully(target, offset, length, allowEndOfInput)
-        if (ok) AviFourcc.rewrite(target, offset, length, at)
-        return ok
+    private fun note(target: ByteArray, offset: Int, length: Int) {
+        AviHeader.tryFixHdrl(target, offset, length)?.let { facts ->
+            AviProbe.facts = facts
+            val video = facts.videos.firstOrNull()
+            Log.i(
+                TAG,
+                "AVI hdrl video handler=${video?.handler} compression=${video?.compression} " +
+                    "${video?.width}x${video?.height} scale=${video?.scale} rate=${video?.rate} " +
+                    "length=${video?.length} sampleSize=${video?.sampleSize} start=${video?.start} " +
+                    "strfBeforeStrh=${video?.strfBeforeStrh} divx3=${facts.divx3} " +
+                    "avihFrames=${facts.avihFrames} durationUs=${facts.durationUs}",
+            )
+            return
+        }
+        val frames = AviHeader.countIdx1Video(target, offset, length) ?: return
+        val current = AviProbe.facts ?: return
+        val updated = AviHeader.withIdx1(current, frames)
+        AviProbe.facts = updated
+        Log.i(TAG, "AVI idx1 videoFrames=$frames durationUs=${updated.durationUs}")
     }
 }
+
+private const val TAG = "Player2160"
 
 @OptIn(UnstableApi::class)
 private class UnpackingTrackOutput(
@@ -162,13 +136,22 @@ private class UnpackingTrackOutput(
     private val pending = ByteArrayOutputStream()
 
     override fun format(format: Format) {
-        unpacker.setMime(format.sampleMimeType)
-        if (!unpacker.enabled || format.initializationData.isEmpty()) {
-            delegate.format(format)
+        val adjusted = if (
+            AviProbe.divx3 &&
+            (format.sampleMimeType == MimeTypes.VIDEO_MP43 || format.sampleMimeType == MimeTypes.VIDEO_MP42)
+        ) {
+            format.buildUpon().setSampleMimeType(AviHeader.MIME_DIVX3).build()
+        } else {
+            format
+        }
+        Log.i(TAG, "AVI format mime=${adjusted.sampleMimeType} ${adjusted.width}x${adjusted.height}")
+        unpacker.setMime(adjusted.sampleMimeType)
+        if (!unpacker.enabled || adjusted.initializationData.isEmpty()) {
+            delegate.format(adjusted)
             return
         }
-        val stripped = format.initializationData.map { Mpeg4PackedUnpacker.stripMarker(it) }
-        delegate.format(format.buildUpon().setInitializationData(stripped).build())
+        val stripped = adjusted.initializationData.map { Mpeg4PackedUnpacker.stripMarker(it) }
+        delegate.format(adjusted.buildUpon().setInitializationData(stripped).build())
     }
 
     override fun sampleData(input: DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int {
@@ -214,5 +197,10 @@ private class UnpackingTrackOutput(
         delegate.sampleMetadata(timeUs, outFlags, emitted.size, 0, cryptoData)
     }
 
-    override fun durationUs(durationUs: Long) = delegate.durationUs(durationUs)
+    override fun durationUs(durationUs: Long) = delegate.durationUs(capDuration(durationUs))
+}
+
+private fun capDuration(durationUs: Long): Long {
+    val cap = AviProbe.durationUs
+    return if (cap > 0 && durationUs > cap) cap else durationUs
 }

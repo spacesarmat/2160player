@@ -53,12 +53,6 @@ internal object MpegAudio {
             72000 * bitrateKbps / sampleRate + padding
         }
         if (frameSize < 4 || frameSize > MAX_FRAME) return null
-        // Ложный синхрослово: сразу за кадром нет следующего. Конец буфера ещё не приговор.
-        if (offset + frameSize + 1 < data.size) {
-            val n0 = data[offset + frameSize].toInt() and 0xFF
-            val n1 = data[offset + frameSize + 1].toInt() and 0xFF
-            if (n0 != 0xFF || n1 and 0xE0 != 0xE0) return null
-        }
         return MpegAudioFrame(frameSize, sampleRate, samples)
     }
 
@@ -144,7 +138,9 @@ internal class AviMp3SeekMap(
     private val index: AviMp3Index,
 ) : SeekMap {
     override fun isSeekable(): Boolean = delegate.isSeekable
-    override fun getDurationUs(): Long = delegate.getDurationUs()
+    /** Подмена длины: Media3 не даёт короткому video strh уменьшить avih. */
+    var overrideDurationUs: Long = C.TIME_UNSET
+    override fun getDurationUs(): Long = overrideDurationUs.takeIf { it > 0 } ?: delegate.getDurationUs()
 
     override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
         val entry = index.seekEntry(timeUs) ?: return delegate.getSeekPoints(timeUs)
@@ -260,6 +256,17 @@ internal class AviMp3AudioOutput(
                 continue
             }
             if (offsetIn + frame.size > data.size) break
+            val next = offsetIn + frame.size
+            val followed = next + 1 < data.size &&
+                data[next].toInt() and 0xFF == 0xFF &&
+                data[next + 1].toInt() and 0xE0 == 0xE0
+            // Ложный синхрослово в середине куска. Кадр с границы куска или перед нулями оставляем:
+            // иначе 48 кГц CBR с выравниванием не отдаёт ни одного кадра, и видео встаёт на первом.
+            if (!followed && skipped > 0 && !padding(data, next)) {
+                offsetIn++
+                skipped++
+                continue
+            }
             skipped = 0
             index.noteRate(frame.sampleRate)
             val bytes = data.copyOfRange(offsetIn, offsetIn + frame.size)
@@ -270,6 +277,10 @@ internal class AviMp3AudioOutput(
             samples += frame.samplesPerFrame
             frames++
             offsetIn += frame.size
+            if (!followed) {
+                if (padding(data, offsetIn)) offsetIn = data.size
+                break
+            }
         }
         val rest = if (offsetIn < data.size) data.copyOfRange(offsetIn, data.size) else ByteArray(0)
         if (frames == 0 && rest.size > MAX_TAIL) {
@@ -288,7 +299,21 @@ internal class AviMp3AudioOutput(
         if (frames > 0) index.add(timeUs, offset, payload, samples)
     }
 
-    override fun durationUs(durationUs: Long) = delegate.durationUs(durationUs)
+    override fun durationUs(durationUs: Long) {
+        val cap = AviProbe.durationUs
+        delegate.durationUs(if (cap > 0 && durationUs > cap) cap else durationUs)
+    }
+
+    private fun padding(data: ByteArray, from: Int): Boolean {
+        var i = from
+        var nonzero = 0
+        while (i < data.size) {
+            if (data[i] != 0.toByte()) nonzero++
+            if (nonzero > 1) return false
+            i++
+        }
+        return true
+    }
 
     /** Непрочитанный кусок: стартуем от метки контейнера, дальше снова считаем сэмплы. */
     private fun timeUsToSamples(timeUs: Long): Long {
@@ -311,7 +336,7 @@ internal class AviMp3AudioOutput(
     }
 
     private companion object {
-        const val MAX_SKIP = 64
+        const val MAX_SKIP = 4096
         const val MAX_TAIL = 1728
         const val BAD_CHUNK_LIMIT = 2
     }

@@ -95,6 +95,7 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import tv.p2160.core.engine.END_IDLE_CLOSE_MS
 import tv.p2160.core.engine.PlayerController
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.transportShowsRemaining
@@ -212,6 +213,12 @@ fun PlayerScreen(
     val errorFocus = remember { FocusRequester() }
     // Когда панель скрыта, фокус держит сам экран - иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
+    val closeFocus = remember { FocusRequester() }
+    val countdownFocus = remember { FocusRequester() }
+    var endIdle by remember { mutableIntStateOf(0) }
+    var countdownLeft by remember(state.endCountdownSec, state.playlistIndex) {
+        mutableIntStateOf(state.endCountdownSec ?: 0)
+    }
 
     fun poke() { interaction++ }
     fun show() { controlsVisible.value = true; poke() }
@@ -270,12 +277,38 @@ fun PlayerScreen(
         digits = ""
     }
     LaunchedEffect(state.resumedFromMs) { if (state.resumedFromMs != null) { delay(7_000); controller.dismissResumeHint() } }
-    LaunchedEffect(state.ended, settings.autoPlayNext) {
-        if (state.ended) controlsVisible.value = true
+    LaunchedEffect(state.endCountdownSec, state.playlistIndex) {
+        val start = state.endCountdownSec ?: return@LaunchedEffect
+        var left = start
+        while (left > 0) {
+            delay(1_000)
+            left--
+            countdownLeft = left
+        }
+        if (controller.state.value.endCountdownSec != null) controller.advanceAfterEnd()
+    }
+    LaunchedEffect(state.showEndScreen, endIdle) {
+        if (!state.showEndScreen) return@LaunchedEffect
+        delay(END_IDLE_CLOSE_MS)
+        if (controller.state.value.showEndScreen) onBack()
+    }
+    LaunchedEffect(state.showEndScreen) {
+        if (state.showEndScreen) runCatching { closeFocus.requestFocus() }
+    }
+    LaunchedEffect(state.endCountdownSec) {
+        if (state.endCountdownSec != null) runCatching { countdownFocus.requestFocus() }
+    }
+    LaunchedEffect(state.requestClose) {
+        if (state.requestClose) {
+            controller.acknowledgeClose()
+            onBack()
+        }
     }
 
     BackHandler {
         when {
+            state.endDim -> controller.dismissEndDim()
+            state.endCountdownSec != null -> controller.cancelEndCountdown()
             panelState.value != null -> panelState.value = null
             else -> onBack()
         }
@@ -328,8 +361,16 @@ fun PlayerScreen(
                 .focusRequester(rootFocus)
                 .focusable()
                 .onPreviewKeyEvent { e ->
-                    // Диалог ошибки сам держит фокус. Не отдаём OK спрятанной кнопке панели.
-                    if (state.error != null) return@onPreviewKeyEvent false
+                    if (state.endDim) {
+                        if (e.key == Key.Back || e.key == Key.Escape) return@onPreviewKeyEvent false
+                        controller.dismissEndDim()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (state.showEndScreen) endIdle++
+                    // Диалоги сами держат фокус. Не отдаём OK спрятанной кнопке панели.
+                    if (state.showEndScreen || state.endCountdownSec != null || state.error != null) {
+                        return@onPreviewKeyEvent false
+                    }
                     if (e.type == KeyEventType.KeyUp) {
                         if (keyScrubbing && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) {
                             commitKeyScrub()
@@ -681,6 +722,57 @@ fun PlayerScreen(
                     }
                 }
             }
+            if (!inPictureInPicture && state.endCountdownSec != null) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.45f))
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            tr("player.next_episode_in", countdownLeft),
+                            color = Color.White,
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        Spacer(Modifier.size(12.dp))
+                        TextButton(onClick = controller::cancelEndCountdown, modifier = Modifier.focusRequester(countdownFocus)) {
+                            Text(tr("player.cancel"), color = theme.accent)
+                        }
+                    }
+                }
+            }
+            if (!inPictureInPicture && state.showEndScreen) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.55f))
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } }
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { endIdle++ },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { endIdle++; controller.watchAgain() }) {
+                            Text(tr("player.watch_again"), color = theme.accent)
+                        }
+                        TextButton(onClick = onBack, modifier = Modifier.focusRequester(closeFocus)) {
+                            Text(tr("player.close"), color = Color.White)
+                        }
+                    }
+                }
+            }
+            if (state.endDim) {
+                Box(
+                    Modifier.matchParentSize().zIndex(4f).background(Color.Black)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = controller::dismissEndDim,
+                        ),
+                )
+            }
         }
     }
     }
@@ -793,7 +885,6 @@ private fun BoxScope.EdgeActions(
         var left by remember(playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
         LaunchedEffect(playlistIndex, isPlaying) {
             while (isPlaying && left > 0) { delay(1_000); left-- }
-            if (left == 0) onNext()
         }
         NextEpisodeCard(
             secondsLeft = left,

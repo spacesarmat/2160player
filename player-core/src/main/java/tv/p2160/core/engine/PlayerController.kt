@@ -119,6 +119,14 @@ data class PlayerUiState(
     val sleepAtEnd: Boolean = false,
     /** Частота кадров текущего видео (для подбора частоты экрана); -1 - неизвестна. */
     val videoFrameRate: Float = -1f,
+    /** Секунды до следующего файла. null - отсчёта нет. */
+    val endCountdownSec: Int? = null,
+    /** Файл доигран и следующего нет: «Смотреть снова» и «Закрыть». */
+    val showEndScreen: Boolean = false,
+    /** Кадр погашен после долгого стояния на конце. Любая клавиша возвращает картинку. */
+    val endDim: Boolean = false,
+    /** Плеер просит активность закрыться. */
+    val requestClose: Boolean = false,
 )
 
 /**
@@ -359,18 +367,15 @@ class PlayerController(
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) resetWatchdogClock()
             if (playbackState == Player.STATE_READY) scheduleIntro(player.currentMediaItemIndex)
-            if (playbackState == Player.STATE_ENDED) {
-                completed = true
-                saveProgress()
-                if (_state.value.sleepAtEnd) cancelSleepTimer()
-            }
+            if (playbackState == Player.STATE_ENDED) onNaturalEnd()
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Пауза и стоп не должны досчитывать таймаут «нет кадра».
             if (!playWhenReady) resetWatchdogClock()
-            // Таймер «в конце серии» сработал: плеер встал на паузу в конце файла.
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && _state.value.sleepAtEnd) cancelSleepTimer()
+            // pauseAtEndOfMediaItems: не последний файл не даёт STATE_ENDED, только эту причину.
+            // Сон «в конце серии» обрабатывается внутри onNaturalEnd.
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) onNaturalEnd()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -436,7 +441,7 @@ class PlayerController(
         player.setVideoFrameMetadataListener(frameRateProbe)
         appContext.getSystemService(android.hardware.display.DisplayManager::class.java)
             ?.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
-        player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        player.pauseAtEndOfMediaItems = true
         built.passthrough.audioDelayUs = settings.current.audioDelayMs * 1000L
         _state.update { it.copy(audioDelayMs = settings.current.audioDelayMs) }
         PlaybackSessions.attach(appContext, this)
@@ -469,6 +474,8 @@ class PlayerController(
         introItem = -1
         introAttempts = 0
         completed = false
+        naturalEndHandled = false
+        endHoldSince = 0L
         detectedFrameRate = -1f
         frameRateProbe.reset()
         audioDiscontinuityCount = 0
@@ -507,7 +514,18 @@ class PlayerController(
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
-        _state.update { it.copy(resumedFromMs = resumeFrom, error = null, title = titleAt(index), subtitle = liveSubtitle(index)) }
+        _state.update {
+            it.copy(
+                resumedFromMs = resumeFrom,
+                error = null,
+                title = titleAt(index),
+                subtitle = liveSubtitle(index),
+                endCountdownSec = null,
+                showEndScreen = false,
+                endDim = false,
+                requestClose = false,
+            )
+        }
         applyPendingSelections(player.currentTracks)
         // Главы и поиск вступления в эфире бессмысленны (и FFmpeg повис бы на бесконечном потоке).
         if (!request.liveTv) loadChaptersAndSegments(index)
@@ -963,7 +981,7 @@ class PlayerController(
         sleepFadeJob?.cancel()
         sleepFadeJob = null
         player.volume = 1f
-        player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        player.pauseAtEndOfMediaItems = true
         _state.update { it.copy(sleepRemainingMs = null, sleepAtEnd = false) }
     }
 
@@ -1104,6 +1122,88 @@ class PlayerController(
 
     fun dismissResumeHint() = _state.update { it.copy(resumedFromMs = null) }
 
+    fun cancelEndCountdown() {
+        endHoldSince = SystemClock.elapsedRealtime()
+        _state.update { it.copy(endCountdownSec = null, endDim = false) }
+    }
+
+    fun advanceAfterEnd() {
+        _state.update { it.copy(endCountdownSec = null, showEndScreen = false) }
+        if (player.hasNextMediaItem()) {
+            player.seekToNextMediaItem()
+            player.play()
+        }
+    }
+
+    fun watchAgain() {
+        naturalEndHandled = false
+        completed = false
+        endHoldSince = 0L
+        _state.update { it.copy(showEndScreen = false, endCountdownSec = null, endDim = false) }
+        player.seekTo(0)
+        player.play()
+    }
+
+    fun requestClose() = _state.update { it.copy(requestClose = true) }
+
+    fun acknowledgeClose() = _state.update { it.copy(requestClose = false) }
+
+    fun dismissEndDim() {
+        endHoldSince = SystemClock.elapsedRealtime()
+        _state.update { it.copy(endDim = false) }
+    }
+
+    private var naturalEndHandled = false
+    private var endHoldSince = 0L
+
+    private fun onNaturalEnd() {
+        if (naturalEndHandled) return
+        naturalEndHandled = true
+        if (_state.value.sleepAtEnd) {
+            cancelSleepTimer()
+            return
+        }
+        val live = isLivePlayback()
+        if (!live) {
+            completed = true
+            saveProgress()
+        }
+        val plan = endPlan(settings.current.endAction, player.hasNextMediaItem(), live)
+        when {
+            plan.repeat -> {
+                naturalEndHandled = false
+                completed = false
+                player.seekTo(0)
+                player.play()
+            }
+            plan.closeNow -> requestClose()
+            plan.countdown -> _state.update { it.copy(endCountdownSec = END_COUNTDOWN_SEC, showEndScreen = false, endDim = false) }
+            plan.endScreen -> _state.update { it.copy(showEndScreen = true, endCountdownSec = null, endDim = false) }
+            plan.stay -> {
+                endHoldSince = if (live) 0L else SystemClock.elapsedRealtime()
+                _state.update { it.copy(endCountdownSec = null, showEndScreen = false, endDim = false) }
+            }
+        }
+    }
+
+    private fun isLivePlayback(): Boolean {
+        if (request.liveTv || player.isCurrentMediaItemLive || _state.value.isLive) return true
+        val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri
+        return uri != null && isLiveSource(uri)
+    }
+
+    private fun tickEndHold() {
+        if (endHoldSince == 0L || isLivePlayback() || player.isPlaying) {
+            if (player.isPlaying && _state.value.endDim) _state.update { it.copy(endDim = false) }
+            if (player.isPlaying) endHoldSince = 0L
+            return
+        }
+        if (_state.value.showEndScreen || _state.value.endCountdownSec != null) return
+        if (endShouldDim(true, false, SystemClock.elapsedRealtime() - endHoldSince) && !_state.value.endDim) {
+            _state.update { it.copy(endDim = true) }
+        }
+    }
+
     /** Начать текущий файл с начала (кнопка в подсказке «Продолжено с …»). */
     fun restartFromBeginning() {
         player.seekTo(0)
@@ -1224,6 +1324,7 @@ class PlayerController(
                 maybeAutoSkip()
                 keepLiveEdge()
                 tickSleepTimer()
+                tickEndHold()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()

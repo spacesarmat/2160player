@@ -157,7 +157,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `data` | `Uri` | URI элемента, на котором остановились (в плейлисте - текущий). |
 | `position` | `Int` (мс) | Позиция остановки (MX Player). |
 | `duration` | `Int` (мс) | Длительность (MX Player). |
-| `end_by` | `String` | `"user"` - закрыл пользователь, `"playback_completion"` - досмотрено до конца. |
+| `end_by` | `String` | `"user"` - закрыл пользователь, `"playback_completion"` - досмотрено до конца (файл дошёл до конца, в том числе если плеер закрыли с экрана конца). Новых ключей нет. |
 | `extra_position` | `Long` (мс) | Позиция (VLC). |
 | `extra_duration` | `Long` (мс) | Длительность (VLC). |
 
@@ -916,7 +916,8 @@ Player2160.settings(context).update {
 | `autoResume` | `Boolean` = `true` | При старте элемента |
 | `seekStepSeconds` | `Int` = `10` | Сразу (UI); шаг кнопок ExoPlayer - для следующего контроллера |
 | `resizeMode` | `ResizeMode` = `FIT` | При открытии `PlayerScreen` |
-| `autoPlayNext` | `Boolean` = `true` | Переход к следующему элементу - для следующего контроллера; карточка «Следующая серия» - сразу |
+| `autoPlayNext` | `Boolean` = `true` | Совместимость. Если ключа `end_action` ещё нет: `true` - `EndAction.NEXT`, `false` - `EndAction.STAY`. Экран настроек пишет его вместе с `endAction` |
+| `endAction` | `EndAction` = `NEXT` | Конец файла: `NEXT` (отсчёт 5 с и следующий; один файл и последний в плейлисте - экран «Смотреть снова» / «Закрыть»), `CLOSE`, `STAY` (кадр гаснет через 3 минуты), `REPEAT`. Ключ `end_action`. Сразу. Эфир (RTSP/SRT/UDP, `liveTv`, живой элемент) не затрагивается |
 | `skipMode` | `SkipMode` = `BUTTON` | Сразу |
 | `nightMode` | `Boolean` = `false` | «Ночной звук» всегда (см. [§16](#16-ночной-звук)). При старте `PlayerController`; живой контроллер переключайте через `setNightMode()` |
 | `nightAuto` | `Boolean` = `false` | Включать ночной звук по расписанию `[nightStartMinute, nightEndMinute)`. Проверяется при старте и раз в минуту |

@@ -51,7 +51,7 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 |---|---|---|
 | `data` | Uri | на каком элементе остановились |
 | `position`, `duration` | Int, мс | как у MX Player |
-| `end_by` | String | `user` или `playback_completion` |
+| `end_by` | String | `user` или `playback_completion`. Экран конца и автозакрытие после досмотра по-прежнему дают `playback_completion`. Отдельного extra нет |
 | `extra_position`, `extra_duration` | Long | как у VLC |
 
 Свайп из «Недавних» и убийство процесса - `RESULT_CANCELED` без extras.

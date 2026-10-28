@@ -13,6 +13,7 @@ import androidx.media3.extractor.ExtractorInput
 import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.PositionHolder
+import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.avi.AviExtractor
 import java.io.ByteArrayOutputStream
@@ -39,15 +40,18 @@ internal object AviPlayback {
 private class AviFixExtractor(private val delegate: Extractor) : Extractor by delegate {
     private val unpackers = ArrayList<Mpeg4PackedUnpacker>()
     private val mp3 = ArrayList<AviMp3AudioOutput>()
+    private val mp3Index = AviMp3Index()
+    private var rawSeekMap: SeekMap? = null
 
     override fun init(output: ExtractorOutput) {
         unpackers.clear()
         mp3.clear()
+        rawSeekMap = null
         delegate.init(object : ExtractorOutput by output {
             override fun track(id: Int, type: Int): TrackOutput {
                 val track = output.track(id, type)
                 if (type == C.TRACK_TYPE_AUDIO) {
-                    val audio = AviMp3AudioOutput(track)
+                    val audio = AviMp3AudioOutput(track, mp3Index) { rawSeekMap }
                     mp3 += audio
                     return audio
                 }
@@ -55,6 +59,12 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
                 val unpacker = Mpeg4PackedUnpacker()
                 unpackers += unpacker
                 return UnpackingTrackOutput(track, unpacker)
+            }
+
+            override fun seekMap(seekMap: SeekMap) {
+                // Сырая карта нужна, чтобы запомнить смещение куска. Наружу отдаём карту по сэмплам.
+                rawSeekMap = seekMap
+                output.seekMap(AviMp3SeekMap(seekMap, mp3Index))
             }
         })
     }
@@ -64,7 +74,7 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
 
     override fun seek(position: Long, timeUs: Long) {
         unpackers.forEach { it.reset() }
-        mp3.forEach { it.reset() }
+        mp3.forEach { it.onSeek() }
         delegate.seek(position, timeUs)
     }
 }

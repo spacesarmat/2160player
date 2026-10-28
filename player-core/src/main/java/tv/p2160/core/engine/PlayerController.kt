@@ -2,6 +2,7 @@ package tv.p2160.core.engine
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -14,6 +15,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -136,6 +138,8 @@ private const val LIVE_FAR_SPEED = 1.25f
 /** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
 private const val PASSTHROUGH_RETRIES = 3
 private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
+private const val MAX_STALL_RECOVERIES = 2
+private const val PLAYER_LOG_TAG = "Player2160"
 
 @OptIn(UnstableApi::class)
 class PlayerController(
@@ -156,12 +160,16 @@ class PlayerController(
     private var passthroughRetries = 0
     /** Повтор декодера уже поставлен в очередь: дорожки на этот миг ещё без видео, ошибку не показываем. */
     private var videoRetryPending = false
-    /** Звуковые часы AVI+MP3 не идут: один раз пробуем FFmpeg, дальше ошибка. */
+    /** Звуковые часы AVI+MP3 не идут: не больше двух попыток на файл, дальше ошибка. */
     private var ffmpegAudioTried = false
     private var audioDiscontinuityCount = 0
     private var audioDiscontinuitySince = 0L
-    private var itemStartedAt = 0L
-    private var renderedFirstFrame = false
+    private var stallItem = -1
+    private var stallRecoveries = 0
+    private var stallStopped = false
+    private var watchdogArmedAt = 0L
+    private var watchdogBaseFrames = -1
+    private var videoCounters: DecoderCounters? = null
     /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
@@ -234,21 +242,34 @@ class PlayerController(
 
     /** Какие декодеры реально выбраны - для сводки по файлу. */
     private val analytics = object : AnalyticsListener {
+        override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+            videoCounters = decoderCounters
+        }
+
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(video = decoderName)
+            Log.i(PLAYER_LOG_TAG, "video decoder $decoderName")
         }
 
         override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(audio = decoderName, audioPassthrough = false)
+            Log.i(PLAYER_LOG_TAG, "audio decoder $decoderName")
         }
 
         override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
-            if (!isTimestampDiscontinuity(audioSinkError)) return
+            val gap = audioSinkError as? AudioSink.UnexpectedDiscontinuityException
+            if (gap != null) {
+                Log.w(
+                    PLAYER_LOG_TAG,
+                    "audio discontinuity actualUs=${gap.actualPresentationTimeUs} expectedUs=${gap.expectedPresentationTimeUs} audio=${decoders.audio} video=${decoders.video}",
+                )
+            }
+            if (gap == null && !isTimestampDiscontinuity(audioSinkError)) return
             scope.launch { noteAudioDiscontinuity() }
         }
 
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
-            renderedFirstFrame = true
+            Log.i(PLAYER_LOG_TAG, "first video frame audio=${decoders.audio} video=${decoders.video}")
         }
 
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
@@ -316,6 +337,9 @@ class PlayerController(
         }
 
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                resetWatchdogClock()
+            }
             // Переход к следующему элементу: сохраняем прогресс предыдущего как досмотренный.
             if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION && old.mediaItemIndex != new.mediaItemIndex) {
                 val window = player.currentTimeline.takeIf { old.mediaItemIndex < it.windowCount }
@@ -326,6 +350,7 @@ class PlayerController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) resetWatchdogClock()
             if (playbackState == Player.STATE_READY) scheduleIntro(player.currentMediaItemIndex)
             if (playbackState == Player.STATE_ENDED) {
                 completed = true
@@ -335,6 +360,8 @@ class PlayerController(
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            // Пауза и стоп не должны досчитывать таймаут «нет кадра».
+            if (!playWhenReady) resetWatchdogClock()
             // Таймер «в конце серии» сработал: плеер встал на паузу в конце файла.
             if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && _state.value.sleepAtEnd) cancelSleepTimer()
         }
@@ -437,11 +464,15 @@ class PlayerController(
         completed = false
         detectedFrameRate = -1f
         frameRateProbe.reset()
-        renderedFirstFrame = false
-        itemStartedAt = SystemClock.elapsedRealtime()
         audioDiscontinuityCount = 0
-        if (!videoRetryPending && ffmpegAudioTried && settings.current.decoder != tv.p2160.core.settings.DecoderPreference.FFMPEG) {
-            built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.AUTO)
+        resetWatchdogClock()
+        if (index != stallItem) {
+            stallItem = index
+            stallRecoveries = 0
+            stallStopped = false
+            if (ffmpegAudioTried && settings.current.decoder != tv.p2160.core.settings.DecoderPreference.FFMPEG) {
+                built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.AUTO)
+            }
             ffmpegAudioTried = false
         }
         // Телеканалы: ни продолжения с места, ни сохранённых дорожек - сразу эфир.
@@ -1055,6 +1086,9 @@ class PlayerController(
     fun retry() {
         introItem = -1
         introAttempts = 0
+        stallRecoveries = 0
+        stallStopped = false
+        resetWatchdogClock()
         _state.update { it.copy(error = null) }
         player.prepare()
         player.play()
@@ -1367,6 +1401,7 @@ class PlayerController(
             allowFallback = settings.current.decoder == tv.p2160.core.settings.DecoderPreference.AUTO,
         ) ?: return false
         val label = codecLabel(mime)
+        Log.i(PLAYER_LOG_TAG, "video retry mime=$mime stage=$next was=${decoders.video} audio=${decoders.audio}")
         val warning = if (next == VideoDecoderGate.FFMPEG) {
             i18n.current.format("player.decoder_try_ffmpeg", label)
         } else {
@@ -1418,27 +1453,68 @@ class PlayerController(
 
     /** 8 разрывов за 2 с: так Realtek пишет, когда метки MP3 в AVI не сходятся с кадрами. */
     private fun noteAudioDiscontinuity() {
-        if (_state.value.error != null || videoRetryPending) return
+        if (_state.value.error != null || videoRetryPending || stallStopped) return
+        if (!playbackIsDriving()) return
         val now = SystemClock.elapsedRealtime()
         if (now - audioDiscontinuitySince > 2_000) {
             audioDiscontinuitySince = now
             audioDiscontinuityCount = 0
         }
         audioDiscontinuityCount++
-        if (audioDiscontinuityCount >= 8 && currentItemIsAvi()) {
-            if (!switchAviMp3ToFfmpeg()) showStallError()
-        }
+        if (audioDiscontinuityCount >= 8 && currentItemIsAvi()) recoverStall()
     }
 
-    /** Нет первого кадра 8 с: спиннер не крутится бесконечно. */
+    /**
+     * Нет новых кадров 8 с. Счётчик берётся из DecoderCounters, не из позиции плеера.
+     * Пауза, стоп, перемотка и подавление воспроизведения часы сбрасывают.
+     */
     private fun maybeRecoverStall() {
-        if (renderedFirstFrame || _state.value.error != null || videoRetryPending) return
+        if (stallStopped || _state.value.error != null || videoRetryPending) return
         if (request.liveTv) return
-        if (!player.playWhenReady) return
-        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return
-        if (itemStartedAt == 0L || SystemClock.elapsedRealtime() - itemStartedAt < FIRST_FRAME_TIMEOUT_MS) return
+        if (!playbackIsDriving()) {
+            resetWatchdogClock()
+            return
+        }
+        if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return
         val video = player.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
         if (!video) return
+        val frames = renderedFrames()
+        val now = SystemClock.elapsedRealtime()
+        if (watchdogArmedAt == 0L) {
+            watchdogArmedAt = now
+            watchdogBaseFrames = frames
+            return
+        }
+        if (frames > watchdogBaseFrames) {
+            watchdogBaseFrames = frames
+            watchdogArmedAt = now
+            return
+        }
+        if (now - watchdogArmedAt < FIRST_FRAME_TIMEOUT_MS) return
+        Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms rendered=$frames audio=${decoders.audio} video=${decoders.video}")
+        recoverStall()
+    }
+
+    private fun renderedFrames(): Int = videoCounters?.renderedOutputBufferCount ?: 0
+
+    private fun playbackIsDriving(): Boolean =
+        player.playWhenReady && player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+
+    private fun resetWatchdogClock() {
+        watchdogArmedAt = 0L
+        watchdogBaseFrames = -1
+        audioDiscontinuityCount = 0
+    }
+
+    /** Не больше [MAX_STALL_RECOVERIES] prepare() на файл. Дальше только ошибка. */
+    private fun recoverStall() {
+        if (stallStopped || videoRetryPending) return
+        if (stallRecoveries >= MAX_STALL_RECOVERIES) {
+            showStallError()
+            return
+        }
+        stallRecoveries++
+        resetWatchdogClock()
         if (!switchAviMp3ToFfmpeg()) showStallError()
     }
 
@@ -1452,8 +1528,7 @@ class PlayerController(
         if (audioMime != MimeTypes.AUDIO_MPEG || !ffmpegCanDecode(MimeTypes.AUDIO_MPEG)) return false
         ffmpegAudioTried = true
         audioDiscontinuityCount = 0
-        renderedFirstFrame = false
-        itemStartedAt = SystemClock.elapsedRealtime()
+        Log.i(PLAYER_LOG_TAG, "AVI MP3 switch to FFmpeg audio=${decoders.audio} video=${decoders.video}")
         built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.FFMPEG)
         val index = player.currentMediaItemIndex
         val position = player.currentPosition
@@ -1479,8 +1554,11 @@ class PlayerController(
      * @return true, ошибка плеера обработана здесь.
      */
     private fun showStallError(): Boolean {
+        if (stallStopped) return true
+        stallStopped = true
         if (_state.value.error != null) return true
         val mime = player.videoFormat?.sampleMimeType ?: player.audioFormat?.sampleMimeType
+        Log.i(PLAYER_LOG_TAG, "playback stalled audio=${decoders.audio} video=${decoders.video} mime=$mime")
         val message = i18n.current.format("error.stalled", codecLabel(mime))
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
@@ -1489,11 +1567,11 @@ class PlayerController(
         return true
     }
 
-    /** Залипший буфер AVI: сначала FFmpeg MP3, иначе ошибка с именем кодека. */
+    /** Залипший буфер AVI: тот же предел попыток, что и у сторожа кадров. */
     private fun recoverAviStall(): Boolean {
-        if (!currentItemIsAvi()) return false
-        if (switchAviMp3ToFfmpeg()) return true
-        return showStallError()
+        if (!currentItemIsAvi() || stallStopped) return false
+        recoverStall()
+        return true
     }
 
     private fun currentItemIsAvi(): Boolean {

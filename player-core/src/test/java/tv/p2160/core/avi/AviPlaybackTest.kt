@@ -71,7 +71,54 @@ class AviPlaybackTest {
             576L * 1_000_000L / 48000L,
         )
         audio.samples.zipWithNext { a, b -> b.timeUs - a.timeUs }.forEach { delta ->
-            assertTrue("timestamp step $delta", delta in allowed)
+            // Целая формула samples*1e6/rate даёт соседние шаги 26122 и 26123.
+            val near = allowed.any { kotlin.math.abs(delta - it) <= 1L }
+            assertTrue("timestamp step $delta", near)
+        }
+    }
+
+    @Test
+    fun seekIntoUnevenMp3KeepsSampleClockAndMeetsVideo() {
+        val file = File.createTempFile("uneven-mp3", ".avi")
+        file.writeBytes(unevenMp3Avi())
+        try {
+            val extractor = AviPlayback.wrap(AviExtractor())
+            FileWindowSource(file).use { source ->
+                val output = RecordingOutput { true }
+                val driver = ExtractionDriver(extractor, source, output)
+                try {
+                    driver.run()
+                } catch (_: EOFException) {
+                }
+                val audio = output.tracks.values.first { it.type == C.TRACK_TYPE_AUDIO }
+                val video = output.tracks.values.first { it.type == C.TRACK_TYPE_VIDEO }
+                assertTrue(audio.samples.size >= 4)
+                val linearAudio = audio.samples.map { it.timeUs }
+                val linearVideo = video.samples.map { it.timeUs }
+                val target = linearAudio[linearAudio.size / 2]
+                val point = checkNotNull(output.seekMap).getSeekPoints(target).first
+                val audioAt = audio.samples.size
+                val videoAt = video.samples.size
+                driver.seekTo(point.position, point.timeUs)
+                try {
+                    driver.run()
+                } catch (_: EOFException) {
+                }
+                val resumedAudio = audio.samples.drop(audioAt)
+                val resumedVideo = video.samples.drop(videoAt)
+                assertTrue("audio after seek at ${point.position} t=${point.timeUs}", resumedAudio.isNotEmpty())
+                assertEquals("pos=${point.position} got=${resumedAudio.first().timeUs}", point.timeUs, resumedAudio.first().timeUs)
+                val from = linearAudio.indexOf(resumedAudio.first().timeUs)
+                assertTrue(from >= 0)
+                resumedAudio.forEachIndexed { i, sample ->
+                    assertEquals(linearAudio[from + i], sample.timeUs)
+                }
+                assertTrue(resumedVideo.isNotEmpty())
+                assertTrue(linearVideo.contains(resumedVideo.first().timeUs))
+                assertTrue(kotlin.math.abs(resumedVideo.first().timeUs - resumedAudio.first().timeUs) < 50_000)
+            }
+        } finally {
+            file.delete()
         }
     }
 
@@ -102,3 +149,96 @@ class AviPlaybackTest {
         }
     }
 }
+
+/** AVI: видео 25 к/с и MP3 кусками по 1, 3, 2 и 1 кадру. dwLength звука не равен числу кусков. */
+private fun unevenMp3Avi(): ByteArray {
+    val frame = ByteArray(417)
+    frame[0] = 0xFF.toByte()
+    frame[1] = 0xFB.toByte()
+    frame[2] = 0x90.toByte()
+    val hdrl = aviList(
+        "hdrl",
+        aviBox("avih", aviMainHeader()) +
+            aviList("strl", aviBox("strh", aviStreamHeader("vids", 1, 25, 4, 0)) + aviBox("strf", aviVideoFormat())) +
+            aviList("strl", aviBox("strh", aviStreamHeader("auds", 1, 44100, 100_000, 0)) + aviBox("strf", aviMp3Format())),
+    )
+    val pieces = listOf(
+        "00dc" to ByteArray(4),
+        "01wb" to ByteArray(417).also { frame.copyInto(it) },
+        "00dc" to ByteArray(4),
+        "01wb" to ByteArray(417 * 3).also { repeat(3) { i -> frame.copyInto(it, i * 417) } },
+        "00dc" to ByteArray(4),
+        "01wb" to ByteArray(417 * 2).also { repeat(2) { i -> frame.copyInto(it, i * 417) } },
+        "00dc" to ByteArray(4),
+        "01wb" to ByteArray(417).also { frame.copyInto(it) },
+    )
+    val moviStart = 12 + hdrl.size
+    var cursor = moviStart + 12
+    val idx = java.io.ByteArrayOutputStream()
+    val moviBody = java.io.ByteArrayOutputStream()
+    for ((id, payload) in pieces) {
+        val chunk = aviBox(id, payload)
+        idx.write(id.toByteArray(Charsets.US_ASCII))
+        idx.write(aviLe32(0x10))
+        idx.write(aviLe32(cursor))
+        idx.write(aviLe32(payload.size))
+        moviBody.write(chunk)
+        cursor += chunk.size
+    }
+    val movi = aviList("movi", moviBody.toByteArray())
+    val body = "AVI ".toByteArray(Charsets.US_ASCII) + hdrl + movi + aviBox("idx1", idx.toByteArray())
+    return "RIFF".toByteArray(Charsets.US_ASCII) + aviLe32(body.size) + body
+}
+
+private fun aviMainHeader(): ByteArray {
+    val body = ByteArray(56)
+    aviLe32(40_000).copyInto(body, 0)
+    aviLe32(0x10).copyInto(body, 12)
+    aviLe32(4).copyInto(body, 16)
+    aviLe32(2).copyInto(body, 24)
+    return body
+}
+
+private fun aviStreamHeader(type: String, scale: Int, rate: Int, length: Int, sampleSize: Int): ByteArray {
+    val body = ByteArray(56)
+    type.toByteArray(Charsets.US_ASCII).copyInto(body, 0)
+    aviLe32(scale).copyInto(body, 20)
+    aviLe32(rate).copyInto(body, 24)
+    aviLe32(length).copyInto(body, 32)
+    aviLe32(sampleSize).copyInto(body, 44)
+    return body
+}
+
+private fun aviVideoFormat(): ByteArray {
+    val body = ByteArray(40)
+    aviLe32(40).copyInto(body, 0)
+    aviLe32(16).copyInto(body, 4)
+    aviLe32(16).copyInto(body, 8)
+    body[12] = 1
+    body[14] = 24
+    "MJPG".toByteArray(Charsets.US_ASCII).copyInto(body, 16)
+    return body
+}
+
+private fun aviMp3Format(): ByteArray {
+    val body = ByteArray(16)
+    body[0] = 0x55
+    body[2] = 1
+    aviLe32(44100).copyInto(body, 4)
+    return body
+}
+
+private fun aviList(type: String, body: ByteArray): ByteArray =
+    aviBox("LIST", type.toByteArray(Charsets.US_ASCII) + body)
+
+private fun aviBox(id: String, body: ByteArray): ByteArray {
+    val pad = if (body.size % 2 == 1) byteArrayOf(0) else ByteArray(0)
+    return id.toByteArray(Charsets.US_ASCII) + aviLe32(body.size) + body + pad
+}
+
+private fun aviLe32(value: Int): ByteArray = byteArrayOf(
+    (value and 0xff).toByte(),
+    ((value ushr 8) and 0xff).toByte(),
+    ((value ushr 16) and 0xff).toByte(),
+    ((value ushr 24) and 0xff).toByte(),
+)

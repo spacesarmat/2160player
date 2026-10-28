@@ -92,7 +92,9 @@ object MediaReporter {
                 hw -> ReportRow(t["info.decoder"], t["info.decoder_hw"], ReportRow.Level.OK)
                 else -> ReportRow(t["info.decoder"], t["info.decoder_sw"], ReportRow.Level.WARN)
             }
-            if (!hw || (active != null && isSoftware(active))) {
+            // Возможности декодера на части приставок занижены (720p «не умеет», а кадр идёт аппаратно).
+            // Предупреждение только по декодеру, который реально выбран.
+            if (active != null && isSoftware(active)) {
                 warnings += if (video.height >= 2000) t["info.warn_video_sw_4k"] else t["info.warn_video_sw"]
             }
             sections += ReportSection(t["info.video"], rows)

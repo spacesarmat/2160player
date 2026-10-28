@@ -38,12 +38,19 @@ internal object AviPlayback {
 @OptIn(UnstableApi::class)
 private class AviFixExtractor(private val delegate: Extractor) : Extractor by delegate {
     private val unpackers = ArrayList<Mpeg4PackedUnpacker>()
+    private val mp3 = ArrayList<AviMp3AudioOutput>()
 
     override fun init(output: ExtractorOutput) {
         unpackers.clear()
+        mp3.clear()
         delegate.init(object : ExtractorOutput by output {
             override fun track(id: Int, type: Int): TrackOutput {
                 val track = output.track(id, type)
+                if (type == C.TRACK_TYPE_AUDIO) {
+                    val audio = AviMp3AudioOutput(track)
+                    mp3 += audio
+                    return audio
+                }
                 if (type != C.TRACK_TYPE_VIDEO) return track
                 val unpacker = Mpeg4PackedUnpacker()
                 unpackers += unpacker
@@ -57,6 +64,7 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
 
     override fun seek(position: Long, timeUs: Long) {
         unpackers.forEach { it.reset() }
+        mp3.forEach { it.reset() }
         delegate.seek(position, timeUs)
     }
 }

@@ -135,6 +135,7 @@ private const val LIVE_FAR_SPEED = 1.25f
 
 /** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
 private const val PASSTHROUGH_RETRIES = 3
+private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
 
 @OptIn(UnstableApi::class)
 class PlayerController(
@@ -155,6 +156,12 @@ class PlayerController(
     private var passthroughRetries = 0
     /** Повтор декодера уже поставлен в очередь: дорожки на этот миг ещё без видео, ошибку не показываем. */
     private var videoRetryPending = false
+    /** Звуковые часы AVI+MP3 не идут: один раз пробуем FFmpeg, дальше ошибка. */
+    private var ffmpegAudioTried = false
+    private var audioDiscontinuityCount = 0
+    private var audioDiscontinuitySince = 0L
+    private var itemStartedAt = 0L
+    private var renderedFirstFrame = false
     /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
@@ -233,6 +240,15 @@ class PlayerController(
 
         override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(audio = decoderName, audioPassthrough = false)
+        }
+
+        override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+            if (!isTimestampDiscontinuity(audioSinkError)) return
+            scope.launch { noteAudioDiscontinuity() }
+        }
+
+        override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            renderedFirstFrame = true
         }
 
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
@@ -364,6 +380,7 @@ class PlayerController(
                 return
             }
             if (retryVideoDecoder(error)) return
+            if (error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK && recoverAviStall()) return
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
                 player.prepare()
@@ -420,6 +437,13 @@ class PlayerController(
         completed = false
         detectedFrameRate = -1f
         frameRateProbe.reset()
+        renderedFirstFrame = false
+        itemStartedAt = SystemClock.elapsedRealtime()
+        audioDiscontinuityCount = 0
+        if (!videoRetryPending && ffmpegAudioTried && settings.current.decoder != tv.p2160.core.settings.DecoderPreference.FFMPEG) {
+            built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.AUTO)
+            ffmpegAudioTried = false
+        }
         // Телеканалы: ни продолжения с места, ни сохранённых дорожек - сразу эфир.
         val entry = if (request.liveTv || !config.restoreFromHistory) null else keyAt(index)?.let(store::get)
         val s = settings.current
@@ -1161,6 +1185,7 @@ class PlayerController(
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()
+                maybeRecoverStall()
                 // Подпись обновляем раз в 30 с; пока телегид грузится - чаще.
                 if (request.liveTv && ticks % (if (_state.value.subtitle == null) 10 else 60) == 0) {
                     val subtitle = liveSubtitle(player.currentMediaItemIndex)
@@ -1236,10 +1261,15 @@ class PlayerController(
                 } else prev.videoAspect,
                 hasNext = if (request.liveTv) p.mediaItemCount > 1 else p.hasNextMediaItem(),
                 hasPrevious = if (request.liveTv) p.mediaItemCount > 1 else p.hasPreviousMediaItem(),
-                isLive = transportIsLive(
-                    isCurrentMediaItemLive = p.isCurrentMediaItemLive,
-                    isCurrentMediaItemDynamic = p.isCurrentMediaItemDynamic,
-                    hasLiveConfiguration = p.currentMediaItem?.liveConfiguration != null,
+                isLive = transportShowsLiveBadge(
+                    requestedLive = request.liveTv,
+                    playerSaysLive = transportIsLive(
+                        isCurrentMediaItemLive = p.isCurrentMediaItemLive,
+                        isCurrentMediaItemDynamic = p.isCurrentMediaItemDynamic,
+                        hasLiveConfiguration = p.currentMediaItem?.liveConfiguration != null,
+                    ),
+                    durationMs = duration,
+                    playbackReady = p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_ENDED,
                 ),
                 playlistIndex = p.currentMediaItemIndex,
                 title = if (includeTracks) titleAt(p.currentMediaItemIndex) else prev.title,
@@ -1379,6 +1409,97 @@ class PlayerController(
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
         }
+    }
+
+    private fun isTimestampDiscontinuity(error: Exception): Boolean {
+        val name = error.javaClass.name
+        return "Discontinuity" in name || error.message?.contains("timestamp discontinuity") == true
+    }
+
+    /** 8 разрывов за 2 с: так Realtek пишет, когда метки MP3 в AVI не сходятся с кадрами. */
+    private fun noteAudioDiscontinuity() {
+        if (_state.value.error != null || videoRetryPending) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - audioDiscontinuitySince > 2_000) {
+            audioDiscontinuitySince = now
+            audioDiscontinuityCount = 0
+        }
+        audioDiscontinuityCount++
+        if (audioDiscontinuityCount >= 8 && currentItemIsAvi()) {
+            if (!switchAviMp3ToFfmpeg()) showStallError()
+        }
+    }
+
+    /** Нет первого кадра 8 с: спиннер не крутится бесконечно. */
+    private fun maybeRecoverStall() {
+        if (renderedFirstFrame || _state.value.error != null || videoRetryPending) return
+        if (request.liveTv) return
+        if (!player.playWhenReady) return
+        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return
+        if (itemStartedAt == 0L || SystemClock.elapsedRealtime() - itemStartedAt < FIRST_FRAME_TIMEOUT_MS) return
+        val video = player.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+        if (!video) return
+        if (!switchAviMp3ToFfmpeg()) showStallError()
+    }
+
+    /**
+     * AVI с MP3: один раз декодируем звук через FFmpeg (декодер mp3 в libavcodec есть).
+     * @return true, если переключение запущено.
+     */
+    private fun switchAviMp3ToFfmpeg(): Boolean {
+        if (ffmpegAudioTried || !currentItemIsAvi()) return false
+        val audioMime = player.audioFormat?.sampleMimeType
+        if (audioMime != MimeTypes.AUDIO_MPEG || !ffmpegCanDecode(MimeTypes.AUDIO_MPEG)) return false
+        ffmpegAudioTried = true
+        audioDiscontinuityCount = 0
+        renderedFirstFrame = false
+        itemStartedAt = SystemClock.elapsedRealtime()
+        built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.FFMPEG)
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        val play = player.playWhenReady
+        val warning = i18n.current.format("player.decoder_try_ffmpeg", codecLabel(MimeTypes.AUDIO_MPEG))
+        videoRetryPending = true
+        _state.update { it.copy(warnings = it.warnings + warning, error = null) }
+        scope.launch(Dispatchers.Main) {
+            try {
+                player.stop()
+                player.prepare()
+                if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
+                if (play) player.play()
+            } finally {
+                videoRetryPending = false
+            }
+        }
+        return true
+    }
+
+    /**
+     * Картинка так и не пошла. Ошибка называет кодек, вместо бесконечного индикатора.
+     * @return true, ошибка плеера обработана здесь.
+     */
+    private fun showStallError(): Boolean {
+        if (_state.value.error != null) return true
+        val mime = player.videoFormat?.sampleMimeType ?: player.audioFormat?.sampleMimeType
+        val message = i18n.current.format("error.stalled", codecLabel(mime))
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
+        return true
+    }
+
+    /** Залипший буфер AVI: сначала FFmpeg MP3, иначе ошибка с именем кодека. */
+    private fun recoverAviStall(): Boolean {
+        if (!currentItemIsAvi()) return false
+        if (switchAviMp3ToFfmpeg()) return true
+        return showStallError()
+    }
+
+    private fun currentItemIsAvi(): Boolean {
+        val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri ?: return false
+        val path = uri.lastPathSegment ?: uri.toString()
+        return path.endsWith(".avi", ignoreCase = true)
     }
 
     private fun describe(e: PlaybackException): String {

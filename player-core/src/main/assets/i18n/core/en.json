@@ -60,6 +60,7 @@
   "error.decoder_codec": "Decoder error (%1$s). Try FFmpeg mode in settings",
   "error.decoder_codec_ffmpeg": "Decoder error (%1$s). FFmpeg mode could not play it either",
   "error.decoder_codec_no_ffmpeg": "Decoder error (%1$s). FFmpeg mode does not include this codec",
+  "error.stalled": "Playback did not start (%1$s)",
   "error.drm": "Protected (DRM) content is not supported",
   "error.generic": "Playback error (%1$s)",
   "theme.cinema": "Cinema",

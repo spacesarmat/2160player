@@ -14,6 +14,10 @@ class TransportLiveTest {
         assertFalse(transportIsLive(isCurrentMediaItemLive = false, isCurrentMediaItemDynamic = true, hasLiveConfiguration = false))
         assertTrue(transportIsLive(isCurrentMediaItemLive = true, isCurrentMediaItemDynamic = false, hasLiveConfiguration = false))
         assertTrue(transportIsLive(isCurrentMediaItemLive = false, isCurrentMediaItemDynamic = true, hasLiveConfiguration = true))
+        assertFalse(transportShowsLiveBadge(requestedLive = false, playerSaysLive = true, durationMs = 0, playbackReady = false))
+        assertTrue(transportShowsLiveBadge(requestedLive = false, playerSaysLive = true, durationMs = 0, playbackReady = true))
+        assertTrue(transportShowsLiveBadge(requestedLive = true, playerSaysLive = false, durationMs = 0, playbackReady = false))
+        assertFalse(transportShowsLiveBadge(requestedLive = false, playerSaysLive = false, durationMs = 90_000, playbackReady = true))
     }
 
     @Test

@@ -89,8 +89,8 @@ internal fun ffmpegMaps(mime: String?): Boolean = when (mime) {
 
 @OptIn(UnstableApi::class)
 internal fun codecLabel(mime: String?): String = when (mime) {
-    MimeTypes.VIDEO_MP4V -> "MPEG-4 (XviD/DivX)"
-    MimeTypes.VIDEO_MP42, MimeTypes.VIDEO_MP43 -> "MS-MPEG4 (DIV3)"
+    MimeTypes.VIDEO_MP4V -> "MPEG-4 XviD/DivX"
+    MimeTypes.VIDEO_MP42, MimeTypes.VIDEO_MP43 -> "MS-MPEG4 DIV3"
     MimeTypes.VIDEO_H264 -> "H.264"
     MimeTypes.VIDEO_H265 -> "H.265"
     MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
@@ -152,6 +152,15 @@ internal fun unsupportedVideoMime(groups: List<Tracks.Group>, videoDisabled: Boo
     return if (sawMainVideo) mime ?: "" else null
 }
 
+/**
+ * MS-MPEG4 v3 на части приставок объявлен не как video/mp43, а как video/divx3
+ * (OMX.realtek.video.dec.mp43 и OMX.realtek.video.dec.divx3). Сначала те MIME, что есть на устройстве.
+ */
+internal fun decoderMimesFor(mimeType: String): List<String> = when (mimeType) {
+    MimeTypes.VIDEO_MP43, MimeTypes.VIDEO_MP42 -> listOf(mimeType, "video/divx3", "video/divx", "video/x-divx").distinct()
+    else -> listOf(mimeType)
+}
+
 @OptIn(UnstableApi::class)
 internal class VideoMimeFallbackSelector(private val gate: VideoDecoderGate) : MediaCodecSelector {
     override fun getDecoderInfos(
@@ -159,11 +168,16 @@ internal class VideoMimeFallbackSelector(private val gate: VideoDecoderGate) : M
         requiresSecureDecoder: Boolean,
         requiresTunnelingDecoder: Boolean,
     ): List<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
-        val all = try {
-            MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-        } catch (_: MediaCodecUtil.DecoderQueryException) {
-            emptyList()
+        val merged = LinkedHashMap<String, androidx.media3.exoplayer.mediacodec.MediaCodecInfo>()
+        for (mime in decoderMimesFor(mimeType)) {
+            val found = try {
+                MediaCodecSelector.DEFAULT.getDecoderInfos(mime, requiresSecureDecoder, requiresTunnelingDecoder)
+            } catch (_: MediaCodecUtil.DecoderQueryException) {
+                emptyList()
+            }
+            for (info in found) merged.putIfAbsent(info.name, info)
         }
+        val all = merged.values.toList()
         return when (gate.stage(mimeType)) {
             VideoDecoderGate.SOFTWARE -> all.filter { it.softwareOnly }
             VideoDecoderGate.FFMPEG -> emptyList()

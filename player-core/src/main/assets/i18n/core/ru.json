@@ -60,6 +60,7 @@
   "error.decoder_codec": "Ошибка декодера (%1$s). Попробуйте режим FFmpeg в настройках",
   "error.decoder_codec_ffmpeg": "Ошибка декодера (%1$s). Режим FFmpeg тоже не смог",
   "error.decoder_codec_no_ffmpeg": "Ошибка декодера (%1$s). Режим FFmpeg этот кодек не декодирует",
+  "error.stalled": "Воспроизведение не началось (%1$s)",
   "error.drm": "Защищённый контент (DRM) не поддерживается",
   "error.generic": "Ошибка воспроизведения (%1$s)",
   "theme.cinema": "Кино",

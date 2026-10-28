@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.text.TextRenderer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,6 +67,9 @@ internal class DualTextRenderersFactory(
     private val night: NightAudioProcessor,
     private val passthrough: PassthroughGuard,
 ) : NextRenderersFactory(context) {
+    private val codecContext = context
+
+    override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory = ReleasedCodecAdapterFactory(codecContext)
 
     override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParams: Boolean): AudioSink =
         GuardedAudioSink(

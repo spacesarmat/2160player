@@ -59,6 +59,23 @@ class AviPlaybackTest {
     }
 
     @Test
+    fun mp3TimestampsFollowFrameDuration() {
+        val output = drive(File(dir, "xvid-libxvid-mp3.avi"), wrap = true)
+        val audio = output.tracks.values.first { it.type == C.TRACK_TYPE_AUDIO }
+        assertEquals(MimeTypes.AUDIO_MPEG, audio.format?.sampleMimeType)
+        assertTrue(audio.samples.size >= 2)
+        val allowed = longArrayOf(
+            1152L * 1_000_000L / 44100L,
+            1152L * 1_000_000L / 48000L,
+            576L * 1_000_000L / 44100L,
+            576L * 1_000_000L / 48000L,
+        )
+        audio.samples.zipWithNext { a, b -> b.timeUs - a.timeUs }.forEach { delta ->
+            assertTrue("timestamp step $delta", delta in allowed)
+        }
+    }
+
+    @Test
     fun ac3AudioIsKept() {
         val output = drive(File(dir, "xvid-unpacked-ac3.avi"), wrap = true)
         val audio = output.tracks.values.first { it.type == C.TRACK_TYPE_AUDIO }

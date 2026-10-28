@@ -209,6 +209,7 @@ fun PlayerScreen(
     var zapTick by remember { mutableIntStateOf(0) }
     var zapVisible by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
+    val errorFocus = remember { FocusRequester() }
     // Когда панель скрыта, фокус держит сам экран - иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
 
@@ -227,7 +228,10 @@ fun PlayerScreen(
     )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     LaunchedEffect(state.error) {
-        if (state.error != null) panelState.value = null
+        if (state.error != null) {
+            panelState.value = null
+            runCatching { errorFocus.requestFocus() }
+        }
     }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
     LaunchedEffect(scrubTarget?.div(2_000)) {
@@ -324,6 +328,8 @@ fun PlayerScreen(
                 .focusRequester(rootFocus)
                 .focusable()
                 .onPreviewKeyEvent { e ->
+                    // Диалог ошибки сам держит фокус. Не отдаём OK спрятанной кнопке панели.
+                    if (state.error != null) return@onPreviewKeyEvent false
                     if (e.type == KeyEventType.KeyUp) {
                         if (keyScrubbing && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) {
                             commitKeyScrub()
@@ -470,7 +476,7 @@ fun PlayerScreen(
             // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
             // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
-            PanelBoundControls(panelState = panelState, visible = controlsVisible) { panelOpen ->
+            PanelBoundControls(panelState = panelState, visible = controlsVisible, allowFocus = state.error == null) { panelOpen ->
                 Controls(
                     controller = controller,
                     state = state,
@@ -648,9 +654,15 @@ fun PlayerScreen(
                 actions = panelActions,
             )
             state.error?.let { message ->
-                // Выше панели (zIndex 1) и с непрозрачной подложкой: панель не просвечивает.
+                // Выше панели (zIndex 1). Фокус остаётся внутри: OK не попадает в кнопки под диалогом.
                 Box(
-                    Modifier.matchParentSize().zIndex(2f).background(Color.Black),
+                    Modifier.matchParentSize().zIndex(2f).background(Color.Black)
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } }
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) {},
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -661,7 +673,9 @@ fun PlayerScreen(
                         Text(message, color = theme.onSurface, style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.size(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = controller::retry) { Text(tr("player.retry"), color = theme.accent) }
+                            TextButton(onClick = controller::retry, modifier = Modifier.focusRequester(errorFocus)) {
+                                Text(tr("player.retry"), color = theme.accent)
+                            }
                             TextButton(onClick = onBack) { Text(tr("player.close"), color = theme.muted) }
                         }
                     }
@@ -705,10 +719,11 @@ private fun ControlsAutoHide(
 private fun PanelBoundControls(
     panelState: State<Panel?>,
     visible: State<Boolean>,
+    allowFocus: Boolean = true,
     content: @Composable (panelOpen: Boolean) -> Unit,
 ) {
     val panelOpen = panelReservesSpace(panelState.value != null)
-    ControlsFade(visible = visible.value, panelOpen = panelOpen) {
+    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus) {
         content(panelOpen)
     }
 }
@@ -966,6 +981,7 @@ private fun Controls(
     controlsVisible: State<Boolean>,
 ) {
     val hasChapters = state.chapters.size > 1
+    val toolbarFocus = remember { FocusRequester() }
     val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
     val bottomScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(Color.Transparent, theme.scrim)) }
     Box(Modifier.fillMaxSize()) {
@@ -988,7 +1004,11 @@ private fun Controls(
                         accent = theme.accent,
                     )
                 }
-                ControlButton(Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) }, accent = theme.accent)
+                ControlButton(
+                    Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) },
+                    modifier = Modifier.focusRequester(toolbarFocus).focusProperties { down = playFocus },
+                    accent = theme.accent,
+                )
                 ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, accent = theme.accent)
                 ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)
                 ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
@@ -1027,16 +1047,20 @@ private fun Controls(
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = panelReserve)) {
             Spacer(Modifier.weight(1f))
 
+            val toToolbar = Modifier.focusProperties { up = toolbarFocus }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, accent = theme.accent)
-                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, accent = theme.accent)
-                ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, size = 56.dp, accent = theme.accent)
+                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, modifier = toToolbar, accent = theme.accent)
+                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, modifier = toToolbar, accent = theme.accent)
+                ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
                 if (state.isBuffering && state.error == null) {
-                    Box(Modifier.size(76.dp).focusRequester(playFocus), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.size(76.dp).focusRequester(playFocus).then(toToolbar).focusable(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         CircularProgressIndicator(Modifier.size(56.dp), color = theme.accent, strokeWidth = 4.dp)
                     }
                 } else {
@@ -1050,12 +1074,12 @@ private fun Controls(
                         onClick = onPlayPause,
                         size = 76.dp,
                         accent = theme.accent,
-                        modifier = Modifier.focusRequester(playFocus),
+                        modifier = Modifier.focusRequester(playFocus).then(toToolbar),
                     )
                 }
-                ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, size = 56.dp, accent = theme.accent)
-                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, accent = theme.accent)
-                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, accent = theme.accent)
+                ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
+                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, modifier = toToolbar, accent = theme.accent)
+                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, modifier = toToolbar, accent = theme.accent)
             }
 
             Spacer(Modifier.weight(1f))
@@ -1089,7 +1113,7 @@ internal const val CONTROLS_HIDE_MS = 150
  * Фокус и TalkBack - снаружи слоя, чтобы скрытие не перезаписывало его содержимое.
  */
 @Composable
-internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
+internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, allowFocus: Boolean = true, content: @Composable () -> Unit) {
     val opacity = remember { Animatable(if (visible) 1f else 0f) }
     // Не читается в композиции: смена двигает только параметры слоя.
     val shown = remember { mutableStateOf(visible) }
@@ -1116,12 +1140,12 @@ internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Compos
         }
     }
     // Свойства, не состав и не содержимое слоя: тот же focusGroup, другое значение при скрытии.
-    val chrome = remember(visible) {
+    val chrome = remember(visible, allowFocus) {
         Modifier
             .focusGroup()
             .focusProperties {
-                canFocus = visible
-                onEnter = { if (!visible) cancelFocusChange() }
+                canFocus = visible && allowFocus
+                onEnter = { if (!visible || !allowFocus) cancelFocusChange() }
             }
             .semantics { if (!visible) hideFromAccessibility() }
     }

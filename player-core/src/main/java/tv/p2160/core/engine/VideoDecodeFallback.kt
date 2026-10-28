@@ -1,10 +1,14 @@
 package tv.p2160.core.engine
 
 import androidx.annotation.OptIn
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
 import tv.p2160.core.settings.DecoderPreference
 
 /**
@@ -12,7 +16,8 @@ import tv.p2160.core.settings.DecoderPreference
  * [androidx.media3.exoplayer.DefaultRenderersFactory.setEnableDecoderFallback] сам следующий
  * декодер не берёт: запасной список используется только на ошибке инициализации.
  * Для этого MIME сначала оставляем только программные MediaCodec (c2.android / OMX.google),
- * затем пустой список, чтобы дорожку забрал FFmpeg-рендерер nextlib.
+ * затем FFmpeg, но только если [ffmpegCanDecode] истинно: имя в таблице кодеков
+ * ещё не значит, что декодер собран в libavcodec. Иначе видео молча пропадает и играет звук.
  * Режим общий на видео не переключается: H.264 в том же плейлисте остаётся аппаратным.
  */
 @OptIn(UnstableApi::class)
@@ -26,7 +31,12 @@ internal class VideoDecoderGate {
      * @return SOFTWARE или FFMPEG, если надо пересобрать декодер, иначе null (ошибку показываем).
      */
     @Synchronized
-    fun advance(mime: String, failedDecoder: String?, allowFallback: Boolean): Int? {
+    fun advance(
+        mime: String,
+        failedDecoder: String?,
+        allowFallback: Boolean,
+        ffmpegAvailable: Boolean = ffmpegCanDecode(mime),
+    ): Int? {
         if (!allowFallback || !MimeTypes.isVideo(mime)) return null
         if (failedDecoder != null && "ffmpeg" in failedDecoder.lowercase()) return null
         val now = stage[mime] ?: DEFAULT
@@ -36,7 +46,7 @@ internal class VideoDecoderGate {
             now == DEFAULT -> SOFTWARE
             else -> FFMPEG
         }
-        if (next == FFMPEG && !ffmpegMaps(mime)) return null
+        if (next == FFMPEG && !ffmpegAvailable) return null
         stage[mime] = next
         return next
     }
@@ -48,7 +58,22 @@ internal class VideoDecoderGate {
     }
 }
 
-/** MIME, для которых наш FfmpegLibrary.getCodecName отдаёт имя декодера из libavcodec. */
+/**
+ * Имя в [FfmpegLibrary.getCodecName] ещё не декодер. На устройстве это
+ * [FfmpegLibrary.supportsFormat]: оно вызывает avcodec_find_decoder и для mpeg4/msmpeg4
+ * в сборке nextlib возвращает false (в .so только таблица имён, без кода декодера).
+ */
+@OptIn(UnstableApi::class)
+internal fun ffmpegCanDecode(mime: String?): Boolean {
+    if (mime.isNullOrEmpty()) return false
+    return try {
+        FfmpegLibrary.isAvailable() && FfmpegLibrary.supportsFormat(mime)
+    } catch (_: Throwable) {
+        false
+    }
+}
+
+/** MIME, для которых getCodecName вообще знает имя. Не значит, что декодер собран. */
 internal fun ffmpegMaps(mime: String?): Boolean = when (mime) {
     "audio/mp4a-latm", "audio/mpeg", "audio/mpeg-L1", "audio/mpeg-L2",
     "audio/ac3", "audio/eac3", "audio/eac3-joc", "audio/true-hd",
@@ -85,16 +110,46 @@ internal fun codecLabel(mime: String?): String = when (mime) {
 
 /**
  * Ключ строки ошибки декодера.
- * [ffmpegTried] - режим FFmpeg уже был, или запасной проход до него дошёл.
+ * Если декодера нет в сборке, не советуем режим FFmpeg: он этот кодек не откроет.
  */
-internal fun decoderErrorKey(mime: String?, mode: DecoderPreference, stage: Int): String {
+internal fun decoderErrorKey(
+    mime: String?,
+    mode: DecoderPreference,
+    stage: Int,
+    ffmpegAvailable: Boolean = ffmpegCanDecode(mime),
+): String {
     if (mime == null) return "error.decoder"
     val tried = mode == DecoderPreference.FFMPEG || stage >= VideoDecoderGate.FFMPEG
     return when {
-        !ffmpegMaps(mime) -> "error.decoder_codec_no_ffmpeg"
+        !ffmpegAvailable -> "error.decoder_codec_no_ffmpeg"
         tried -> "error.decoder_codec_ffmpeg"
         else -> "error.decoder_codec"
     }
+}
+
+/**
+ * MIME видео, которое есть в файле, но ни один декодер его не берёт.
+ * null - видео нет, оно отключено (фон) или хотя бы одна дорожка поддерживается.
+ * Обложки и вспомогательные дорожки не считаются: из-за них звук без картинки не ошибка.
+ */
+@OptIn(UnstableApi::class)
+internal fun unsupportedVideoMime(groups: List<Tracks.Group>, videoDisabled: Boolean): String? {
+    if (videoDisabled) return null
+    var mime: String? = null
+    var sawMainVideo = false
+    for (group in groups) {
+        if (group.type != C.TRACK_TYPE_VIDEO) continue
+        for (i in 0 until group.length) {
+            val format: Format = group.getTrackFormat(i)
+            val sampleMime = format.sampleMimeType
+            if (sampleMime != null && MimeTypes.isImage(sampleMime)) continue
+            if (format.roleFlags and C.ROLE_FLAG_AUXILIARY != 0) continue
+            sawMainVideo = true
+            if (group.isTrackSupported(i, /* allowExceedsCapabilities = */ true)) return null
+            if (mime == null) mime = sampleMime
+        }
+    }
+    return if (sawMainVideo) mime ?: "" else null
 }
 
 @OptIn(UnstableApi::class)

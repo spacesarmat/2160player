@@ -1,9 +1,12 @@
 /*
  * Superset of nextlib's FfmpegLibrary (Apache 2.0, itself based on Media3's ffmpeg extension).
- * nextlib 1.11.1-0.16.0 already links mpeg4, msmpeg4v2, msmpeg4v3 and h263 inside libavcodec,
- * but getCodecName() does not map those MIME types, so "FFmpeg mode" never tries them.
- * This class is compiled into player-core. The nextlib jar on the classpath has the original
- * FfmpegLibrary removed, so there is one copy in the AAR and in the APK. Native methods stay the same.
+ * getCodecName() maps video/mp4v-es, video/mp42, video/mp43 and video/3gpp onto mpeg4,
+ * msmpeg4v2, msmpeg4v3 and h263. That mapping is not a decoder: this nextlib 1.11.1-0.16.0
+ * libavcodec is built with --disable-everything and only enables h264, hevc, mpeg2video,
+ * mpegvideo, vp8, vp9 and libdav1d. supportsFormat() asks avcodec_find_decoder and is the check
+ * that decides whether FFmpeg may be used. This class is compiled into player-core. The nextlib
+ * jar on the classpath has the original FfmpegLibrary removed, so there is one copy in the AAR
+ * and in the APK. Native methods stay the same.
  */
 package io.github.anilbeesetti.nextlib.media3ext.ffdecoder;
 

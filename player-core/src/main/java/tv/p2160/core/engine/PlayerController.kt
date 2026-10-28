@@ -153,6 +153,8 @@ class PlayerController(
     /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
     private var passthroughRetryAt = 0L
     private var passthroughRetries = 0
+    /** Повтор декодера уже поставлен в очередь: дорожки на этот миг ещё без видео, ошибку не показываем. */
+    private var videoRetryPending = false
     /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
@@ -287,6 +289,7 @@ class PlayerController(
                 recordChoiceOnTracks = false
                 rememberChoice(tracks)
             }
+            reportUnsupportedVideo(tracks)
             refresh()
         }
 
@@ -1316,7 +1319,10 @@ class PlayerController(
 
     /**
      * Аппаратный декодер отдал первые кадры и упал (типичный XviD/DIVX на Allwinner).
-     * В режиме «Авто» один раз пробуем программный MediaCodec этого MIME, потом FFmpeg.
+     * В режиме «Авто» один раз пробуем программный MediaCodec этого MIME.
+     * FFmpeg - только если [ffmpegCanDecode]. Повтор идёт следующим кадром главного потока:
+     * синхронный prepare() внутри onPlayerError бьёт в уже отпущенный MediaCodec
+     * (queueInputBuffer в состоянии Released).
      */
     private fun retryVideoDecoder(error: PlaybackException): Boolean {
         if (error.errorCode !in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) {
@@ -1339,11 +1345,40 @@ class PlayerController(
         val index = player.currentMediaItemIndex
         val position = player.currentPosition
         val play = player.playWhenReady
+        videoRetryPending = true
         _state.update { it.copy(warnings = it.warnings + warning, error = null) }
-        player.prepare()
-        if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
-        if (play) player.play()
+        scope.launch(Dispatchers.Main) {
+            try {
+                player.stop()
+                player.prepare()
+                if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
+                if (play) player.play()
+            } finally {
+                videoRetryPending = false
+            }
+            reportUnsupportedVideo(player.currentTracks)
+        }
         return true
+    }
+
+    /**
+     * Видео в файле есть, а декодера нет. Иначе селектор дорожек оставляет звук и рисует обложку
+     * без ошибки (так было с DIV3 и с FFmpeg-режимом на XviD: libavcodec без mpeg4).
+     */
+    private fun reportUnsupportedVideo(tracks: Tracks) {
+        if (videoRetryPending || _state.value.error != null) return
+        val mime = unsupportedVideoMime(
+            tracks.groups,
+            player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
+        ) ?: return
+        val message = i18n.current.format(
+            decoderErrorKey(mime, settings.current.decoder, built.videoGate.stage(mime)),
+            codecLabel(mime),
+        )
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
     }
 
     private fun describe(e: PlaybackException): String {

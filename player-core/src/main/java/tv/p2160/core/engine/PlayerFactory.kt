@@ -50,10 +50,10 @@ internal class BuiltPlayer(
 
 /**
  * Сборка ExoPlayer:
- * - аппаратные декодеры + FFmpeg (nextlib) для того, что устройство не умеет:
- *   DTS/DTS-HD, TrueHD, AC3/E-AC3 на боксах без лицензии, FLAC/ALAC/Opus в MKV,
- *   MPEG-2/VC-1, а также MPEG-4 Part 2 (XviD/DivX) и MS-MPEG4 (DIV3), декодеры которых
- *   уже есть в libavcodec nextlib, но до 0.2.16 не были сопоставлены с MIME;
+ * - аппаратные декодеры + FFmpeg (nextlib) для того, что устройство не умеет и что
+ *   реально собрано в libavcodec: DTS/DTS-HD, TrueHD, AC3/E-AC3, FLAC/ALAC/Opus,
+ *   MPEG-1/2, H.264, H.265, VP8, VP9, AV1. MPEG-4 Part 2, MS-MPEG4, H.263, WMV и VC-1
+ *   в этой сборке нет: имя в getCodecName ещё не декодер, решает supportsFormat;
  * - passthrough AC3/E-AC3/DTS на ресивер, если он есть (решает штатный AudioSink);
  * - HLS / DASH / SmoothStreaming / RTSP / прогрессивные файлы (MKV, MP4, TS, AVI, WebM, FLV, OGG…).
  */

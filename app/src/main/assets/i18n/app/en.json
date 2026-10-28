@@ -65,7 +65,7 @@
   "settings.langs_hint": "Language codes separated by commas, e.g. ru, en",
   "settings.decoder": "Decoder",
   "settings.decoder_auto": "Auto",
-  "settings.decoder_auto_hint": "Hardware first. If it fails mid-frame, software, then FFmpeg",
+  "settings.decoder_auto_hint": "Hardware first. If it fails mid-frame, software, then FFmpeg if this build includes the codec",
   "settings.decoder_hw": "Hardware only",
   "settings.decoder_hw_hint": "Lowest power usage",
   "settings.decoder_ffmpeg": "FFmpeg",

@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import tv.p2160.core.i18n.I18n
 
 enum class DecoderPreference {
-    /** Аппаратные декодеры, FFmpeg - если устройство формат не умеет. */
+    /** Аппаратные декодеры, затем программный MediaCodec. FFmpeg - только если декодер собран. */
     AUTO,
     /** Только аппаратные (MediaCodec). */
     HARDWARE,

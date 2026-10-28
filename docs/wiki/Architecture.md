@@ -12,7 +12,7 @@ samples/embed-demo     пример хоста
 
 1. Вызов `Player2160.play` или Intent собирает `PlaybackRequest` (элементы, старт, заголовки, `liveTv`).
 2. `Player2160Activity` создаёт `PlayerController`. Контроллер на главном потоке собирает ExoPlayer
-   (`PlayerFactory`): аппаратные декодеры и FFmpeg (nextlib, в том числе MPEG-4 Part 2 и MS-MPEG4), HLS/DASH/SmoothStreaming/RTSP,
+   (`PlayerFactory`): аппаратные декодеры и FFmpeg (nextlib: то, что реально собрано в libavcodec; MPEG-4 Part 2 и MS-MPEG4 туда не входят), HLS/DASH/SmoothStreaming/RTSP,
    `RoutingDataSource` (в том числе `smb://`), экстрактор M2TS, буфер по `PlayerConfig`.
 3. `PlayerScreen` рисует `PlayerView` без штатной панели Media3 и свои жесты, панели и субтитры.
    Кнопки после скрытия остаются собранными: один слой, альфа в лямбде, размер не меняется. Скрытие не пересобирает экран.

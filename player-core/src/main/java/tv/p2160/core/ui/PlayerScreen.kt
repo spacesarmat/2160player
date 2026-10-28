@@ -577,15 +577,19 @@ fun PlayerScreen(
 
             if (state.warnings.isNotEmpty() && !inPictureInPicture) {
                 LaunchedEffect(state.warnings) { delay(8_000); controller.dismissWarnings() }
-                Column(
-                    Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 24.dp, top = 72.dp).widthIn(max = 520.dp)
-                        .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
-                        .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) {
-                    state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
-                    Text(tr("info.more"), color = theme.accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                // Узкий портрет кладёт кнопки вторым рядом (48 + 48 dp). 72 dp накрывали этот ряд.
+                val warningShown = if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) 132.dp else 76.dp
+                OverlayTopPadding(controlsVisible, shown = warningShown, hidden = 16.dp) { top ->
+                    Column(
+                        Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(start = 24.dp, top = top).widthIn(max = 520.dp)
+                            .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
+                            .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
+                        Text(tr("info.more"), color = theme.accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                    }
                 }
             }
 

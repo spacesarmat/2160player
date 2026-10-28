@@ -83,7 +83,8 @@ class VideoDecodeFallbackTest {
     @Test
     fun messageNamesTheCodecAndDoesNotSendMpeg4ToADeadEnd() {
         assertEquals("MPEG-4 XviD/DivX", codecLabel(MimeTypes.VIDEO_MP4V))
-        assertEquals("MS-MPEG4 DIV3", codecLabel(MimeTypes.VIDEO_MP43))
+        assertEquals("MS-MPEG4 MP43", codecLabel(MimeTypes.VIDEO_MP43))
+        assertEquals("MS-MPEG4 DIV3", codecLabel("video/divx3"))
         assertEquals(listOf(MimeTypes.VIDEO_MP43, "video/divx3", "video/divx", "video/x-divx"), decoderMimesFor(MimeTypes.VIDEO_MP43))
         assertEquals(listOf(MimeTypes.VIDEO_H264), decoderMimesFor(MimeTypes.VIDEO_H264))
         val dune = listOf(

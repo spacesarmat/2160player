@@ -31,14 +31,36 @@ internal data class AviFacts(
     val durationUs: Long,
     /** Битовый поток DivX 3: дорожку отдаём как video/divx3, не как MPEG-4 Part 2. */
     val divx3: Boolean,
+    /** Из strf звука: nSamplesPerSec. 0, если звука нет. */
+    val audioSampleRate: Int = 0,
+    /** Из strf звука: nAvgBytesPerSec. 0, если заголовок его не дал. */
+    val audioBytesPerSec: Int = 0,
+)
+
+/** Звуковые куски idx1: смещение заголовка чанка и байты звука до него. */
+internal class AviAudioIndex(
+    val headerOffsets: LongArray,
+    val bytesBefore: LongArray,
+    val sampleRate: Int,
+    val bytesPerSec: Int,
 )
 
 internal object AviProbe {
     @Volatile
     var facts: AviFacts? = null
 
+    /** Позиция LIST movi, как её считает Media3. -1, пока заголовок не встретился. */
+    @Volatile
+    var moviStart: Long = -1L
+
+    /** Звуковой idx1. null, пока индекс не прочитан. */
+    @Volatile
+    var audioIndex: AviAudioIndex? = null
+
     fun clear() {
         facts = null
+        moviStart = -1L
+        audioIndex = null
     }
 
     val durationUs: Long
@@ -96,6 +118,8 @@ internal object AviHeader {
         var avihFrameUs = 0
         val videos = ArrayList<AviVideoFact>()
         var divx3 = false
+        var audioRate = 0
+        var audioBytes = 0
         while (pos + 8 <= end) {
             val id = fourcc(data, pos)
             val size = le32(data, pos + 4)
@@ -111,6 +135,12 @@ internal object AviHeader {
                     if (fixed != null) {
                         videos += fixed.first
                         if (fixed.second) divx3 = true
+                    } else {
+                        val audio = readAudioStrl(data, body + 4, size - 4)
+                        if (audio != null && audioRate == 0) {
+                            audioRate = audio.first
+                            audioBytes = audio.second
+                        }
                     }
                 }
             }
@@ -127,7 +157,51 @@ internal object AviHeader {
             avihFrames = avihFrames,
             avihFrameUs = avihFrameUs,
         )
-        return AviFacts(videos, avihFrames, avihFrameUs, 0, duration, divx3)
+        return AviFacts(videos, avihFrames, avihFrameUs, 0, duration, divx3, audioRate, audioBytes)
+    }
+
+    /**
+     * Звуковые записи idx1. [moviStart] - позиция LIST, как в Media3:
+     * если смещение в индексе меньше неё, оно отсчитывается от fourcc movi.
+     */
+    fun parseAudioIndex(
+        data: ByteArray,
+        offset: Int,
+        length: Int,
+        moviStart: Long,
+        sampleRate: Int,
+        bytesPerSec: Int,
+    ): AviAudioIndex? {
+        if (length < 16 || offset < 0 || offset + length > data.size) return null
+        val end = offset + length
+        val raw0 = u32(data, offset + 8)
+        val base = if (moviStart >= 0 && raw0 <= moviStart) moviStart + 8 else 0L
+        val byStream = HashMap<Int, ArrayList<LongArray>>()
+        var at = offset
+        while (at + 16 <= end) {
+            val c = data[at + 2].toInt().toChar()
+            val d = data[at + 3].toInt().toChar()
+            if (c == 'w' && d == 'b') {
+                val size = u32(data, at + 12)
+                if (size > 0) {
+                    val stream = data[at + 1].toInt() and 0xFF
+                    val row = byStream.getOrPut(stream) { ArrayList() }
+                    row += longArrayOf(u32(data, at + 8) + base, size)
+                }
+            }
+            at += 16
+        }
+        val rows = byStream.values.maxByOrNull { it.size } ?: return null
+        if (rows.isEmpty()) return null
+        val offsets = LongArray(rows.size)
+        val before = LongArray(rows.size)
+        var sum = 0L
+        for (i in rows.indices) {
+            offsets[i] = rows[i][0]
+            before[i] = sum
+            sum += rows[i][1]
+        }
+        return AviAudioIndex(offsets, before, sampleRate, bytesPerSec)
     }
 
     /** Тело idx1. null, если буфер не похож на индекс. */
@@ -270,6 +344,45 @@ internal object AviHeader {
         )
     }
 
+    /** @return частота и nAvgBytesPerSec, если в strl есть звук. */
+    private fun readAudioStrl(data: ByteArray, start: Int, length: Int): Pair<Int, Int>? {
+        if (length < 8) return null
+        val end = start + length
+        var pos = start
+        var rate = 0
+        var bytes = 0
+        var audio = false
+        while (pos + 8 <= end) {
+            val id = fourcc(data, pos)
+            val size = le32(data, pos + 4)
+            if (size < 0 || pos + 8L + size > end) break
+            val body = pos + 8
+            when (id) {
+                "strh" -> if (size >= 8 && fourcc(data, body) == "auds") {
+                    audio = true
+                    if (size >= 28) {
+                        val scale = le32(data, body + 20)
+                        val dwRate = le32(data, body + 24)
+                        if (rate == 0 && scale > 0 && dwRate > scale) rate = dwRate / scale
+                    }
+                }
+                "strf" -> if (size >= 16) {
+                    val tag = le32(data, body) and 0xFFFF
+                    val samples = le32(data, body + 4)
+                    val avg = le32(data, body + 8)
+                    if (tag == 0x0055 || samples in 8000..384000) {
+                        audio = true
+                        if (samples in 8000..384000) rate = samples
+                        if (avg > 0) bytes = avg
+                    }
+                }
+            }
+            pos = body + size + (size and 1)
+        }
+        if (!audio || (rate <= 0 && bytes <= 0)) return null
+        return rate to bytes
+    }
+
     private fun readStrf(data: ByteArray, chunk: Int): Strf? {
         val size = le32(data, chunk + 4)
         if (size < 20) return null
@@ -309,6 +422,8 @@ internal object AviHeader {
         val bytes = value.toByteArray(Charsets.ISO_8859_1)
         if (bytes.size == 4 && at + 4 <= data.size) bytes.copyInto(data, at)
     }
+
+    private fun u32(data: ByteArray, at: Int): Long = le32(data, at).toLong() and 0xffffffffL
 
     private fun le32(data: ByteArray, at: Int): Int {
         if (at + 4 > data.size) return 0

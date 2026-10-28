@@ -100,7 +100,9 @@ internal fun ffmpegMaps(mime: String?): Boolean = when (mime) {
 @OptIn(UnstableApi::class)
 internal fun codecLabel(mime: String?): String = when (mime) {
     MimeTypes.VIDEO_MP4V -> "MPEG-4 XviD/DivX"
-    MimeTypes.VIDEO_MP42, MimeTypes.VIDEO_MP43, AviHeader.MIME_DIVX3 -> "MS-MPEG4 DIV3"
+    MimeTypes.VIDEO_MP43 -> "MS-MPEG4 MP43"
+    MimeTypes.VIDEO_MP42 -> "MS-MPEG4 MP42"
+    AviHeader.MIME_DIVX3 -> "MS-MPEG4 DIV3"
     MimeTypes.VIDEO_H264 -> "H.264"
     MimeTypes.VIDEO_H265 -> "H.265"
     MimeTypes.VIDEO_MPEG2 -> "MPEG-2"

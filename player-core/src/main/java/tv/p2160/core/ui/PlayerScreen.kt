@@ -284,7 +284,7 @@ fun PlayerScreen(
     LaunchedEffect(state.endCountdownSec, state.playlistIndex) {
         val start = state.endCountdownSec ?: return@LaunchedEffect
         var left = start
-        while (left > 0) {
+        while (left > 0 && controller.state.value.endCountdownSec != null) {
             delay(1_000)
             left--
             countdownLeft = left
@@ -392,6 +392,14 @@ fun PlayerScreen(
                         return@onPreviewKeyEvent true
                     }
                     if (state.showEndScreen) endIdle++
+                    // Назад на отсчёте «Следующая серия» снимает его и не закрывает плеер.
+                    // Иначе фокус «Отмена» съедает клавишу, и серия всё равно сменяется.
+                    if (state.endCountdownSec != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            controller.cancelEndCountdown()
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                     // Диалоги сами держат фокус. Не отдаём OK спрятанной кнопке панели.
                     if (state.showEndScreen || state.endCountdownSec != null || state.resumePromptMs != null || state.error != null) {
                         return@onPreviewKeyEvent false

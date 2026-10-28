@@ -139,16 +139,34 @@ private class AviFixExtractor(private val delegate: Extractor) : Extractor by de
 private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorInput by delegate {
     override fun readFully(target: ByteArray, offset: Int, length: Int) {
         delegate.readFully(target, offset, length)
-        note(target, offset, length)
+        note(target, offset, length, peeked = false)
     }
 
     override fun readFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
         val ok = delegate.readFully(target, offset, length, allowEndOfInput)
-        if (ok) note(target, offset, length)
+        if (ok) note(target, offset, length, peeked = false)
         return ok
     }
 
-    private fun note(target: ByteArray, offset: Int, length: Int) {
+    override fun peekFully(target: ByteArray, offset: Int, length: Int) {
+        delegate.peekFully(target, offset, length)
+        note(target, offset, length, peeked = true)
+    }
+
+    override fun peekFully(target: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
+        val ok = delegate.peekFully(target, offset, length, allowEndOfInput)
+        if (ok) note(target, offset, length, peeked = true)
+        return ok
+    }
+
+    private fun note(target: ByteArray, offset: Int, length: Int, peeked: Boolean) {
+        if (length >= 12 &&
+            fourccAt(target, offset) == "LIST" &&
+            fourccAt(target, offset + 8) == "movi"
+        ) {
+            // peek не сдвигает позицию: Media3 ставит moviStart на LIST.
+            AviProbe.moviStart = if (peeked) delegate.position else delegate.position - length
+        }
         AviHeader.tryFixHdrl(target, offset, length)?.let { facts ->
             AviProbe.facts = facts
             val video = facts.videos.firstOrNull()
@@ -166,8 +184,26 @@ private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorIn
         val current = AviProbe.facts ?: return
         val updated = AviHeader.withIdx1(current, frames)
         AviProbe.facts = updated
-        Log.i(TAG, "AVI idx1 videoFrames=$frames durationUs=${updated.durationUs}")
+        AviProbe.audioIndex = AviHeader.parseAudioIndex(
+            target,
+            offset,
+            length,
+            AviProbe.moviStart,
+            current.audioSampleRate,
+            current.audioBytesPerSec,
+        )
+        val audioChunks = AviProbe.audioIndex?.headerOffsets?.size ?: 0
+        Log.i(
+            TAG,
+            "AVI idx1 videoFrames=$frames durationUs=${updated.durationUs} " +
+                "audioChunks=$audioChunks rate=${current.audioSampleRate} bytesPerSec=${current.audioBytesPerSec}",
+        )
     }
+}
+
+private fun fourccAt(data: ByteArray, at: Int): String {
+    if (at < 0 || at + 4 > data.size) return ""
+    return String(data, at, 4, Charsets.ISO_8859_1)
 }
 
 private const val TAG = "Player2160"

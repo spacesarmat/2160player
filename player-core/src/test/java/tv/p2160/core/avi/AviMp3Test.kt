@@ -121,7 +121,9 @@ class AviMp3Test {
         assertEquals(0L, index.seekEntry(0)?.containerTimeUs)
         assertEquals(0L, index.seekEntry(step - 1)?.containerTimeUs)
         assertEquals(10_000L, index.seekEntry(step)?.containerTimeUs)
-        assertEquals(70_000L, index.seekEntry(step * 100)?.containerTimeUs)
+        val lastTime = 7 * 1152L * 1_000_000L / 44100
+        assertEquals(70_000L, index.seekEntry(lastTime)?.containerTimeUs)
+        assertNull(index.seekEntry(lastTime + 2_000_000L))
         assertEquals(1152L, index.samplesBefore(10_000L))
         assertNull(index.samplesBefore(15_000L))
         assertEquals(0L, index.samplesBeforePosition(0L))
@@ -161,7 +163,44 @@ class AviMp3Test {
         start.countDown()
         assertTrue(done.await(20, TimeUnit.SECONDS))
         assertNull(error.get())
-        assertEquals(29_999L, index.seekEntry(Long.MAX_VALUE)?.containerTimeUs)
+        val lastTime = 29_999L * 1152 * 1_000_000L / 44100
+        assertEquals(29_999L, index.seekEntry(lastTime)?.containerTimeUs)
+        assertNull(index.seekEntry(lastTime + 5_000_000L))
+    }
+
+    @Test
+    fun midFileChunkIsNotSampleZero() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        index.add(26_080_000L, 50_000_000L, 50_000_008L, 1152)
+        assertNull(index.seekEntry(26_080_000L))
+        assertNull(index.samplesBeforePosition(50_000_008L))
+        assertNull(index.samplesBefore(26_080_000L))
+    }
+
+    @Test
+    fun idx1AudioSeekIsAbsoluteAndLogarithmic() {
+        val offsets = LongArray(1000) { it * 1000L + 100 }
+        val bytes = LongArray(1000) { it * 417L }
+        AviProbe.audioIndex = AviAudioIndex(
+            headerOffsets = offsets,
+            bytesBefore = bytes,
+            sampleRate = 44100,
+            bytesPerSec = 417 * 44100 / 1152,
+        )
+        try {
+            val index = AviMp3Index()
+            index.noteFrame(417, 1152, 44100)
+            val target = (1152L * 800 + 10) * 1_000_000L / 44100
+            val entry = index.seekEntry(target)
+            assertEquals(800 * 1000L + 100, entry?.offset)
+            assertEquals(1152L * 800, index.samplesBeforePosition(800 * 1000L + 108))
+            // Наращивание с нуля не перебивает idx1.
+            index.add(0L, 1L, 9L, 1152)
+            assertEquals(800 * 1000L + 100, index.seekEntry(target)?.offset)
+        } finally {
+            AviProbe.clear()
+        }
     }
 
     private fun emit(audio: AviMp3AudioOutput, frame: ByteArray, count: Int, containerUs: Long) {

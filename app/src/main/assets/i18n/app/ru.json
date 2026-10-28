@@ -65,7 +65,7 @@
   "settings.langs_hint": "Коды языков через запятую, например: ru, en",
   "settings.decoder": "Декодер",
   "settings.decoder_auto": "Авто",
-  "settings.decoder_auto_hint": "Сначала аппаратный, FFmpeg для неподдерживаемых форматов",
+  "settings.decoder_auto_hint": "Сначала аппаратный. Если он падает на кадре - программный, затем FFmpeg",
   "settings.decoder_hw": "Только аппаратный",
   "settings.decoder_hw_hint": "Минимальное энергопотребление",
   "settings.decoder_ffmpeg": "FFmpeg",

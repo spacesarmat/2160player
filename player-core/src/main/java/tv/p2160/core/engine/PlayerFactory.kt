@@ -21,6 +21,7 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderManager
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
+import tv.p2160.core.avi.AviPlayback
 import tv.p2160.core.bluray.DiscMediaSourceFactory
 import tv.p2160.core.m2ts.M2tsExtractorsFactory
 import tv.p2160.core.settings.DecoderPreference
@@ -32,6 +33,7 @@ import tv.p2160.core.settings.Settings
 internal class BuiltPlayer(
     val player: ExoPlayer,
     val decoderManager: DecoderManager,
+    val videoGate: VideoDecoderGate,
     val secondarySubtitles: SecondarySubtitles,
     val night: NightAudioProcessor,
     val passthrough: PassthroughGuard,
@@ -49,7 +51,9 @@ internal class BuiltPlayer(
 /**
  * Сборка ExoPlayer:
  * - аппаратные декодеры + FFmpeg (nextlib) для того, что устройство не умеет:
- *   DTS/DTS-HD, TrueHD, AC3/E-AC3 на боксах без лицензии, FLAC/ALAC/Opus в MKV, MPEG-2/VC-1 видео и т.д.;
+ *   DTS/DTS-HD, TrueHD, AC3/E-AC3 на боксах без лицензии, FLAC/ALAC/Opus в MKV,
+ *   MPEG-2/VC-1, а также MPEG-4 Part 2 (XviD/DivX) и MS-MPEG4 (DIV3), декодеры которых
+ *   уже есть в libavcodec nextlib, но до 0.2.16 не были сопоставлены с MIME;
  * - passthrough AC3/E-AC3/DTS на ресивер, если он есть (решает штатный AudioSink);
  * - HLS / DASH / SmoothStreaming / RTSP / прогрессивные файлы (MKV, MP4, TS, AVI, WebM, FLV, OGG…).
  */
@@ -72,12 +76,15 @@ internal object PlayerFactory {
             DecoderPreference.FFMPEG -> DecoderMode.FFMPEG
         }
         val decoderManager = DecoderManager(mode, mode)
+        val videoGate = VideoDecoderGate()
         val secondarySubtitles = SecondarySubtitles()
         val nightNow = settings.nightModeAt(NightSchedule.nowMinute())
         val night = NightAudioProcessor(downmixToStereo = nightNow).apply { enabled = nightNow }
         val passthrough = PassthroughGuard().apply { disabled = nightNow }
-        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles, night, passthrough)
-            .setDecoderManager(decoderManager).apply {
+        val renderersFactory = DualTextRenderersFactory(context, secondarySubtitles, night, passthrough).apply {
+            // Селектор читает videoGate на каждом выборе декодера, не только при сборке плеера.
+            setMediaCodecSelector(VideoMimeFallbackSelector(videoGate))
+            setDecoderManager(decoderManager)
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -140,7 +147,10 @@ internal object PlayerFactory {
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(RtspOverTcp(DiscMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, DolbyVisionFallback.ExtractorsFactoryWrapper(context, m2tsExtractors)))))
+            .setMediaSourceFactory(RtspOverTcp(DiscMediaSourceFactory(DefaultMediaSourceFactory(
+                dataSourceFactory,
+                DolbyVisionFallback.ExtractorsFactoryWrapper(context, AviPlayback.factory(m2tsExtractors)),
+            ))))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -156,7 +166,7 @@ internal object PlayerFactory {
             .build()
 
         decoderManager.attach(player)
-        return BuiltPlayer(player, decoderManager, secondarySubtitles, night, passthrough, allocator, bufferBytes)
+        return BuiltPlayer(player, decoderManager, videoGate, secondarySubtitles, night, passthrough, allocator, bufferBytes)
     }
 }
 

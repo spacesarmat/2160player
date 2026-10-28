@@ -14,6 +14,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
@@ -359,6 +360,7 @@ class PlayerController(
                 player.play()
                 return
             }
+            if (retryVideoDecoder(error)) return
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
                 player.prepare()
@@ -1312,6 +1314,38 @@ class PlayerController(
         }
     }
 
+    /**
+     * Аппаратный декодер отдал первые кадры и упал (типичный XviD/DIVX на Allwinner).
+     * В режиме «Авто» один раз пробуем программный MediaCodec этого MIME, потом FFmpeg.
+     */
+    private fun retryVideoDecoder(error: PlaybackException): Boolean {
+        if (error.errorCode !in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) {
+            return false
+        }
+        val exo = error as? ExoPlaybackException ?: return false
+        if (exo.type != ExoPlaybackException.TYPE_RENDERER) return false
+        val mime = exo.rendererFormat?.sampleMimeType ?: return false
+        val next = built.videoGate.advance(
+            mime = mime,
+            failedDecoder = decoders.video,
+            allowFallback = settings.current.decoder == tv.p2160.core.settings.DecoderPreference.AUTO,
+        ) ?: return false
+        val label = codecLabel(mime)
+        val warning = if (next == VideoDecoderGate.FFMPEG) {
+            i18n.current.format("player.decoder_try_ffmpeg", label)
+        } else {
+            i18n.current.format("player.decoder_try_sw", label)
+        }
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        val play = player.playWhenReady
+        _state.update { it.copy(warnings = it.warnings + warning, error = null) }
+        player.prepare()
+        if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
+        if (play) player.play()
+        return true
+    }
+
     private fun describe(e: PlaybackException): String {
         val t = i18n.current
         return when (e.errorCode) {
@@ -1325,7 +1359,14 @@ class PlayerController(
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> t["error.decoder"]
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> {
+                val mime = (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+                if (mime == null) t["error.decoder"]
+                else t.format(
+                    decoderErrorKey(mime, settings.current.decoder, built.videoGate.stage(mime)),
+                    codecLabel(mime),
+                )
+            }
             PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> t["error.drm"]
             else -> t.format("error.generic", e.errorCodeName)
         }

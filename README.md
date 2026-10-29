@@ -29,9 +29,9 @@ APK берётся из [последнего релиза](https://github.com/s
 **Телефон (POCO X5)**
 
 <p>
-<img src="docs/images/phone-home-top.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера" width="230">
-<img src="docs/images/phone-player-portrait.webp" alt="Плеер на телефоне вертикально" width="108">
-<img src="docs/images/phone-settings.webp" alt="Настройки: язык, тема, субтитры" width="108">
+<img src="docs/images/phone-home-top.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера" width="300">
+<img src="docs/images/phone-player-portrait.webp" alt="Плеер на телефоне вертикально" width="220">
+<img src="docs/images/phone-settings.webp" alt="Настройки: язык, тема, субтитры" width="220">
 </p>
 <p>
 <img src="docs/images/phone-player-landscape.webp" alt="Плеер на телефоне горизонтально" width="460">

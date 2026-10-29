@@ -43,6 +43,8 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 Нечисловой `position` читается как 0. Неизвестные extras игнорируются.
 `subs` и `subtitles_location` подключаются при старте и запоминаются для этого URI: следующий запуск того же файла без extras снова их включает. `content://` сохраняет право чтения, если его выдали с правом сохранить.
 
+Внешние дорожки на каждый пункт плейлиста: `tv.p2160.extra.AUDIO_TRACKS` и `TEXT_TRACKS` (`String[]` JSON). Стартовый выбор: `AUDIO_SELECT` и `TEXT_SELECT` (`id:`, `index:`, `embedded:`, для субтитров ещё `off`). В ответе, рядом с прежней позицией: `AUDIO_ID`, `AUDIO_NAME`, `AUDIO_LANGUAGE`, `AUDIO_EXTERNAL`, индексы, и то же для `TEXT_*`, плюс `TEXT_OFF`. Старые ключи MX и VLC не менялись. Полная таблица и пример - [API.md §3.7](../API.md#37-внешние-дорожки).
+
 ## Ответ
 
 `RESULT_OK` и action `com.mxtech.intent.result.VIEW`, если передан `return_result` или вызов был

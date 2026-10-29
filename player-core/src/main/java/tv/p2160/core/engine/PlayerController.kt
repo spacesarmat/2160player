@@ -18,6 +18,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.source.TrackGroupArray
@@ -46,8 +47,13 @@ import tv.p2160.core.intro.DetectionResult
 import tv.p2160.core.api.PlayerConfig
 import tv.p2160.core.intro.IntroDetector
 import tv.p2160.core.intro.IntroStart
+import tv.p2160.core.api.ExternalAudio
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.NowPlaying
+import tv.p2160.core.api.SelectedTrack
+import tv.p2160.core.api.TrackSelect
+import tv.p2160.core.api.stableId
+import tv.p2160.core.audio.AudioSupport
 import tv.p2160.core.api.PlayerExtensions
 import tv.p2160.core.iptv.IptvStore
 import tv.p2160.core.api.SegmentType
@@ -233,8 +239,22 @@ class PlayerController(
     /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении и из истории). */
     private val subtitles: MutableList<MutableList<ExternalSubtitle>> =
         request.items.map { it.subtitles.toMutableList() }.toMutableList()
-    /** Автопоиск файлов рядом с видео уже выполнен для этого пункта. */
+    /** Автопоиск субтитров рядом с видео уже выполнен для этого пункта. */
     private val sidecarsScanned = BooleanArray(request.items.size)
+    /** Внешнее аудио по индексу плейлиста: из запроса, автопоиска и ручной загрузки. */
+    private val audios: MutableList<MutableList<ExternalAudio>> =
+        request.items.map { it.audio.toMutableList() }.toMutableList()
+    private val audioSidecarsScanned = BooleanArray(request.items.size)
+    /** Предпочтение, которое переносится на следующую серию этого запуска. */
+    private var sessionAudio: CarryHint? = null
+    private var sessionText: CarryHint? = null
+    private var pendingAudioHint: CarryHint? = null
+    private var pendingTextHint: CarryHint? = null
+    private var itemsOpened = 0
+    /** Сдвиг выбранной внешней дорожки, мс. Плюсуется к задержке пользователя. */
+    private var appliedAudioOffsetMs = 0L
+    private var appliedTextOffsetMs = 0L
+    private val externalAudioRecoveries = IntArray(request.items.size)
 
     private val trackPrefs = TrackPreferences.get(appContext)
     /** Применить привычку при первом известном списке дорожек нового файла. */
@@ -433,6 +453,7 @@ class PlayerController(
                 return
             }
             if (retryVideoDecoder(error)) return
+            if (recoverExternalAudio(error)) return
             if (error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK && recoverAviStall()) return
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
@@ -478,6 +499,10 @@ class PlayerController(
             item.subtitles.forEach { sub ->
                 SubtitleSupport.persistReadPermission(appContext, sub.uri)
                 store.upsertExternalSubtitle(key, sub)
+            }
+            item.audio.forEach { audio ->
+                SubtitleSupport.persistReadPermission(appContext, audio.uri)
+                store.upsertExternalAudio(key, audio)
             }
         }
         val mediaItems = request.items.indices.map { buildMediaItem(it) }
@@ -527,13 +552,26 @@ class PlayerController(
         playbackSpeed = speed
         liveCatchup = false
         player.playbackParameters = PlaybackParameters(speed)
-        player.subtitleDelayMilliseconds = entry?.subtitleDelayMs ?: 0L
+        appliedAudioOffsetMs = 0L
+        appliedTextOffsetMs = 0L
+        val userTextDelay = entry?.subtitleDelayMs ?: 0L
 
         pendingRestore = entry
         // Своего сохранённого выбора у файла нет - попробуем привычку (сериал / набор языков).
         pendingSmart = entry == null && settings.current.smartTracks && config.restoreFromHistory
-        // Явно запрошенные внешние субтитры важнее сохранённого выбора.
-        subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
+        pendingExternalSelect = null
+        val openedBefore = itemsOpened > 0
+        itemsOpened++
+        val explicitAudio = explicitAudioHint(index)
+        val explicitText = explicitTextHint(index)
+        pendingAudioHint = if (openedBefore && sessionAudio != null) sessionAudio else explicitAudio
+        pendingTextHint = if (openedBefore && sessionText != null) sessionText else explicitText
+        if (sessionAudio == null) sessionAudio = explicitAudio
+        if (sessionText == null) sessionText = explicitText
+        // Явные субтитры без textSelect: старый флаг select.
+        if (pendingTextHint == null) {
+            subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
+        }
 
         val offer = if (opening) {
             resumeOfferMs(
@@ -559,8 +597,11 @@ class PlayerController(
                 playlistFinished = false,
                 endDim = false,
                 requestClose = false,
+                subtitleDelayMs = userTextDelay,
             )
         }
+        applyTextClock()
+        applyAudioClock()
         applyPendingSelections(player.currentTracks)
         // Главы и поиск вступления в эфире бессмысленны (и FFmpeg повис бы на бесконечном потоке).
         if (!request.liveTv) loadChaptersAndSegments(index)
@@ -732,40 +773,75 @@ class PlayerController(
 
     private fun applyPendingSelections(tracks: Tracks) {
         if (tracks.isEmpty) return
-        if (pendingSmart) {
+        val index = player.currentMediaItemIndex
+        var pinAudio = false
+        var pinText = false
+        pendingAudioHint?.let { hint ->
+            val options = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current)
+            val picked = TrackCarry.pick(hint, audioCarry(options, index))
+            if (picked != null) {
+                selectTrack(options[picked], user = false)
+                pinAudio = true
+            }
+            pendingAudioHint = null
+        }
+        pendingTextHint?.let { hint ->
+            if (hint.off) {
+                disableText(user = false)
+                pinText = true
+            } else {
+                val options = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current)
+                val picked = TrackCarry.pick(hint, textCarry(options, index))
+                if (picked != null) {
+                    selectTrack(options[picked], user = false)
+                    pinText = true
+                }
+            }
+            pendingTextHint = null
+        }
+        if (pendingSmart && !pinAudio && !pinText) {
             pendingSmart = false
             applySmartChoice(tracks)
+        } else if (pendingSmart) {
+            pendingSmart = false
         }
-        var pinnedExternal = false
+        var pinnedExternal = pinText
         pendingExternalSelect?.let { id ->
-            val option = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull {
-                val formatId = tracks.groups[it.groupIndex].getTrackFormat(it.trackIndex).id
-                formatId == id || formatId?.endsWith(id) == true
-            }
-            if (option != null) {
-                selectTrack(option, user = false)
+            if (!pinText) {
+                val option = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull {
+                    val formatId = tracks.groups[it.groupIndex].getTrackFormat(it.trackIndex).id
+                    formatId == id || formatId?.endsWith(id) == true
+                }
+                if (option != null) {
+                    selectTrack(option, user = false)
+                    pendingExternalSelect = null
+                    pinnedExternal = true
+                }
+            } else {
                 pendingExternalSelect = null
-                pinnedExternal = true
             }
         }
         val entry = pendingRestore ?: return
         pendingRestore = null
 
         val audio = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current)
-        (audio.firstOrNull { entry.audioLabel != null && it.label == entry.audioLabel }
-            ?: audio.firstOrNull { entry.audioLanguage != null && it.language == entry.audioLanguage })
-            ?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
+        if (!pinAudio) {
+            (audio.firstOrNull { entry.audioLabel != null && it.label == entry.audioLabel }
+                ?: audio.firstOrNull { entry.audioLanguage != null && it.language == entry.audioLanguage })
+                ?.takeUnless { it.selected }?.let { selectTrack(it, user = false, seed = sessionAudio == null) }
+        }
 
         // Явный внешний файл важнее сохранённого «выключены» и языка встроенной дорожки.
         // Пока дорожка ещё не пришла, pendingExternalSelect не даёт истории её выключить.
         if (!pinnedExternal && pendingExternalSelect == null) {
             if (entry.textDisabled) {
                 disableText(user = false)
+                if (sessionText == null) sessionText = CarryHint(off = true)
             } else {
                 val text = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current)
                 (text.firstOrNull { entry.textLabel != null && it.label == entry.textLabel }
                     ?: text.firstOrNull { entry.textLanguage != null && it.language == entry.textLanguage })
-                    ?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
+                    ?.takeUnless { it.selected }?.let { selectTrack(it, user = false, seed = sessionText == null) }
             }
         }
     }
@@ -903,13 +979,24 @@ class PlayerController(
     /** Выбор дорожки пользователем (запоминается как привычка). */
     fun select(option: TrackOption) = selectTrack(option, user = true)
 
-    private fun selectTrack(option: TrackOption, user: Boolean) {
+    private fun selectTrack(option: TrackOption, user: Boolean, seed: Boolean = false) {
         if (user && (option.type == C.TRACK_TYPE_AUDIO || option.type == C.TRACK_TYPE_TEXT)) recordChoiceOnTracks = true
         val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(option.type, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
             .build()
+        if (option.type == C.TRACK_TYPE_AUDIO) {
+            appliedAudioOffsetMs = audioOffset(option)
+            applyAudioClock()
+            if (user || (seed && sessionAudio == null)) sessionAudio = hintForAudio(option)
+            if (user || option.external) {
+                val index = player.currentMediaItemIndex
+                val picked = audioFor(option)
+                keyAt(index)?.let { store.setExternalAudioSelected(it, if (option.external) picked?.uri?.toString() else null) }
+            }
+            return
+        }
         if (option.type != C.TRACK_TYPE_TEXT) return
         val index = player.currentMediaItemIndex
         val key = keyAt(index) ?: return
@@ -921,6 +1008,9 @@ class PlayerController(
             markExternalSelected(index, uri)
         }
         if (uri != null) enableRememberedText(key, option.language)
+        appliedTextOffsetMs = textOffset(option)
+        applyTextClock()
+        if (user || (seed && sessionText == null)) sessionText = hintForText(option)
     }
 
     /** Сбрасывает ручной выбор видеодорожки - плеер снова выбирает качество сам (важно для HLS/DASH). */
@@ -939,6 +1029,9 @@ class PlayerController(
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
+        appliedTextOffsetMs = 0
+        applyTextClock()
+        if (user) sessionText = CarryHint(off = true)
         if (!user) return
         val index = player.currentMediaItemIndex
         keyAt(index)?.let { store.setExternalSubtitleSelected(it, null) }
@@ -1028,9 +1121,9 @@ class PlayerController(
     /** Задержка звука, мс (> 0 - звук позже картинки); сохраняется в настройках - общая для всех файлов. */
     fun setAudioDelay(ms: Int) {
         val value = ms.coerceIn(-AUDIO_DELAY_LIMIT_MS, AUDIO_DELAY_LIMIT_MS)
-        built.passthrough.audioDelayUs = value * 1000L
         settings.update { it.copy(audioDelayMs = value) }
         _state.update { it.copy(audioDelayMs = value) }
+        applyAudioClock()
     }
 
     /**
@@ -1080,8 +1173,37 @@ class PlayerController(
     }
 
     fun setSubtitleDelay(ms: Long) {
-        player.subtitleDelayMilliseconds = ms
         _state.update { it.copy(subtitleDelayMs = ms) }
+        applyTextClock()
+    }
+
+    /** Подключает внешний аудиофайл к текущему видео и сразу включает его. Позиция не сбрасывается. */
+    fun addExternalAudio(uri: Uri, name: String? = null) {
+        val index = player.currentMediaItemIndex
+        if (index !in audios.indices) return
+        SubtitleSupport.persistReadPermission(appContext, uri)
+        val displayName = name ?: SubtitleSupport.displayName(appContext, uri)
+        val audio = ExternalAudio(
+            uri = uri,
+            name = displayName,
+            language = SubtitleSupport.languageFromName(displayName),
+            select = true,
+        )
+        val list = audios[index]
+        val existing = list.indexOfFirst { it.uri == uri }
+        if (existing >= 0) list[existing] = audio else list.add(audio)
+        val hint = CarryHint(externalId = audio.stableId(), name = audio.name, language = audio.language)
+        sessionAudio = hint
+        pendingAudioHint = hint
+        keyAt(index)?.let { store.upsertExternalAudio(it, audio) }
+        scope.launch {
+            val position = player.currentPosition
+            val playing = player.playWhenReady
+            player.replaceMediaItem(index, buildMediaItem(index))
+            player.seekTo(index, position)
+            player.playWhenReady = playing
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+        }
     }
 
     /** Подключает внешний файл субтитров к текущему видео и сразу включает его. */
@@ -1353,11 +1475,15 @@ class PlayerController(
         val duration = player.duration.coerceAtLeast(0)
         val position = if (completed) duration else player.currentPosition.coerceAtLeast(0)
         val watched = completed || ResumeStore.isFinished(position, duration)
+        val selected = selectedTracks()
         return PlaybackResult(
             uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
             positionMs = if (watched) duration else position,
             durationMs = duration,
             completed = watched,
+            audio = selected.first,
+            text = selected.second,
+            textOff = selected.third,
         )
     }
 
@@ -1401,7 +1527,7 @@ class PlayerController(
                     previous?.textDisabled ?: false
                 },
                 speed = if (current) playbackSpeed else previous?.speed ?: 1f,
-                subtitleDelayMs = if (current) player.subtitleDelayMilliseconds else previous?.subtitleDelayMs ?: 0,
+                subtitleDelayMs = if (current) _state.value.subtitleDelayMs else previous?.subtitleDelayMs ?: 0,
             )
         )
     }
@@ -1539,7 +1665,7 @@ class PlayerController(
                 textTracks = text,
                 videoTracks = videoTracks,
                 textDisabled = if (includeTracks) p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) else prev.textDisabled,
-                subtitleDelayMs = if (includeTracks) p.subtitleDelayMilliseconds else prev.subtitleDelayMs,
+                subtitleDelayMs = prev.subtitleDelayMs,
                 hasVideo = if (includeTracks) tracks.isEmpty || tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, true) else prev.hasVideo,
                 videoAspect = if (includeTracks) {
                     if (video.height > 0) video.width * video.pixelWidthHeightRatio / video.height else 0f
@@ -1584,8 +1710,9 @@ class PlayerController(
         }
         val configs = external.map { sub ->
             val name = sub.name ?: SubtitleSupport.displayName(appContext, sub.uri)
-            val normalized = SubtitleSupport.normalize(appContext, sub.uri, request.headers, name)
-            val mime = SubtitleSupport.mimeForName(name)
+            val normalized = SubtitleSupport.normalize(appContext, sub.uri, request.headers, name, sub.charset)
+            val mime = sub.mimeType?.takeIf { it.isNotBlank() }
+                ?: SubtitleSupport.mimeForName(name)
                 ?: SubtitleSupport.mimeForName(normalized.lastPathSegment)
                 ?: MimeTypes.APPLICATION_SUBRIP
             val builder = MediaItem.SubtitleConfiguration.Builder(normalized)
@@ -1602,12 +1729,33 @@ class PlayerController(
                 ?.also { discs[index] = it }
         } else null
         disc?.disc?.discTitle?.let { if (entry.title.isNullOrBlank()) titles[index] = it }
+        if (!audioSidecarsScanned[index] && !request.liveTv) {
+            audioSidecarsScanned[index] = true
+            val remembered = keyAt(index)?.let(store::externalAudio).orEmpty()
+            for (audio in remembered) if (audios[index].none { it.uri == audio.uri }) audios[index] += audio
+            for (audio in discoverAudio(entry.uri)) if (audios[index].none { it.uri == audio.uri }) audios[index] += audio
+        }
+        val playable = mutableListOf<ExternalAudio>()
+        val failed = mutableListOf<String>()
+        for (audio in audios[index]) {
+            val ok = withContext(Dispatchers.IO) {
+                AudioSupport.reachable(appContext, audio.uri, request.headers, if (audio.uri.scheme.equals("http", true) || audio.uri.scheme.equals("https", true)) 8000 else 4000)
+            }
+            if (ok) playable += audio else failed += (audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString())
+        }
+        if (failed.isNotEmpty()) {
+            val message = i18n.current.format("error.external_audio", failed.joinToString())
+            _state.update { it.copy(warnings = (it.warnings + message).distinct()) }
+        }
+        audios[index].clear()
+        audios[index].addAll(playable)
         val title = withContext(Dispatchers.IO) { titleFor(entry) }
         val builder = MediaItem.Builder()
             .setUri(disc?.titleUri ?: entry.uri)
             .setMediaId(keyAt(index) ?: entry.uri.toString())
             .setMimeType(adaptiveMime(entry))
             .setSubtitleConfigurations(configs)
+            .setTag(ExternalAudioTag(playable.mapIndexed { i, audio -> audio.toSpec(i) }))
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
         if (request.liveTv) builder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
         return builder.build()
@@ -1630,6 +1778,239 @@ class PlayerController(
             val name = found.lastPathSegment?.substringAfterLast('/')
             ExternalSubtitle(found, name, SubtitleSupport.languageFromName(name))
         }
+    }
+
+    /** Озвучка рядом с файлом. `content://` пользуется тем же поиском пути и деревом, что и субтитры. */
+    private suspend fun discoverAudio(uri: Uri): List<ExternalAudio> {
+        if (uri.scheme.equals("content", true) && withContext(Dispatchers.IO) { AudioSupport.contentNeedsFolder(appContext, uri) }) {
+            val tree = SubtitleFolders.request(appContext, uri)
+            return if (tree == null) emptyList() else withContext(Dispatchers.IO) { AudioSupport.fromTree(appContext, uri, tree) }
+        }
+        return withContext(Dispatchers.IO) { AudioSupport.findSidecars(appContext, uri, request.headers) }
+    }
+
+    private fun explicitAudioHint(index: Int): CarryHint? {
+        val item = request.items.getOrNull(index) ?: return null
+        val list = audios.getOrNull(index).orEmpty()
+        TrackSelect.parse(item.audioSelect)?.let { return hintFromSelect(it, list.map { ref -> ref.stableId() to (ref.name to ref.language) }) }
+        return list.firstOrNull { it.select }?.let { CarryHint(externalId = it.stableId(), name = it.name, language = it.language) }
+    }
+
+    private fun explicitTextHint(index: Int): CarryHint? {
+        val item = request.items.getOrNull(index) ?: return null
+        val list = subtitles.getOrNull(index).orEmpty()
+        TrackSelect.parse(item.textSelect)?.let { return hintFromSelect(it, list.map { ref -> ref.stableId() to (ref.name to ref.language) }) }
+        return null
+    }
+
+    private fun hintFromSelect(parsed: TrackSelect.Parsed, tracks: List<Pair<String, Pair<String?, String?>>>): CarryHint {
+        if (parsed.off) return CarryHint(off = true)
+        if (parsed.embeddedIndex != null && parsed.externalId == null && parsed.externalIndex == null) {
+            return CarryHint(embeddedIndex = parsed.embeddedIndex)
+        }
+        val ref = when {
+            parsed.externalId != null -> tracks.firstOrNull { it.first == parsed.externalId }
+            parsed.externalIndex != null -> tracks.getOrNull(parsed.externalIndex)
+            else -> null
+        }
+        return CarryHint(externalId = ref?.first ?: parsed.externalId, name = ref?.second?.first, language = ref?.second?.second)
+    }
+
+    private fun audioCarry(options: List<TrackOption>, index: Int): List<CarryTrack> {
+        val list = audios.getOrNull(index).orEmpty()
+        var embedded = 0
+        return options.map { option ->
+            if (!option.external) {
+                CarryTrack(name = option.rawLabel, language = option.language, embeddedIndex = embedded++)
+            } else {
+                val audio = externalAudioIndex(option.formatId)?.let { list.getOrNull(it) }
+                CarryTrack(
+                    externalId = audio?.stableId(),
+                    name = audio?.name ?: option.rawLabel,
+                    language = audio?.language ?: option.language,
+                    external = true,
+                )
+            }
+        }
+    }
+
+    private fun textCarry(options: List<TrackOption>, index: Int): List<CarryTrack> {
+        val list = subtitles.getOrNull(index).orEmpty()
+        var embedded = 0
+        return options.map { option ->
+            if (!option.external) {
+                CarryTrack(name = option.rawLabel, language = option.language, embeddedIndex = embedded++)
+            } else {
+                val sub = list.firstOrNull { candidate ->
+                    val id = externalId(index, candidate)
+                    option.formatId == id || option.formatId?.endsWith(id) == true
+                }
+                CarryTrack(
+                    externalId = sub?.stableId(),
+                    name = sub?.name ?: option.rawLabel,
+                    language = sub?.language ?: option.language,
+                    external = true,
+                )
+            }
+        }
+    }
+
+    private fun hintForAudio(option: TrackOption): CarryHint {
+        if (!option.external) {
+            val embedded = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current).filter { !it.external }
+            val at = embedded.indexOfFirst { it.groupIndex == option.groupIndex && it.trackIndex == option.trackIndex }
+            return CarryHint(name = option.rawLabel, language = option.language, embeddedIndex = at.takeIf { it >= 0 })
+        }
+        val audio = audioFor(option)
+        return CarryHint(externalId = audio?.stableId(), name = audio?.name ?: option.rawLabel, language = audio?.language ?: option.language)
+    }
+
+    private fun hintForText(option: TrackOption): CarryHint {
+        if (!option.external) {
+            val embedded = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_TEXT, i18n.current).filter { !it.external }
+            val at = embedded.indexOfFirst { it.groupIndex == option.groupIndex && it.trackIndex == option.trackIndex }
+            return CarryHint(name = option.rawLabel, language = option.language, embeddedIndex = at.takeIf { it >= 0 })
+        }
+        val index = player.currentMediaItemIndex
+        val sub = subtitles.getOrNull(index)?.firstOrNull { candidate ->
+            val id = externalId(index, candidate)
+            option.formatId == id || option.formatId?.endsWith(id) == true
+        }
+        return CarryHint(externalId = sub?.stableId(), name = sub?.name ?: option.rawLabel, language = sub?.language ?: option.language)
+    }
+
+    private fun audioFor(option: TrackOption): ExternalAudio? {
+        val at = externalAudioIndex(option.formatId) ?: return null
+        return audios.getOrNull(player.currentMediaItemIndex)?.getOrNull(at)
+    }
+
+    private fun audioOffset(option: TrackOption): Long {
+        if (!option.external) return 0
+        return audioFor(option)?.delayMs ?: 0
+    }
+
+    private fun textOffset(option: TrackOption): Long {
+        if (!option.external) return 0
+        val index = player.currentMediaItemIndex
+        return subtitles.getOrNull(index)?.firstOrNull { candidate ->
+            val id = externalId(index, candidate)
+            option.formatId == id || option.formatId?.endsWith(id) == true
+        }?.delayMs ?: 0
+    }
+
+    private fun applyAudioClock() {
+        built.passthrough.audioDelayUs = (settings.current.audioDelayMs + appliedAudioOffsetMs) * 1000L
+    }
+
+    private fun applyTextClock() {
+        player.subtitleDelayMilliseconds = _state.value.subtitleDelayMs + appliedTextOffsetMs
+    }
+
+    private fun selectedTracks(): Triple<SelectedTrack?, SelectedTrack?, Boolean> {
+        val index = player.currentMediaItemIndex
+        val textOff = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        return Triple(describeSelected(C.TRACK_TYPE_AUDIO, index), if (textOff) null else describeSelected(C.TRACK_TYPE_TEXT, index), textOff)
+    }
+
+    private fun describeSelected(type: Int, index: Int): SelectedTrack? {
+        val options = TrackLabels.collect(player.currentTracks, type, i18n.current)
+        val selected = options.firstOrNull { it.selected } ?: return null
+        val embeddedIndex = if (selected.external) -1 else options.filter { !it.external }.indexOf(selected)
+        val externalIndex = if (!selected.external) -1 else options.filter { it.external }.indexOf(selected)
+        if (selected.external && type == C.TRACK_TYPE_AUDIO) {
+            val audio = audioFor(selected)
+            return SelectedTrack(
+                id = audio?.stableId() ?: "external:$externalIndex",
+                name = audio?.name ?: selected.rawLabel,
+                language = audio?.language ?: selected.language,
+                external = true,
+                externalIndex = externalIndex,
+            )
+        }
+        if (selected.external) {
+            val sub = subtitles.getOrNull(index)?.firstOrNull { candidate ->
+                val id = externalId(index, candidate)
+                selected.formatId == id || selected.formatId?.endsWith(id) == true
+            }
+            return SelectedTrack(
+                id = sub?.stableId() ?: "external:$externalIndex",
+                name = sub?.name ?: selected.rawLabel,
+                language = sub?.language ?: selected.language,
+                external = true,
+                externalIndex = externalIndex,
+            )
+        }
+        return SelectedTrack(
+            id = "embedded:$embeddedIndex",
+            name = selected.rawLabel ?: selected.label,
+            language = selected.language,
+            external = false,
+            embeddedIndex = embeddedIndex,
+        )
+    }
+
+    private fun ExternalAudio.toSpec(index: Int) = AudioSpec(
+        uri = uri,
+        listIndex = index,
+        name = name ?: uri.lastPathSegment?.substringBeforeLast('.'),
+        language = language,
+        mime = mimeType ?: AudioSupport.mimeForName(name ?: uri.lastPathSegment),
+        delayMs = delayMs,
+    )
+
+    /**
+     * Внешняя дорожка не открылась или её период не совпал с видео.
+     * Убираем её и продолжаем ролик с места остановки.
+     */
+    private fun recoverExternalAudio(error: PlaybackException): Boolean {
+        val index = player.currentMediaItemIndex
+        if (index !in audios.indices || audios[index].isEmpty()) return false
+        if (externalAudioRecoveries[index] >= 3) return false
+        val exo = error as? ExoPlaybackException
+        val formatId = exo?.rendererFormat?.id
+        val externalDecoder = formatId?.contains(EXTERNAL_AUDIO_PREFIX) == true &&
+            error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
+        val merge = generateSequence<Throwable>(error) { it.cause }.any { it is MergingMediaSource.IllegalMergeException }
+        val blob = generateSequence<Throwable>(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+        val audioHit = audios[index].any { blob.contains(it.uri.toString()) }
+        val videoUri = request.items.getOrNull(index)?.uri?.toString().orEmpty()
+        val videoHit = videoUri.isNotEmpty() && blob.contains(videoUri)
+        val source = !videoHit && audioHit && (
+            exo?.type == ExoPlaybackException.TYPE_SOURCE ||
+                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+            )
+        if (!externalDecoder && !merge && !source) return false
+        if (exo?.type == ExoPlaybackException.TYPE_RENDERER && !externalDecoder) return false
+        externalAudioRecoveries[index]++
+        val dropped = if (externalDecoder) {
+            val at = externalAudioIndex(formatId)
+            if (at != null && at in audios[index].indices) {
+                val name = audios[index][at].name ?: audios[index][at].uri.lastPathSegment
+                audios[index].removeAt(at)
+                name
+            } else {
+                audios[index].clear()
+                null
+            }
+        } else {
+            audios[index].clear()
+            null
+        }
+        val label = dropped ?: i18n.current["player.audio"]
+        val message = if (externalDecoder) i18n.current.format("error.external_audio_codec", label)
+        else i18n.current.format("error.external_audio", label)
+        val position = player.currentPosition
+        val play = player.playWhenReady
+        _state.update { it.copy(warnings = (it.warnings + message).distinct(), error = null) }
+        scope.launch {
+            player.replaceMediaItem(index, buildMediaItem(index))
+            player.seekTo(index, position.coerceAtLeast(0))
+            player.prepare()
+            player.playWhenReady = play
+        }
+        return true
     }
 
     private fun externalId(index: Int, sub: ExternalSubtitle): String =

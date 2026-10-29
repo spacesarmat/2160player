@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
+import tv.p2160.core.api.ExternalAudio
 import tv.p2160.core.api.ExternalSubtitle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,10 +66,13 @@ class ResumeStore private constructor(context: Context) :
         )
         db.execSQL("CREATE INDEX history_updated ON history(updated DESC)")
         createExternalSubs(db)
+        createExternalAudio(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createExternalSubs(db)
+        if (oldVersion == 2) addTrackColumns(db, "external_subs")
+        if (oldVersion < 3) createExternalAudio(db)
     }
 
     /** Внешние субтитры, подключённые к файлу вручную или из Intent. Пустой список - не запоминали. */
@@ -81,9 +85,13 @@ class ResumeStore private constructor(context: Context) :
                     add(
                         ExternalSubtitle(
                             uri = Uri.parse(c.getString(c.getColumnIndexOrThrow("uri"))),
-                            name = c.getString(c.getColumnIndexOrThrow("name"))?.ifBlank { null },
-                            language = c.getString(c.getColumnIndexOrThrow("language"))?.ifBlank { null },
+                            name = c.opt("name"),
+                            language = c.opt("language"),
                             select = c.getInt(c.getColumnIndexOrThrow("selected")) == 1,
+                            id = c.opt("track_id"),
+                            mimeType = c.opt("mime"),
+                            delayMs = c.optLong("delay_ms"),
+                            charset = c.opt("charset"),
                         )
                     )
                 }
@@ -107,6 +115,10 @@ class ResumeStore private constructor(context: Context) :
                     put("name", sub.name)
                     put("language", sub.language)
                     put("selected", if (sub.select) 1 else 0)
+                    put("track_id", sub.id)
+                    put("mime", sub.mimeType)
+                    put("delay_ms", sub.delayMs)
+                    put("charset", sub.charset)
                 },
                 SQLiteDatabase.CONFLICT_REPLACE,
             )
@@ -125,6 +137,74 @@ class ResumeStore private constructor(context: Context) :
             if (uri != null) {
                 db.update(
                     "external_subs",
+                    ContentValues().apply { put("selected", 1) },
+                    "video_key = ? AND uri = ?",
+                    arrayOf(videoKey, uri),
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun externalAudio(videoKey: String): List<ExternalAudio> =
+        readableDatabase.query(
+            "external_audio", null, "video_key = ?", arrayOf(videoKey), null, null, "rowid",
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(
+                        ExternalAudio(
+                            uri = Uri.parse(c.getString(c.getColumnIndexOrThrow("uri"))),
+                            name = c.opt("name"),
+                            language = c.opt("language"),
+                            select = c.getInt(c.getColumnIndexOrThrow("selected")) == 1,
+                            id = c.opt("track_id"),
+                            mimeType = c.opt("mime"),
+                            delayMs = c.optLong("delay_ms"),
+                        )
+                    )
+                }
+            }
+        }
+
+    fun upsertExternalAudio(videoKey: String, audio: ExternalAudio) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (audio.select) {
+                db.update("external_audio", ContentValues().apply { put("selected", 0) }, "video_key = ?", arrayOf(videoKey))
+            }
+            db.insertWithOnConflict(
+                "external_audio",
+                null,
+                ContentValues().apply {
+                    put("video_key", videoKey)
+                    put("uri", audio.uri.toString())
+                    put("name", audio.name)
+                    put("language", audio.language)
+                    put("selected", if (audio.select) 1 else 0)
+                    put("track_id", audio.id)
+                    put("mime", audio.mimeType)
+                    put("delay_ms", audio.delayMs)
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun setExternalAudioSelected(videoKey: String, uri: String?) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.update("external_audio", ContentValues().apply { put("selected", 0) }, "video_key = ?", arrayOf(videoKey))
+            if (uri != null) {
+                db.update(
+                    "external_audio",
                     ContentValues().apply { put("selected", 1) },
                     "video_key = ? AND uri = ?",
                     arrayOf(videoKey, uri),
@@ -172,6 +252,7 @@ class ResumeStore private constructor(context: Context) :
     fun delete(key: String) {
         writableDatabase.delete("history", "key = ?", arrayOf(key))
         writableDatabase.delete("external_subs", "video_key = ?", arrayOf(key))
+        writableDatabase.delete("external_audio", "video_key = ?", arrayOf(key))
         Covers.delete(appContext, key)
         _changes.value++
     }
@@ -179,6 +260,7 @@ class ResumeStore private constructor(context: Context) :
     fun clear() {
         writableDatabase.delete("history", null, null)
         writableDatabase.delete("external_subs", null, null)
+        writableDatabase.delete("external_audio", null, null)
         Covers.clear(appContext)
         _changes.value++
     }
@@ -205,6 +287,18 @@ class ResumeStore private constructor(context: Context) :
 
     private fun Cursor.str(column: String): String? = getString(getColumnIndexOrThrow(column))
 
+    private fun Cursor.opt(column: String): String? {
+        val index = getColumnIndex(column)
+        if (index < 0) return null
+        return getString(index)?.ifBlank { null }
+    }
+
+    private fun Cursor.optLong(column: String): Long {
+        val index = getColumnIndex(column)
+        if (index < 0) return 0
+        return getLong(index)
+    }
+
     private fun createExternalSubs(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -214,14 +308,43 @@ class ResumeStore private constructor(context: Context) :
                 name TEXT,
                 language TEXT,
                 selected INTEGER NOT NULL DEFAULT 0,
+                track_id TEXT,
+                mime TEXT,
+                delay_ms INTEGER NOT NULL DEFAULT 0,
+                charset TEXT,
                 PRIMARY KEY (video_key, uri)
             )
             """.trimIndent()
         )
     }
 
+    private fun createExternalAudio(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS external_audio (
+                video_key TEXT NOT NULL,
+                uri TEXT NOT NULL,
+                name TEXT,
+                language TEXT,
+                selected INTEGER NOT NULL DEFAULT 0,
+                track_id TEXT,
+                mime TEXT,
+                delay_ms INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (video_key, uri)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun addTrackColumns(db: SQLiteDatabase, table: String) {
+        db.execSQL("ALTER TABLE $table ADD COLUMN track_id TEXT")
+        db.execSQL("ALTER TABLE $table ADD COLUMN mime TEXT")
+        db.execSQL("ALTER TABLE $table ADD COLUMN delay_ms INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE $table ADD COLUMN charset TEXT")
+    }
+
     companion object {
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
 
         @Volatile private var instance: ResumeStore? = null
 

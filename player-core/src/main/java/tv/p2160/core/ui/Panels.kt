@@ -108,6 +108,7 @@ class PanelActions(
     val onSelectTrack: (TrackOption) -> Unit,
     val onDisableSubtitles: () -> Unit,
     val onAddSubtitle: () -> Unit,
+    val onAddAudio: () -> Unit = {},
     val onSubtitleDelay: (Long) -> Unit,
     val onSecondarySubtitle: (TrackOption?) -> Unit,
     val onNightMode: (Boolean) -> Unit,
@@ -373,6 +374,9 @@ private fun PanelSlots.populate(
                             onClick = { actions.onSelectTrack(t) },
                             modifier = if (t.selected || i == 0 && state.audioTracks.none { it.selected }) Modifier.focusRequester(focus) else Modifier,
                         )
+                    }
+                    item(key = "add-audio") {
+                        PanelRow(tr("panel.subs_load"), selected = false, onClick = actions.onAddAudio, leading = Icons.Default.UploadFile)
                     }
                 }
 

@@ -28,11 +28,15 @@
 - `startPositionMs = null` - продолжить с истории, если `autoResume` и `PlayerConfig.restoreFromHistory`.
 - `0` - с начала. `liveTv = true` - без истории и без перемотки, каналы по кругу.
 
-`MediaEntry(uri, title, subtitles, mimeType, segments, artworkUri)`.
+`MediaEntry(uri, title, subtitles, mimeType, segments, artworkUri, audio, audioSelect, textSelect)`.
 
-`ExternalSubtitle(uri, name, language, select)`.
+`ExternalSubtitle(uri, name, language, select, id, mimeType, delayMs, charset)`.
 
-`PlaybackResult(uri, positionMs, durationMs, completed)`.
+`ExternalAudio(uri, name, language, select, id, mimeType, delayMs)`.
+
+`PlaybackResult(uri, positionMs, durationMs, completed, audio, text, textOff)`.
+
+`SelectedTrack(id, name, language, external, embeddedIndex, externalIndex)`.
 
 `PlaybackRequest` с пустым `items` до плеера не доходит: `IntentApi.parse` без `data` возвращает `null`.
 
@@ -53,6 +57,7 @@
 | `setSleepAtEndOfItem` / `cancelSleepTimer` | пауза в конце текущего файла |
 | `skip(segment)` | если длительность ещё неизвестна - ничего не делает и не помечает отрезок пропущенным |
 | `addExternalSubtitle` | пересобирает источник (тот же URI видео сам по себе дорожку не добавляет), позицию сохраняет, файл запоминает. Рядом с `content://` папка спрашивается не чаще одного раза |
+| `addExternalAudio` | то же для внешнего аудиофайла: дорожка включается, позиция не сбрасывается |
 | `release()` | сохранить прогресс, снять слушатели, отпустить плеер. Повторный вызов не предусмотрен |
 
 `state: StateFlow<PlayerUiState>` - положение, дорожки, ошибка (`error` - уже локализованная строка),
@@ -65,7 +70,7 @@
 ## `PlayerScreen`
 
 ```kotlin
-PlayerScreen(controller, settingsStore, onBack, onPickSubtitle, inPictureInPicture = false)
+PlayerScreen(controller, settingsStore, onBack, onPickSubtitle, inPictureInPicture = false, onPickAudio = {})
 ```
 
 Сама читает `settings.keepScreenOn` и состояние плеера. Хост отвечает за жизненный цикл контроллера

@@ -76,6 +76,13 @@ class Player2160Activity : ComponentActivity() {
         }
     }
 
+    private val pickAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            SubtitleSupport.persistReadPermission(this, uri)
+            vm.controller?.addExternalAudio(uri)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // До vm.open: контроллер сразу ищет субтитры рядом и может открыть выбор папки.
@@ -95,6 +102,7 @@ class Player2160Activity : ComponentActivity() {
                     settingsStore = PlayerSettings.get(this),
                     onBack = ::finishWithResult,
                     onPickSubtitle = { pickSubtitle.launch(arrayOf("*/*")) },
+                    onPickAudio = { pickAudio.launch(arrayOf("*/*")) },
                     inPictureInPicture = inPip,
                 )
             }

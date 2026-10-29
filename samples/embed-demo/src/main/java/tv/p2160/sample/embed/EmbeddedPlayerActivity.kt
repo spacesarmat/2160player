@@ -77,6 +77,13 @@ class EmbeddedPlayerActivity : ComponentActivity() {
         }
     }
 
+    private val pickAudio = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            SubtitleSupport.persistReadPermission(this, uri)
+            vm.controller?.addExternalAudio(uri)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SubtitleFolders.attach(launchFolder)
@@ -105,6 +112,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
                             settingsStore = Player2160.settings(this@EmbeddedPlayerActivity),
                             onBack = ::finish,
                             onPickSubtitle = { pickSubtitle.launch(arrayOf("*/*")) },
+                            onPickAudio = { pickAudio.launch(arrayOf("*/*")) },
                             inPictureInPicture = inPip,
                         )
                     }

@@ -78,22 +78,35 @@ internal object ContentSidecars {
         return File(root, relative)
     }
 
-    fun namesMatching(base: String, names: Iterable<String>): List<String> =
+    fun namesMatching(
+        base: String,
+        names: Iterable<String>,
+        extensions: Set<String> = SubtitleSupport.EXTENSIONS.toSet(),
+    ): List<String> =
         names.filter { name ->
             val ext = name.substringAfterLast('.', "").lowercase()
-            ext in SubtitleSupport.EXTENSIONS && SubtitleSupport.matchesStem(base, name)
+            ext in extensions && SubtitleSupport.matchesStem(base, name)
         }.sorted()
 
-    fun search(context: Context, videoUri: Uri): Search {
+    fun search(
+        context: Context,
+        videoUri: Uri,
+        extensions: Set<String> = SubtitleSupport.EXTENSIONS.toSet(),
+    ): Search {
         if (!videoUri.scheme.equals("content", true)) return Search(emptyList(), false)
         val base = baseName(context, videoUri) ?: return Search(emptyList(), false)
-        listedOnDisk(context, videoUri)?.let { return Search(it, false) }
-        listedInGrantedTrees(context, videoUri, base)?.let { return Search(it, false) }
+        listedOnDisk(context, videoUri, extensions)?.let { return Search(it, false) }
+        listedInGrantedTrees(context, videoUri, base, extensions)?.let { return Search(it, false) }
         val key = folderKey(videoUri) ?: return Search(emptyList(), false)
         return Search(emptyList(), !SubtitleFolderMemory.wasAsked(context, key))
     }
 
-    fun listTree(context: Context, videoUri: Uri, treeUri: Uri): List<Hit> {
+    fun listTree(
+        context: Context,
+        videoUri: Uri,
+        treeUri: Uri,
+        extensions: Set<String> = SubtitleSupport.EXTENSIONS.toSet(),
+    ): List<Hit> {
         val base = baseName(context, videoUri) ?: return emptyList()
         val treeId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return emptyList()
         val parent = parentDocumentId(documentId(videoUri).orEmpty())
@@ -102,7 +115,15 @@ internal object ContentSidecars {
             parent == null -> treeId
             else -> return emptyList()
         }
-        return queryChildren(context, treeUri, directoryId, base) ?: emptyList()
+        return queryChildren(context, treeUri, directoryId, base, extensions) ?: emptyList()
+    }
+
+    /** Файл на диске для `content://`, если путь читается. Иначе null. */
+    internal fun diskFile(context: Context, videoUri: Uri): File? {
+        if (!videoUri.scheme.equals("content", true)) return null
+        val id = documentId(videoUri)
+        return id?.let { storageFile(it, primaryRoot(context)) { volumeRoot(context, it) } }
+            ?: mediaStoreFile(context, videoUri)
     }
 
     fun treeIntent(videoUri: Uri, prompt: String): android.content.Intent {
@@ -136,16 +157,13 @@ internal object ContentSidecars {
         return display.substring(0, dot)
     }
 
-    private fun listedOnDisk(context: Context, videoUri: Uri): List<Hit>? {
-        val id = documentId(videoUri)
-        val file = id?.let { storageFile(it, primaryRoot(context)) { volumeRoot(context, it) } }
-            ?: mediaStoreFile(context, videoUri)
-            ?: return null
-        val files = SubtitleSupport.listNextTo(file) ?: return null
+    private fun listedOnDisk(context: Context, videoUri: Uri, extensions: Set<String>): List<Hit>? {
+        val file = diskFile(context, videoUri) ?: return null
+        val files = SubtitleSupport.listNextTo(file, extensions) ?: return null
         return files.map { Hit(Uri.fromFile(it), it.name) }
     }
 
-    private fun listedInGrantedTrees(context: Context, videoUri: Uri, base: String): List<Hit>? {
+    private fun listedInGrantedTrees(context: Context, videoUri: Uri, base: String, extensions: Set<String>): List<Hit>? {
         val id = documentId(videoUri) ?: return null
         val parent = parentDocumentId(id) ?: return null
         var saw = false
@@ -156,7 +174,7 @@ internal object ContentSidecars {
             if (!DocumentsContract.isTreeUri(treeUri)) continue
             val treeId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: continue
             if (!treeCovers(treeId, parent)) continue
-            val children = queryChildren(context, treeUri, parent, base) ?: continue
+            val children = queryChildren(context, treeUri, parent, base, extensions) ?: continue
             saw = true
             found = children
             if (children.isNotEmpty()) return children
@@ -164,7 +182,13 @@ internal object ContentSidecars {
         return if (saw) found else null
     }
 
-    private fun queryChildren(context: Context, treeUri: Uri, directoryId: String, base: String): List<Hit>? {
+    private fun queryChildren(
+        context: Context,
+        treeUri: Uri,
+        directoryId: String,
+        base: String,
+        extensions: Set<String>,
+    ): List<Hit>? {
         val children = runCatching { DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, directoryId) }.getOrNull()
             ?: return null
         return runCatching {
@@ -186,7 +210,7 @@ internal object ContentSidecars {
                         val mime = if (mimeCol >= 0) cursor.getString(mimeCol) else null
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) continue
                         val name = cursor.getString(nameCol) ?: continue
-                        if (namesMatching(base, listOf(name)).isEmpty()) continue
+                        if (namesMatching(base, listOf(name), extensions).isEmpty()) continue
                         val docId = cursor.getString(idCol) ?: continue
                         val child = runCatching { DocumentsContract.buildDocumentUriUsingTree(treeUri, docId) }.getOrNull() ?: continue
                         add(Hit(child, name))

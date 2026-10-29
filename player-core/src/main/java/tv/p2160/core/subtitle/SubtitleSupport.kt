@@ -128,7 +128,13 @@ object SubtitleSupport {
      * провайдера не обязано доживать до потока загрузки плеера.
      * Уже UTF-8 тоже копируется. Если прочитать нельзя, берётся прежняя копия, иначе исходный URI.
      */
-    suspend fun normalize(context: Context, uri: Uri, headers: Map<String, String>, name: String? = null): Uri =
+    suspend fun normalize(
+        context: Context,
+        uri: Uri,
+        headers: Map<String, String>,
+        name: String? = null,
+        charset: String? = null,
+    ): Uri =
         withContext(Dispatchers.IO) {
             val cached = existingCache(context, uri)
             runCatching {
@@ -141,9 +147,10 @@ object SubtitleSupport {
                 val ext = mimeForName(resolvedName)?.let { extensionForMime(it) }
                     ?: resolvedName.substringAfterLast('.', "").lowercase().takeIf { it in EXTENSIONS }
                     ?: extensionForMime(mime)
+                val text = if (!charset.isNullOrBlank()) decodeCharset(bytes, charset) ?: toUnicode(bytes) else toUnicode(bytes)
                 val dir = File(context.cacheDir, "subtitles").apply { mkdirs() }
                 val file = File(dir, "${sha1(uri.toString())}.$ext")
-                file.writeText(toUnicode(bytes), Charsets.UTF_8)
+                file.writeText(text, Charsets.UTF_8)
                 Uri.fromFile(file)
             }.getOrElse { error ->
                 Log.w(LOG_TAG, "subtitle normalize failed: $uri", error)
@@ -187,13 +194,14 @@ object SubtitleSupport {
         return listNextTo(video).orEmpty().map { Uri.fromFile(it) }
     }
 
-    /** null - каталог не прочитать. Пустой список - прочитан, подходящих субтитров нет. */
-    internal fun listNextTo(video: File): List<File>? {
+    /** null - каталог не прочитать. Пустой список - прочитан, подходящих файлов нет. */
+    internal fun listNextTo(video: File, extensions: Collection<String> = EXTENSIONS): List<File>? {
         val dir = video.parentFile ?: return null
         val files = dir.listFiles() ?: return null
         val base = video.nameWithoutExtension
+        val allowed = extensions.map { it.lowercase() }.toSet()
         return files
-            .filter { it.isFile && it.extension.lowercase() in EXTENSIONS && matchesStem(base, it.name) }
+            .filter { it.isFile && it.extension.lowercase() in allowed && matchesStem(base, it.name) }
             .sortedBy { it.name }
     }
 
@@ -231,6 +239,12 @@ object SubtitleSupport {
             }
             else -> context.contentResolver.openInputStream(uri)?.use { it.readNBytesCompat(limit) }
         }
+    }
+
+    /** Текст в заданной кодировке. null - имя кодировки неизвестно. BOM в начале снимается. */
+    internal fun decodeCharset(bytes: ByteArray, charset: String): String? {
+        val decoded = runCatching { Charset.forName(charset.trim()) }.getOrNull() ?: return null
+        return String(bytes, decoded).removePrefix("\uFEFF")
     }
 
     /** null - перекодирование не требуется (уже UTF-8/UTF-16 с BOM). */

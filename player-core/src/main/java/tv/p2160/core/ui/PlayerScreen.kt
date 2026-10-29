@@ -136,6 +136,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onPickSubtitle: () -> Unit,
     inPictureInPicture: Boolean = false,
+    onPickAudio: () -> Unit = {},
 ) {
     // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель читает снимок без них.
     // У derivedStateOf без политики любое новое значение - изменение, поэтому сравнение по полям
@@ -169,12 +170,14 @@ fun PlayerScreen(
     // PanelActions нестабилен, а strong skipping сравнивает такие параметры по ссылке.
     // Один экземпляр на сеанс; меняющиеся лямбды - через rememberUpdatedState.
     val pickSubtitle = rememberUpdatedState(onPickSubtitle)
+    val pickAudio = rememberUpdatedState(onPickAudio)
     val resizeAction = rememberUpdatedState<(ResizeMode) -> Unit> { changeResize(it) }
     val panelActions = remember(controller, settingsStore) {
         PanelActions(
             onSelectTrack = controller::select,
             onDisableSubtitles = controller::disableSubtitles,
             onAddSubtitle = { panelState.value = null; pickSubtitle.value() },
+            onAddAudio = { panelState.value = null; pickAudio.value() },
             onSubtitleDelay = controller::setSubtitleDelay,
             onSecondarySubtitle = controller::setSecondarySubtitle,
             onNightMode = controller::setNightMode,

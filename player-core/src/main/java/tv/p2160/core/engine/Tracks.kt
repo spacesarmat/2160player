@@ -26,6 +26,21 @@ data class TrackOption(
 
 internal const val EXTERNAL_SUB_PREFIX = "ext:"
 
+/** Внешнее аудио. Не совпадает с [EXTERNAL_SUB_PREFIX]: у субтитров префикс `ext:`. */
+internal const val EXTERNAL_AUDIO_PREFIX = "exta:"
+
+internal fun isExternalFormat(id: String?): Boolean =
+    id?.contains(EXTERNAL_AUDIO_PREFIX) == true || id?.contains(EXTERNAL_SUB_PREFIX) == true
+
+/** Индекс внешнего аудио в списке элемента. `exta:2` и `1:exta:2#0` - это 2. */
+internal fun externalAudioIndex(formatId: String?): Int? {
+    if (formatId == null) return null
+    val at = formatId.indexOf(EXTERNAL_AUDIO_PREFIX)
+    if (at < 0) return null
+    val digits = formatId.substring(at + EXTERNAL_AUDIO_PREFIX.length).takeWhile { it.isDigit() }
+    return digits.toIntOrNull()
+}
+
 @OptIn(UnstableApi::class)
 internal object TrackLabels {
 
@@ -57,7 +72,7 @@ internal object TrackLabels {
                         rawLabel = f.label,
                         selected = group.isTrackSelected(i),
                         supported = group.isTrackSupported(i, /* allowExceedsCapabilities = */ true),
-                        external = f.id?.contains(EXTERNAL_SUB_PREFIX) == true,
+                        external = isExternalFormat(f.id),
                         formatId = f.id,
                     )
                 )
@@ -75,6 +90,7 @@ internal object TrackLabels {
                 name?.let(parts::add)
                 audioCodec(f)?.let(parts::add)
                 channels(f.channelCount, strings)?.let(parts::add)
+                if (f.id?.contains(EXTERNAL_AUDIO_PREFIX) == true) parts += strings["track.external"]
             }
             C.TRACK_TYPE_TEXT -> {
                 lang?.let(parts::add)

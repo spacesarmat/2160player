@@ -32,6 +32,7 @@ import androidx.lifecycle.AndroidViewModel
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.Player2160
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.subtitle.SubtitleFolders
 import tv.p2160.core.subtitle.SubtitleSupport
 import tv.p2160.core.ui.PlayerScreen
 
@@ -64,6 +65,11 @@ class EmbeddedPlayerActivity : ComponentActivity() {
     private var inPip by mutableStateOf(false)
 
     // Кнопка «Загрузить из файла…» в панели субтитров вызывает onPickSubtitle - выбор файла за нами.
+    private val pickFolder = registerForActivityResult(SubtitleFolders.Contract()) { uri ->
+        SubtitleFolders.deliver(uri)
+    }
+    private val launchFolder: (Intent) -> Unit = { pickFolder.launch(it) }
+
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             SubtitleSupport.persistReadPermission(this, uri)
@@ -73,6 +79,7 @@ class EmbeddedPlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SubtitleFolders.attach(launchFolder)
         if (vm.controller == null) {
             val uri = intent.data ?: run { finish(); return }
             vm.open(PlaybackRequest.single(uri, intent.getStringExtra(EXTRA_TITLE)))
@@ -126,6 +133,11 @@ class EmbeddedPlayerActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
+    }
+
+    override fun onDestroy() {
+        SubtitleFolders.detach(launchFolder)
+        super.onDestroy()
     }
 
     override fun onStart() {

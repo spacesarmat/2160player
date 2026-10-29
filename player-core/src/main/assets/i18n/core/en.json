@@ -29,6 +29,7 @@
   "player.continue_from": "Continue from %1$s",
   "player.up_next": "Up next",
   "player.pick_subtitle": "Choose subtitle file",
+  "player.subs_folder": "Open this video's folder once. The player remembers it and finds subtitles next to the file.",
   "panel.no_audio": "No audio tracks",
   "panel.subs_off": "Off",
   "panel.subs_load": "Load from file…",

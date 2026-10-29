@@ -16,8 +16,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
+import android.content.Intent
+import android.provider.DocumentsContract
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.resume.ResumeStore
+import tv.p2160.core.subtitle.ContentSidecars
+import tv.p2160.core.subtitle.SubtitleFolderMemory
 import tv.p2160.core.subtitle.SubtitleSupport
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -81,6 +85,68 @@ class ExternalSubtitleTest {
         val found = SubtitleSupport.findSidecars(context, Uri.fromFile(video)).map { it.lastPathSegment!! }
         assertEquals(listOf("Tears of Steel.en.srt", "Tears of Steel.ru.srt"), found.sorted())
         assertTrue(SubtitleSupport.findSidecars(context, Uri.parse("content://downloads/document/msf:1")).isEmpty())
+    }
+
+    @Test
+    fun documentParentAndTreeCover() {
+        assertEquals("primary:Download", ContentSidecars.parentDocumentId("primary:Download/Tears of Steel.mp4"))
+        assertEquals(null, ContentSidecars.parentDocumentId("msf:100"))
+        assertTrue(ContentSidecars.treeCovers("primary:Download", "primary:Download/Tears of Steel.mp4"))
+        assertTrue(ContentSidecars.treeCovers("primary:", "primary:Download/Tears of Steel.mp4"))
+        assertFalse(ContentSidecars.treeCovers("primary:Movies", "primary:Download/Tears of Steel.mp4"))
+        assertEquals(
+            listOf("Tears of Steel.en.SRT", "Tears of Steel.ru.srt"),
+            ContentSidecars.namesMatching(
+                "Tears of Steel",
+                listOf("Tears of Steel.ru.srt", "Tears of Steel2.srt", "Tears of Steel.en.SRT", "notes.txt"),
+            ),
+        )
+    }
+
+    @Test
+    fun contentUriOnAReadableDirectoryFindsSidecarsWithoutAsking() {
+        val context = RuntimeEnvironment.getApplication()
+        val root = File(context.cacheDir, "ext-root").apply { mkdirs() }
+        val previous = ContentSidecars.primaryRoot
+        ContentSidecars.primaryRoot = { root }
+        try {
+            val dir = File(root, "Download").apply { mkdirs() }
+            File(dir, "Tears of Steel.mp4").writeBytes(byteArrayOf(0))
+            File(dir, "Tears of Steel.ru.srt").writeText("ru")
+            File(dir, "Tears of Steel.en.ass").writeText("en")
+            File(dir, "Tears of Steel2.srt").writeText("no")
+            val uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload%2FTears%20of%20Steel.mp4")
+            val search = ContentSidecars.search(context, uri)
+            assertFalse(search.askForFolder)
+            assertEquals(listOf("Tears of Steel.en.ass", "Tears of Steel.ru.srt"), search.hits.map { it.name })
+            val file = ContentSidecars.storageFile("primary:Download/Tears of Steel.mp4", root)
+            assertEquals(File(dir, "Tears of Steel.mp4"), file)
+        } finally {
+            ContentSidecars.primaryRoot = previous
+        }
+    }
+
+    @Test
+    fun folderIsAskedOnceWhenTheDirectoryCannotBeListed() {
+        val context = RuntimeEnvironment.getApplication()
+        val root = File(context.cacheDir, "ext-missing").apply { mkdirs() }
+        val previous = ContentSidecars.primaryRoot
+        ContentSidecars.primaryRoot = { root }
+        try {
+            val uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload%2FTears%20of%20Steel.mp4")
+            val key = ContentSidecars.folderKey(uri)
+            assertEquals("com.android.externalstorage.documents|primary:Download", key)
+            assertTrue(ContentSidecars.search(context, uri).askForFolder)
+            SubtitleFolderMemory.markAsked(context, key!!)
+            assertFalse(ContentSidecars.search(context, uri).askForFolder)
+            val intent = ContentSidecars.treeIntent(uri, "Open the folder")
+            assertEquals(Intent.ACTION_OPEN_DOCUMENT_TREE, intent.action)
+            assertEquals("Open the folder", intent.getStringExtra(DocumentsContract.EXTRA_PROMPT))
+            val initial = intent.getParcelableExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri::class.java)
+            assertEquals("primary:Download", DocumentsContract.getDocumentId(initial))
+        } finally {
+            ContentSidecars.primaryRoot = previous
+        }
     }
 
     @Test

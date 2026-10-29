@@ -62,6 +62,8 @@ import tv.p2160.core.resume.ResumeEntry
 import tv.p2160.core.resume.Covers
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.PlayerSettings
+import tv.p2160.core.subtitle.ContentSidecars
+import tv.p2160.core.subtitle.SubtitleFolders
 import tv.p2160.core.subtitle.SubtitleSupport
 
 data class PlayerUiState(
@@ -1573,10 +1575,7 @@ class PlayerController(
         val includeSidecars = !sidecarsScanned[index] && entry.subtitles.isEmpty()
         val sidecars = if (includeSidecars) {
             sidecarsScanned[index] = true
-            withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.map { uri ->
-                val name = uri.lastPathSegment
-                ExternalSubtitle(uri, name, SubtitleSupport.languageFromName(name))
-            }
+            discoverSidecars(entry.uri)
         } else emptyList()
         val merged = SubtitleSupport.mergeExternal(external, remembered, sidecars, includeSidecars)
         if (merged != external) {
@@ -1612,6 +1611,25 @@ class PlayerController(
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
         if (request.liveTv) builder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
         return builder.build()
+    }
+
+    /**
+     * Субтитры рядом с файлом. Для `content://` без читаемого каталога один раз спрашивает папку
+     * ([SubtitleFolders]): повторный запуск того же ролика диалог не открывает.
+     */
+    private suspend fun discoverSidecars(uri: Uri): List<ExternalSubtitle> {
+        if (uri.scheme.equals("content", true)) {
+            val search = withContext(Dispatchers.IO) { ContentSidecars.search(appContext, uri) }
+            val hits = if (!search.askForFolder) search.hits else {
+                val tree = SubtitleFolders.request(appContext, uri)
+                if (tree == null) emptyList() else withContext(Dispatchers.IO) { ContentSidecars.listTree(appContext, uri, tree) }
+            }
+            return hits.map { ExternalSubtitle(it.uri, it.name, SubtitleSupport.languageFromName(it.name)) }
+        }
+        return withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, uri) }.map { found ->
+            val name = found.lastPathSegment?.substringAfterLast('/')
+            ExternalSubtitle(found, name, SubtitleSupport.languageFromName(name))
+        }
     }
 
     private fun externalId(index: Int, sub: ExternalSubtitle): String =

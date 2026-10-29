@@ -174,20 +174,27 @@ object SubtitleSupport {
     }
 
     /**
-     * Ищет субтитры рядом с локальным видео: `Movie.mkv` → `Movie.srt`, `Movie.ru.srt`…
-     * `content://` из выбора документа не даёт список каталога, поэтому рядом ничего не находится.
-     * Такой файл подключают вручную, и он запоминается для этого URI.
+     * Ищет субтитры рядом с видео: `Movie.mkv` → `Movie.srt`, `Movie.ru.srt`…
+     * `file://` и `smb://` читают каталог напрямую. `content://` - если путь на диске
+     * удаётся прочитать или папка уже разрешена деревом SAF. Иначе пусто: запрос папки
+     * делает [SubtitleFolders], не этот метод.
      */
     fun findSidecars(context: Context, videoUri: Uri): List<Uri> {
         if (videoUri.scheme == "smb") return findSmbSidecars(context, videoUri)
+        if (videoUri.scheme == "content") return ContentSidecars.search(context, videoUri).hits.map { it.uri }
         if (videoUri.scheme != "file") return emptyList()
         val video = File(videoUri.path ?: return emptyList())
+        return listNextTo(video).orEmpty().map { Uri.fromFile(it) }
+    }
+
+    /** null - каталог не прочитать. Пустой список - прочитан, подходящих субтитров нет. */
+    internal fun listNextTo(video: File): List<File>? {
+        val dir = video.parentFile ?: return null
+        val files = dir.listFiles() ?: return null
         val base = video.nameWithoutExtension
-        val dir = video.parentFile ?: return emptyList()
-        return dir.listFiles().orEmpty()
+        return files
             .filter { it.isFile && it.extension.lowercase() in EXTENSIONS && matchesStem(base, it.name) }
             .sortedBy { it.name }
-            .map { Uri.fromFile(it) }
     }
 
     private fun findSmbSidecars(context: Context, videoUri: Uri): List<Uri> = runCatching {

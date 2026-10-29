@@ -29,6 +29,7 @@
   "player.continue_from": "Продолжить с %1$s",
   "player.up_next": "Далее",
   "player.pick_subtitle": "Выберите файл субтитров",
+  "player.subs_folder": "Откройте папку с этим видео один раз: плеер запомнит её и найдёт субтитры рядом.",
   "panel.no_audio": "Нет аудиодорожек",
   "panel.subs_off": "Выключены",
   "panel.subs_load": "Загрузить из файла…",

@@ -1,68 +1,138 @@
 # 2160 Player
 
-Медиаплеер для Android-телефонов и Android TV на Media3 (ExoPlayer) + FFmpeg с интерфейсом на
-Jetpack Compose. Играет почти всё - от IPTV-потоков до образов Blu-ray с домашнего NAS по SMB.
-Ядро плеера (`player-core`) - отдельная библиотека, которую можно встроить в своё приложение
-или вызывать из любого приложения через Intent (совместимо с MX Player и VLC).
+Медиаплеер для Android-телефонов и Android TV на Media3 (ExoPlayer) и FFmpeg, интерфейс на Jetpack Compose.
+Играет локальные файлы, сетевые потоки, IPTV, папки SMB и DLNA, торренты и образы Blu-ray.
+Ядро `player-core` можно встроить в своё приложение или вызвать через Intent из программ, которые уже открывают MX Player или VLC.
 
-*English summary - [below](#english).*
+[![Release](https://img.shields.io/github/v/release/spacesarmat/2160player)](https://github.com/spacesarmat/2160player/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/spacesarmat/2160player/total)](https://github.com/spacesarmat/2160player/releases)
+[![License: GPL v3](https://img.shields.io/github/license/spacesarmat/2160player)](LICENSE)
+[![minSdk 24](https://img.shields.io/badge/minSdk-24-3DDC84?logo=android&logoColor=white)](docs/wiki/Setup.md)
+[![Android TV](https://img.shields.io/badge/Android%20TV-supported-607D8B?logo=androidtv&logoColor=white)](docs/wiki/Setup.md)
 
-## Возможности
+*English summary: [below](#english).*
 
-- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MP3 и MPEG-1/2 там, где устройство их не умеет. MPEG-4 Part 2 (XviD/DivX) играет программный MediaCodec устройства, если поток ему подходит. MS-MPEG4 (`DIV3`/`DIV4`) открывается как `video/divx3` и пробует декодеры `divx3` и `video/mp43`. Если компонент из списка устройства создать нельзя и программного декодера нет, показывается ошибка с именем кодека, а не один звук. В «Авто» это «На этом устройстве нет декодера для …»; про режим FFmpeg текст говорит, только если выбран он. Для MPEG-4 с GMC текст отдельный: декодер есть, но GMC не поддерживает. Длительность AVI берётся из video `strh`, а не из завышенного `avih`. Файл `RIFF....AVI ` не отдаётся экстрактору MP3. Вшитый FFmpeg не содержит декодеры MPEG-4, MS-MPEG4, H.263, WMV и VC-1: тогда ошибка с именем кодека, а не звук без картинки. В AVI время MP3 берётся из кадров, а не из куска контейнера. Passthrough на ресивер.
-- **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок; **DLNA/UPnP**-серверы (Jellyfin, Plex, Kodi, NAS) с автопоиском в сети.
-- **IPTV:** M3U-плейлисты с группами и логотипами, телегид XMLTV, режим эфира (без перемотки, текущая передача под названием канала).
-- **Торренты:** magnet-ссылки и `.torrent`-файлы, просмотр во время загрузки (libtorrent), выбор файла из раздачи, остановка и продолжение раздач (свайпом влево/вправо или кнопкой); состояние раздачи видно по цвету и метке («Качается», «Раздаётся», «Остановлена»…), со скоростью, пирами и прогрессом. Настройки раздач: сеть («Везде», «Раздача по Wi-Fi» - по умолчанию,
-  «Только Wi-Fi» с вопросом перед просмотром по мобильному интернету), сколько раздавать скачанное (всегда / до 1:1 /
-  24 часа / не раздавать), раздача только на зарядке и ограничение загрузки по мобильному интернету.
-- **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) - автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
-- **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео (`file://` и SMB), загрузка из файла (в том числе `content://` из системного выбора), сразу на экран и снова при следующем открытии этого файла, задержка, стиль, **двойные субтитры**.
-- **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
-- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению (`end_by` и `tv.p2160.extra.WATCHED`, позиция Long). Файл, досмотренный до конца, в следующий раз открывается с начала. Недосмотренный спрашивает «Продолжить с …» или «С начала»; пока вопрос на экране, карточка «Далее» скрыта, Назад продолжает с места. В списках файлов у просмотренного галочка, у недосмотренного полоска.
-- **Конец файла:** плейлист через 5 с переходит к следующему (Назад или «Отмена» останавливают отсчёт). За 15 с до конца в углу карточка «Далее» с обложкой и «Смотреть сейчас», фокус сама не берёт. Назад на отсчёте следующей серии его снимает и плеер не закрывает. Назад на ошибке декодера закрывает плеер, как «Закрыть». Один файл: «Смотреть снова» и «Закрыть». Последний в плейлисте: «Плейлист завершён» и возврат в папку. Настройка «По окончании» и заставка через 3 минуты паузы. Прямой эфир это не трогает.
-- **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
-- **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
-- **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне - щипком двумя пальцами.
-- **Камеры в сети и приём потоков:** телефоны с 2160 Player, которые транслируют камеру, видны на главном экране других устройств (подключение - по разрешению или коду); открываются и `rtsp://`, HLS и `udp://` (MPEG-TS) с низкой задержкой.
-- **Трансляция камеры и экрана:** телефон отдаёт видео с выбранной камеры (задняя, широкоугольная, телевик, фронтальная) или свой экран - со звуком микрофона и/или телефона со звуком: RTSP-сервер на телефоне (OBS, VLC, другой 2160 Player), SRT прямо в OBS, NDI® (OBS с DistroAV, vMix) или RTMP на YouTube/Twitch; режимы (до 4K и 60 fps) - по возможностям камеры и кодировщика телефона, вертикальное или горизонтальное видео - как держите телефон, фонарик, фокус касанием и зум, задержка ~0,5 с (NDI - ~0,1 с; переключатель «Минимальная задержка» укорачивает очереди), работает со свёрнутым приложением; только по Wi-Fi/LAN/точке доступа - мобильный интернет не используется. Пароль RTSP - отдельный на каждую трансляцию, не код сопряжения; сопряжённый 2160 Player берёт его сам, VLC и OBS - с экрана.
-- **Экономный движок:** аппаратные декодеры в приоритете, буфер по памяти устройства, звук без видео - через аудиочип (offload), частота экрана под видео на ТВ (23,976/24/25/50 Гц), туннельный режим для Android TV и «Статистика поверх видео» (декодеры, пропущенные кадры, буфер, сеть, процессор, память).
-- **«Продолжить просмотр» целиком:** нажмите на заголовок раздела на главном экране - откроется список всего недосмотренного.
-- **Обложки в «Продолжить просмотр» и истории:** встроенные в файл, от DLNA-сервера или рядом с файлом (`poster.jpg`, `folder.jpg`, `<имя>-thumb.jpg`, постер сериала из папки выше сезона).
-- **Таймер сна** (через 15–120 минут или в конце серии, с плавным затиханием) и **задержка звука** для отстающих Bluetooth-наушников и саундбаров.
-- **Экран не гаснет во время просмотра** (включено по умолчанию, Настройки → Воспроизведение): пока идёт видео или прямой эфир, в том числе при подгрузке. На паузе, в конце и после выхода экран снова может погаснуть. Музыка без картинки экран не держит.
-- **Справка и FAQ** прямо в приложении (Настройки → О приложении): ответы на частые вопросы и ссылка, куда сообщить об ошибке.
-- **Поделиться приложением без интернета:** файлом (Quick Share, Bluetooth, Telegram) или по Wi-Fi с QR-кодом - второе устройство скачает приложение прямо с первого.
-- **Умный выбор дорожек:** плеер запоминает ручной выбор озвучки и субтитров - отдельно для сериала и для набора языков (аниме - японский с субтитрами, фильмы - дубляж).
-- **Ночной звук:** сжатие динамики и громкие диалоги, по расписанию (по умолчанию 23:00–10:00), настраивается прямо в плеере. В панели «Аудио» это переключатели, не галочки. Кнопка-рамка сверху открывает масштаб и качество и сама картинку не меняет.
-- **Определение вступления** по звуку между сериями, **информация о файле** (кодеки, HDR, битрейт), превью при перемотке с пульта.
-- **Продолжить на другом устройстве:** передача просмотра между телефоном и ТВ в одной сети Wi-Fi с той же позиции; на исходном устройстве - пауза. Если в сети несколько плееров - защита: новое устройство подключается один раз - кнопкой «Разрешить» в уведомлении или по коду (на сутки или свой, новый свой - от 6 цифр). На ТВ по умолчанию выбрано «Отклонить», код показан для сверки.
-- **Фоновое воспроизведение:** уведомление с управлением, экран блокировки, гарнитура и Bluetooth; что делать при сворачивании - настраивается: картинка в картинке, звук видео в фоне, музыка в фоне или пауза.
-- **Dolby Vision** на устройствах без декодера (профиль 7 из UHD-ремуксов) играет базовым слоем HDR10, а не теряет картинку.
-- **Автообновление** из GitHub Releases: проверка при запуске (можно выключить в настройках), загрузка APK под архитектуру устройства, установка в пару нажатий. Если GitHub ограничивает запросы к API, проверка читает тег со страницы релиза и пишет, через сколько минут повторить.
-- **6 тем** оформления, **локализация** JSON-пакетами (ru, en) с импортом пользовательских переводов.
+## Скачать
 
-## Установка
+APK берётся из [последнего релиза](https://github.com/spacesarmat/2160player/releases/latest).
 
-Скачайте APK из [последнего релиза](https://github.com/spacesarmat/2160player/releases/latest):
-`arm` - подходит любому телефону и ТВ (рекомендуется; этот же файл потом можно передать другим через
-«Поделиться приложением»), `arm64-v8a` / `armeabi-v7a` - поменьше, только под одну архитектуру,
-`universal` - если не уверены. Дальше приложение обновляется само (Настройки → Обновления).
+| Файл | Кому |
+|---|---|
+| `arm` | Любой телефон и ТВ на ARM. Этот файл рекомендуется: его же можно отдать другому устройству через «Поделиться приложением». |
+| `arm64-v8a`, `armeabi-v7a` | Меньше по размеру, только одна архитектура. |
+| `universal` | Если архитектура неизвестна, в том числе x86. |
+
+Дальше приложение обновляется само: Настройки → Обновления.
 
 ## Скриншоты
 
-<!-- TODO: добавить скриншоты в docs/images/ -->
+**Телефон (POCO X5)**
 
-| Телефон | Android TV |
-|---|---|
-| _скоро_ | _скоро_ |
+<p>
+<img src="docs/images/phone-home-top.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера" width="300">
+<img src="docs/images/phone-player-portrait.webp" alt="Плеер на телефоне вертикально" width="220">
+<img src="docs/images/phone-settings.webp" alt="Настройки: язык, тема, субтитры" width="220">
+</p>
+<p>
+<img src="docs/images/phone-player-landscape.webp" alt="Плеер на телефоне горизонтально" width="460">
+<img src="docs/images/phone-player-subtitles.webp" alt="Панель субтитров: задержка и размер" width="460">
+</p>
 
-## Документация
+**Android TV (Dune HD 4K Solo)**
 
-- [docs/EMBEDDING.md](docs/EMBEDDING.md) - встраивание за 5 минут: подключение (модуль, `includeBuild`, mavenLocal, GitHub Packages), запуск, свой экран.
-- [docs/API.md](docs/API.md) - полный справочник: Intent API, `Player2160`, `PlayerController`, `PlayerScreen`, настройки движка (`PlayerConfig`: буфер, тайм-ауты, фоновая работа), фоновое воспроизведение, история, SMB, DLNA, IPTV, торренты, отрезки, локализация, Blu-ray, ограничения.
-- [samples/embed-demo](samples/embed-demo) - пример приложения-хоста.
+<p>
+<img src="docs/images/tv-player.webp" alt="Плеер на ТВ, фокус пульта на паузе" width="440">
+<img src="docs/images/tv-player-audio.webp" alt="Панель звука: ночной звук и выбор дорожки" width="440">
+<img src="docs/images/tv-player-resume.webp" alt="Вопрос: продолжить просмотр или с начала" width="440">
+<img src="docs/images/tv-settings.webp" alt="Настройки воспроизведения, фокус на шаге перемотки" width="440">
+</p>
 
-Короткий пример:
+Кадры видео в плеере: Tears of Steel и Sintel, Blender Foundation, CC-BY 3.0 (mango.blender.org, durian.blender.org).
+
+## Возможности
+
+### Форматы и декодеры
+
+- Контейнеры: MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и другие.
+- FFmpeg там, где устройство не умеет: DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MP3, MPEG-1/2. Passthrough на ресивер.
+- Dolby Vision профиля 7 без своего декодера играет базовым слоем HDR10.
+- В плеере есть сведения о файле: кодеки, HDR, битрейт.
+- Аппаратные декодеры в приоритете. Буфер подбирается по памяти устройства. Звук без видео может идти через аудиочип (offload).
+- На ТВ частота экрана подстраивается под видео (23,976/24/25/50 Гц), есть туннельный режим. Статистика поверх видео: декодеры, пропущенные кадры, буфер, сеть, процессор, память.
+
+Подробности AVI, запасного декодера и текстов ошибок: [Форматы и декодеры](docs/wiki/Formats.md).
+
+### Сеть и источники
+
+- HLS, DASH, SmoothStreaming, RTSP и HTTP(S) с заголовками запроса.
+- SMB 2/3: сохранённые серверы и обзор папок.
+- DLNA/UPnP с автопоиском (Jellyfin, Plex, Kodi, NAS).
+- IPTV: плейлисты M3U с группами и логотипами, телегид XMLTV, режим эфира без перемотки. Текущая передача показывается под названием канала.
+- Торренты: magnet и `.torrent`, просмотр во время загрузки (libtorrent), выбор файла из раздачи.
+- Раздачу можно остановить и продолжить свайпом или кнопкой. Цвет и метка показывают состояние («Качается», «Раздаётся», «Остановлена»), рядом скорость, пиры и прогресс.
+- Сеть торрентов: «Везде», «Раздача по Wi-Fi» (по умолчанию), «Только Wi-Fi» с вопросом перед просмотром по мобильному интернету.
+- Сколько раздавать: всегда, до 1:1, 24 часа или не раздавать. Можно только на зарядке и ограничить загрузку по мобильной сети.
+- Blu-ray: образы `.iso` и папки `BDMV` (файлы, SMB, HTTP). Основной фильм выбирается сам, с диска берутся главы и языки дорожек.
+- Дорожки M2TS: TrueHD, LPCM, DTS-HD MA, PGS.
+
+Протокол источников: [Источники](docs/wiki/Sources.md).
+
+### Просмотр
+
+- Субтитры: внешние SRT, ASS, VTT, TTML, своя кодировка, автопоиск рядом с видео, задержка, стиль, двойные субтитры.
+- Главы и пропуск вступления, пересказа и титров: из глав, из Intent или ручные отметки на весь сериал. Кнопка или автопропуск, карточка «Следующая серия».
+- Вступление между сериями можно найти по звуку.
+- Продолжение с места, с дорожками, скоростью и задержкой субтитров. Досмотренное в следующий раз открывается с начала.
+- Заголовок «Продолжить просмотр» открывает весь список недосмотренного. Обложки берутся из файла, с DLNA или из картинок рядом.
+- В конце плейлист переходит к следующему, один файл предлагает посмотреть снова. Эфир это не трогает.
+- Ночной звук (сжатие динамики и громкие диалоги) вручную или по расписанию, по умолчанию 23:00-10:00.
+- Таймер сна: 15-120 минут или конец серии, с плавным затиханием. Отдельная задержка звука для Bluetooth и саундбаров.
+- Плеер запоминает ручной выбор озвучки и субтитров: отдельно для сериала и для набора языков.
+- Масштаб: целиком, по ширине, по высоте, заполнить с обрезкой, растянуть. На телефоне - щипок двумя пальцами.
+
+Поведение «Назад», вопрос «Продолжить с …», карточка «Далее» и настройка «По окончании»: [Просмотр](docs/wiki/Playback.md).
+
+### Телефон и ТВ
+
+- Жесты на телефоне, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, картинка в картинке.
+- Свой обзор файлов для Android TV и приставок без системного выбора: внутренняя память, USB, карты памяти, папки Blu-ray и ISO, плейлист папки для «Следующей серии».
+- Просмотр можно передать на другой 2160 Player в той же сети Wi-Fi с той же позиции. На исходном устройстве ставится пауза.
+- Новое устройство в сети подтверждается один раз: кнопка «Разрешить» или код (на сутки или свой, от 6 цифр). На ТВ по умолчанию «Отклонить», код показан для сверки.
+- В фоне: уведомление, экран блокировки, гарнитура и Bluetooth. При сворачивании на выбор: картинка в картинке, звук видео, музыка или пауза.
+- Пока идёт видео или эфир, экран не гаснет (Настройки → Воспроизведение, включено по умолчанию). На паузе, в конце и у музыки без картинки может погаснуть.
+
+### Трансляция камеры и экрана
+
+- Телефоны, которые транслируют камеру, видны на главном экране других устройств. Подключение по разрешению или по коду.
+- Принимаются `rtsp://`, HLS и `udp://` (MPEG-TS) с низкой задержкой.
+- Источник: выбранная камера (задняя, широкоугольная, телевик, фронтальная) или экран, со звуком микрофона и/или телефона.
+- Куда отдавать: RTSP на телефоне (OBS, VLC, другой 2160 Player), SRT в OBS, NDI (OBS с DistroAV, vMix), RTMP на YouTube или Twitch.
+- Режим до 4K и 60 fps по возможностям камеры и кодировщика. Ориентация как держите телефон. Есть фонарик, фокус касанием и зум.
+- Задержка около 0,5 с, у NDI около 0,1 с. Переключатель «Минимальная задержка» укорачивает очереди. Трансляция живёт и со свёрнутым приложением.
+- Только Wi-Fi, локальная сеть или точка доступа. Мобильный интернет не используется.
+- Пароль RTSP свой на каждую трансляцию и не совпадает с кодом сопряжения. Сопряжённый 2160 Player берёт его сам, VLC и OBS копируют с экрана.
+
+Подробности сервера и списка камер: [Источники](docs/wiki/Sources.md).
+
+### Прочее
+
+- Автообновление из GitHub Releases при запуске (можно выключить): APK под архитектуру устройства, установка в пару нажатий. Если GitHub ограничивает API, проверка читает тег со страницы релиза и пишет, через сколько минут повторить.
+- Шесть тем оформления. Языки интерфейса: русский и английский, пакеты JSON, можно импортировать свой перевод.
+- Справка и ответы на частые вопросы: Настройки → О приложении. Там же ссылка, куда сообщить об ошибке.
+- Приложением можно поделиться без интернета: файлом (Quick Share, Bluetooth, Telegram) или по Wi-Fi с QR-кодом.
+- Экран настроек: [Настройки](docs/wiki/Settings.md).
+
+## Ограничения
+
+MPEG-4 ASP (XviD/DivX с B-кадрами и GMC), MS-MPEG4, H.263, WMV и VC-1 пока зависят от декодеров устройства.
+В текущей сборке FFmpeg этих декодеров нет, поддержка запланирована. GMC декодер устройства не берёт, даже если сам декодер MPEG-4 есть.
+Как плеер выбирает запасной путь и что пишет в ошибке: [Форматы и декодеры](docs/wiki/Formats.md).
+
+## Для разработчиков
+
+### Встраивание
+
+Библиотека в вашем APK или Intent в установленный плеер (`tv.p2160.player`):
 
 ```kotlin
 // Библиотека в вашем APK
@@ -77,35 +147,35 @@ startActivity(
 )
 ```
 
-## Сборка
+- Быстрый старт: [docs/EMBEDDING.md](docs/EMBEDDING.md) (модуль, `includeBuild`, mavenLocal, GitHub Packages).
+- Справочник: [docs/API.md](docs/API.md) (`Player2160`, `PlayerController`, `PlayerScreen`, `PlayerConfig`, Intent).
+- Пример хоста: [samples/embed-demo](samples/embed-demo).
+- Координата текущей библиотеки: `tv.p2160:player-core:0.2.16`, `minSdk` 24, `compileSdk` 37.
+  В приложении-хосте нужны `pickFirsts` для общих `.so` FFmpeg, иначе сборка падает на одинаковых `libavcodec.so`. Пример в [EMBEDDING.md](docs/EMBEDDING.md).
 
-Требуется JDK 21 (для Gradle) и Android SDK с платформой 37.
+### Сборка
+
+Нужны JDK 21 и Android SDK с платформой 37.
 
 ```sh
-# если нет local.properties:
-echo "sdk.dir=/path/to/Android/Sdk" > local.properties
-
-./gradlew :app:assembleDebug                     # приложение (APK по ABI + universal)
-./gradlew :player-core:testDebugUnitTest         # тесты библиотеки
-./gradlew :samples:embed-demo:assembleDebug      # пример встраивания
-./gradlew :player-core:publishReleasePublicationToMavenLocal   # AAR в ~/.m2
+echo "sdk.dir=/path/to/Android/Sdk" > local.properties   # если файла ещё нет
+./gradlew :app:assembleDebug
 ```
 
-APK: `app/build/outputs/apk/debug/`. applicationId: `tv.p2160.player` (release), `tv.p2160.player.debug` (debug).
-Отладочная сборка ставится отдельным приложением «2160 Тест» с красной полосой «ТЕСТ» на иконке и
-баннере ТВ (ресурсы `app/src/debug/res`, генератор - `design/debug-badge/make_debug_icons.py`).
-
-Установка на подключённый телефон или ТВ: `adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`
-(или `app-universal-debug.apk`). Запуск плеера из другого приложения - Intent `tv.p2160.action.PLAY`
-или `ACTION_VIEW` (см. [docs/API.md](docs/API.md) §3). Конфигурация движка для встраивания -
-`Player2160.config = PlayerConfig(...)`; пользовательские настройки - экран «Настройки» и `PlayerSettings`.
-
-Страницы в формате GitHub Wiki (по одной на тему, оглавление - `Home.md`): [docs/wiki/Home.md](docs/wiki/Home.md).
+Отладочный APK: `app/build/outputs/apk/debug/`. Release ставится как `tv.p2160.player`, debug - отдельным приложением «2160 Тест».
+Команды тестов, публикация AAR и установка через adb: [Сборка и запуск](docs/wiki/Setup.md).
+Оглавление остальных страниц: [docs/wiki/Home.md](docs/wiki/Home.md).
 
 ### Релиз
 
-Релизы подписываются одним ключом - иначе автообновление не сможет поставить новую версию поверх старой.
-Ключ и пароли лежат в `keystore.properties` в корне проекта (не в git):
+Один и тот же ключ подписи нужен, чтобы автообновление поставило новую версию поверх старой.
+Тег - `v<versionName>`, `versionCode` каждого релиза больше предыдущего.
+На ARM приложение берёт APK с `-arm-` в имени, иначе файл под ABI устройства, иначе `universal`.
+
+<details>
+<summary>Ключ и публикация на GitHub</summary>
+
+Ключ и пароли лежат в `keystore.properties` в корне проекта (файл не в git):
 
 ```properties
 storeFile=/path/to/2160player-release.jks
@@ -114,38 +184,21 @@ keyAlias=2160player
 keyPassword=...
 ```
 
-или в переменных окружения `P2160_KEYSTORE`, `P2160_KEYSTORE_PASSWORD`, `P2160_KEY_ALIAS`, `P2160_KEY_PASSWORD`.
+Те же значения можно задать переменными `P2160_KEYSTORE`, `P2160_KEYSTORE_PASSWORD`, `P2160_KEY_ALIAS`, `P2160_KEY_PASSWORD`.
 
 ```sh
 # APK под каждую архитектуру + universal
 ./gradlew :app:assembleRelease -Pp2160.versionName=0.2.0 -Pp2160.versionCode=3
-# общий ARM-APK (arm64-v8a + armeabi-v7a): ставится на любой телефон и ТВ - основной для скачивания
+# общий ARM-APK (arm64-v8a + armeabi-v7a): основной файл для скачивания
 ./gradlew :app:assembleRelease -Pp2160.versionName=0.2.0 -Pp2160.versionCode=3 -Pp2160.abi=arm
 gh release create v0.2.0 2160player-0.2.0-*.apk --title "2160 Player 0.2.0" --notes "..."
 ```
 
-Тег релиза - `v<versionName>`; приложение сравнивает его со своей версией и берёт общий ARM-APK
-(`-arm-` в имени) на ARM-устройствах, иначе APK с ABI устройства (`-arm64-v8a-`, `-armeabi-v7a-`…), иначе `universal`. `versionCode`
-каждого релиза должен быть больше предыдущего.
+Номера в примере - образец вызова, не текущая версия приложения.
 
-## Настройки
+</details>
 
-Экран «Настройки» приложения (язык интерфейса - русский и английский, пакеты `assets/i18n`).
-Значения лежат в `SharedPreferences` `p2160_settings` и доступны встраивающим приложениям как
-`PlayerSettings` / `Settings` (полный список полей - [docs/API.md](docs/API.md) §9 и
-[docs/wiki/Settings.md](docs/wiki/Settings.md)).
-
-| Раздел | Что там |
-|---|---|
-| Интерфейс | Язык, тема |
-| Субтитры | Размер, цвет, фон, обводка, языки |
-| Воспроизведение | **Не выключать экран во время просмотра** (по умолчанию включено), продолжение с места, ночной звук и расписание, пропуск вступлений, скорость, шаг перемотки, декодер, частота экрана, туннель, offload, статистика |
-| При сворачивании | Картинка в картинке, видео в фоне, музыка в фоне |
-| Передача между устройствами | Защита кодом (свой - от 6 цифр; предупреждение при выключении) |
-| Обновления | Автопроверка GitHub Releases |
-| О приложении | Справка, NDI, донат, автор, «Поделиться» |
-
-## Структура проекта
+### Структура проекта
 
 ```
 player-core/            библиотека плеера (tv.p2160.core)
@@ -166,14 +219,15 @@ docs/                   документация (API.md, EMBEDDING.md, wiki/)
 .github/                CI, шаблоны issue и PR
 ```
 
-## Участие в разработке
+### Участие в разработке
 
-Issue и pull request'ы приветствуются. Пожалуйста, используйте шаблоны:
-[bug report](.github/ISSUE_TEMPLATE/bug_report.yml), [feature request](.github/ISSUE_TEMPLATE/feature_request.yml),
-[pull request](.github/PULL_REQUEST_TEMPLATE.md). Перед PR убедитесь, что проходит
-`./gradlew assembleDebug testDebugUnitTest lintDebug`, а изменения публичного API отражены в
-[docs/API.md](docs/API.md). Новые строки интерфейса добавляйте во все языковые пакеты
-(`assets/i18n/*/en.json`, `ru.json`) - это проверяет `TranslationsTest`.
+Issue и pull request приветствуются. Шаблоны:
+[bug report](.github/ISSUE_TEMPLATE/bug_report.yml),
+[feature request](.github/ISSUE_TEMPLATE/feature_request.yml),
+[pull request](.github/PULL_REQUEST_TEMPLATE.md).
+Перед PR должен проходить `./gradlew assembleDebug testDebugUnitTest lintDebug`.
+Изменения публичного API отражайте в [docs/API.md](docs/API.md).
+Новые строки интерфейса добавляйте во все языковые пакеты (`assets/i18n/*/en.json`, `ru.json`): это проверяет `TranslationsTest`.
 
 ## Автор
 
@@ -190,7 +244,7 @@ Andy_bum - Telegram: [@Andy_bum](https://t.me/Andy_bum). Вопросы, иде�
 и распространять, в том числе встраивать в свои приложения, - при условии, что производная работа
 тоже распространяется под GPL v3 с открытым исходным кодом. Используемые компоненты: Media3
 (Apache 2.0), FFmpeg через nextlib (LGPL 3), smbj (Apache 2.0), libtorrent4j (MIT/BSD), RootEncoder и RTSP-Server
-(Apache 2.0; RTSP-Server - исходниками с правкой, см. `third-party/rtsp-server/NOTICE.md`), ZXing (Apache 2.0),
+(Apache 2.0; RTSP-Server - исходниками с правкой, см. [third-party/rtsp-server/NOTICE.md](third-party/rtsp-server/NOTICE.md)), ZXing (Apache 2.0),
 NDI® SDK (заголовки - MIT; библиотека `libndi` - лицензия NDI SDK, в репозиторий не входит; распространение вместе
 с ней разрешено дополнительным разрешением [LICENSE-NDI-EXCEPTION.md](LICENSE-NDI-EXCEPTION.md)).
 NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
@@ -199,42 +253,70 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 
 ## English
 
-**2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
-decoders and a Jetpack Compose UI. It plays local files (with a built-in file browser for Android TV boxes, USB drives and SD cards), HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
-and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
-intro/credits skipping (incl. audio-based intro detection), dual subtitles, external SRT/ASS/VTT/TTML picked from a file (including a `content://` document) shown at once and restored for that file, resume with track memory
-(a finished file opens from the start; a partly watched file asks to continue;
-when playback ends, a playlist counts down 5 s to the next item, the last item says the playlist is finished,
-and a single file offers Watch again and Close; the result adds tv.p2160.extra.WATCHED and a Long position),
-learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
-themes, JSON language packs and self-updates from GitHub Releases (if the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry). It can also stream the phone camera or screen
-(RTSP server, SRT to OBS, NDI®, RTMP to YouTube/Twitch; LAN/Wi-Fi only, never mobile data; optional Lowest latency shortens send queues) with a per-session RTSP password that is not the pairing PIN, shows cameras of other 2160 Players on the
-LAN, plays live RTSP/UDP with low latency, and has torrent seeding rules, a memory-sized buffer, audio offload,
-display frame-rate matching and a stats overlay.
+**2160 Player** is a media player for Android phones and Android TV. The engine is Media3 (ExoPlayer) with FFmpeg decoders, and the UI is Jetpack Compose. The `player-core` module is a library you can embed, or you can send an Intent to the standalone app. Intents line up with what MX Player and VLC already accept. The full screenshot set is in [Скриншоты](#скриншоты).
 
-Install: grab an APK from the [latest release](https://github.com/spacesarmat/2160player/releases/latest)
-(`arm` works on any phone or TV and is recommended; `arm64-v8a` / `armeabi-v7a` are smaller single-architecture builds; `universal` also covers x86).
+<p>
+<img src="docs/images/phone-player-landscape.webp" alt="Phone player, landscape" width="440">
+<img src="docs/images/tv-player.webp" alt="Android TV player" width="440">
+</p>
 
-The `player-core` module is an embeddable library:
+Video frames are from the Blender Foundation open movies Tears of Steel and Sintel, CC-BY 3.0 (mango.blender.org, durian.blender.org).
 
-- **Intent API** - call the standalone app (`tv.p2160.player`, debug `tv.p2160.player.debug`,
-  activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
-  `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
-  results are returned in MX Player and VLC formats.
-- **Library** - `implementation("tv.p2160:player-core:0.2.16")` (module, composite build, mavenLocal
-  or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
-  `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
-  Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for
-  results, or embed the `PlayerScreen` composable with your own `PlayerController`.
-- **Engine tuning** - `Player2160.config = PlayerConfig(...)`: buffer limit (`PlayerConfig.AUTO` by default - sized from device memory, 24–128 MB), network
-  timeouts, switches for audio intro detection, chapter reading and history restore/save.
-- **Extensibility** - observe `Player2160.nowPlaying`, add toolbar buttons with
-  `Player2160.registerAction(PlayerAction(...))`, change `PlayerSettings`, read `ResumeStore`.
+### Download
 
-The screen stays on while a video or live stream is playing (Settings → Playback, on by default)
-and can sleep again on pause, at the end, or when you leave. Docs are in Russian:
-[docs/EMBEDDING.md](docs/EMBEDDING.md) (quick start), [docs/API.md](docs/API.md) (reference),
-[docs/wiki/Home.md](docs/wiki/Home.md) (wiki-ready pages). Code samples are self-explanatory; see
-[samples/embed-demo](samples/embed-demo). Build with `./gradlew :app:assembleDebug` (JDK 21, Android SDK platform 37).
-License: [GPL-3.0](LICENSE) - embedding apps must be GPL-3.0 as well.
-Author: Andy_bum - Telegram [@Andy_bum](https://t.me/Andy_bum). Support the project: [Boosty](https://boosty.to/djmaker/donate).
+Grab an APK from the [latest release](https://github.com/spacesarmat/2160player/releases/latest).
+
+- `arm` works on any ARM phone or TV and is the file to share with another device. Recommended.
+- `arm64-v8a` and `armeabi-v7a` are smaller single-architecture builds.
+- `universal` covers the rest, including x86.
+
+The app can update itself from GitHub Releases (Settings, Updates). If the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry.
+
+### What it plays
+
+Local files (the TV build has its own browser for internal storage, USB and SD cards), HTTP, HLS, DASH, SmoothStreaming and RTSP, SMB shares, DLNA servers, IPTV M3U playlists with an XMLTV guide, torrents while they download, and Blu-ray ISO images or BDMV folders (M2TS with TrueHD, LPCM, DTS-HD and PGS).
+
+FFmpeg covers DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MP3 and MPEG-1/2 when the device cannot. Audio can be passed through to a receiver. Dolby Vision profile 7 falls back to the HDR10 base layer when the device has no Dolby Vision decoder.
+
+### Playback
+
+External SRT, ASS, VTT and TTML subtitles, including two on screen at once. Chapters, intro/recap/credits skip (from chapters, from an Intent, from marks saved for a whole series, or from audio compared across episodes), and a next-episode card. Resume keeps the position, track choices, speed and subtitle delay. A file watched to the end opens from the start next time. At the end of a playlist the player moves on; a single file offers Watch again and Close. Live TV is left alone.
+
+Night sound can follow a schedule (23:00-10:00 by default). A sleep timer runs 15-120 minutes or until the episode ends. There is a separate audio delay for Bluetooth headphones and soundbars. The player remembers a manual audio and subtitle choice per series and per set of languages in the file.
+
+Hardware decoders come first. The buffer follows device memory (24-128 MB). Audio with no picture can use offload. On TV the refresh rate can follow the video (23.976/24/25/50 Hz), with tunnel mode and a stats overlay. The screen stays on during video and live playback (on by default) and can sleep again on pause, at the end, or for music with no picture.
+
+Back, the resume prompt and the up-next card: [Playback](docs/wiki/Playback.md).
+
+### Phone, TV and camera
+
+Touch gestures, D-pad, numeric time entry, seek thumbnails, picture-in-picture and background audio. Hand-off to another 2160 Player on the same Wi-Fi keeps the position and pauses the source. A new device on the LAN is allowed once, from a notification or a code (a daily code, or your own from 6 digits). On TV the default answer is Reject, and the code is shown so you can check it.
+
+The phone can publish its camera (rear, wide, tele, front) or its screen, with the mic and/or device audio. Targets are RTSP on the phone (OBS, VLC, another 2160 Player), SRT to OBS, NDI (OBS with DistroAV, vMix) and RTMP to YouTube or Twitch. Modes go up to 4K and 60 fps when the camera and encoder allow it. Orientation follows how you hold the phone. Torch, tap to focus and zoom are on the stream screen.
+
+Delay is about 0.5 s, about 0.1 s for NDI. Lowest latency shortens the send queues. Streaming continues in the background. LAN, Wi-Fi or a hotspot only, never mobile data. The RTSP password is per session and is not the pairing code. Other 2160 Players on the LAN show that camera on the home screen. Incoming `rtsp://`, HLS and `udp://` MPEG-TS play with low latency.
+
+### Also
+
+Six themes. Interface languages are Russian and English JSON packs, and you can import your own. Torrent seeding can stay on, stop at 1:1, stop after 24 hours, or stay off, and can be limited to Wi-Fi, to charging, or by a mobile download cap. FAQ and an offline share (a file, or a Wi-Fi QR) are under Settings, About.
+
+### Limitations
+
+MPEG-4 ASP (XviD/DivX with B-frames and GMC), MS-MPEG4, H.263, WMV and VC-1 depend on the device decoder for now. This FFmpeg build does not include them. FFmpeg support is planned. GMC is rejected even when the device has an MPEG-4 decoder. Details: [Formats](docs/wiki/Formats.md).
+
+### For developers
+
+`minSdk` 24, `compileSdk` 37, JDK 21. Build the app with `./gradlew :app:assembleDebug`.
+
+```kotlin
+implementation("tv.p2160:player-core:0.2.16")
+```
+
+The host must pick the first copy of the shared FFmpeg `.so` files (`libavcodec`, `libavutil`, `libswscale`, `libswresample`). Full steps: [docs/EMBEDDING.md](docs/EMBEDDING.md). Reference: [docs/API.md](docs/API.md). Sample host: [samples/embed-demo](samples/embed-demo). Wiki: [docs/wiki/Home.md](docs/wiki/Home.md).
+
+Call `Player2160.play(context, PlaybackRequest.single(uri))`, or start the installed app (`tv.p2160.player`, debug `tv.p2160.player.debug`, activity `tv.p2160.core.Player2160Activity`) with extras compatible with MX Player (`title`, `position`, `headers`, `subs`, `video_list`, `return_result`) plus `tv.p2160.extra.*`. Results come back in both MX Player and VLC shapes, including `tv.p2160.extra.WATCHED` and a Long position.
+
+`Player2160.config = PlayerConfig(...)` sets the buffer (`PlayerConfig.AUTO` sizes it from device memory, 24-128 MB), network timeouts, and switches for audio intro detection, chapter reading and history. You can watch `Player2160.nowPlaying`, add toolbar buttons with `Player2160.registerAction`, change `PlayerSettings` and read `ResumeStore`.
+
+License: [GPL-3.0](LICENSE). An app that embeds the library has to be GPL-3.0 as well.
+Author: Andy_bum, Telegram [@Andy_bum](https://t.me/Andy_bum). Support: [Boosty](https://boosty.to/djmaker/donate).

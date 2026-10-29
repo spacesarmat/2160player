@@ -134,8 +134,9 @@ private class RelabelPeriod(
             val formats = Array(group.length) { track ->
                 relabelFormat(group.getFormat(track), spec, group.length, track)
             }
-            // Свой id группы: иначе дорожка с тем же языком, что встроенная, схлопывается с ней.
-            TrackGroup("$EXTERNAL_AUDIO_PREFIX${spec.listIndex}", *formats).also { originalByRelabeled[it] = group }
+            // Свой id без двоеточия: склейка пишет индекс ребёнка до первого ':'.
+            TrackGroup("$EXTERNAL_AUDIO_PREFIX${spec.listIndex}".replace(":", ""), *formats)
+                .also { originalByRelabeled[it] = group }
         }
         return TrackGroupArray(*result)
     }
@@ -225,16 +226,20 @@ private class LenientPeriod(
         streamResetFlags: BooleanArray,
         positionUs: Long,
     ): Long {
-        val selected = inner.selectTracks(selections, mayRetainStreamFlags, streams, streamResetFlags, positionUs)
-        return if (pastEnd(positionUs)) positionUs else selected
+        // Сырой AC3 (Ac3Extractor без своей шкалы) возвращает 0. Склейка требует ту же
+        // позицию, что у видео, иначе IllegalStateException в selectTracks.
+        inner.selectTracks(selections, mayRetainStreamFlags, streams, streamResetFlags, positionUs)
+        return positionUs
     }
 
     override fun seekToUs(positionUs: Long): Long {
         val dur = durationUs()
         val target = if (dur != C.TIME_UNSET && dur > 0 && positionUs >= dur) (dur - 1).coerceAtLeast(0) else positionUs
-        val actual = inner.seekToUs(target)
-        return if (pastEnd(positionUs)) positionUs else actual
+        inner.seekToUs(target)
+        return if (pastEnd(positionUs)) positionUs else target
     }
+
+    override fun readDiscontinuity(): Long = C.TIME_UNSET
 
     override fun getBufferedPositionUs(): Long {
         val buffered = inner.getBufferedPositionUs()

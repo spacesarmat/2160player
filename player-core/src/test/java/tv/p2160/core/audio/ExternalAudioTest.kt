@@ -244,6 +244,10 @@ class ExternalAudioTest {
             .putExtra(IntentApi.EXTRA_AUDIO_TRACKS, pieces.toTypedArray())
         val fromPieces = IntentApi.parse(shattered)!!
         assertEquals("Studio", fromPieces.items.single().audio.single().name)
+        val escaped = json.replace(",", "\\,")
+        val escapedIntent = Intent(IntentApi.ACTION_PLAY).setData(video)
+            .putExtra(IntentApi.EXTRA_AUDIO_TRACKS, escaped)
+        assertEquals("Studio", IntentApi.parse(escapedIntent)!!.items.single().audio.single().name)
         assertEquals("rus", fromPieces.items.single().audio.single().language)
 
         val whole = Intent(IntentApi.ACTION_PLAY).setData(video).putExtra(IntentApi.EXTRA_AUDIO_TRACKS, json)

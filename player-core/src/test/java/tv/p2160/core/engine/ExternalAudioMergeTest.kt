@@ -102,6 +102,45 @@ class ExternalAudioMergeTest {
         source.releaseSource(caller)
     }
 
+    @Test
+    fun rawAudioSelectTracksAtNonZeroStartMatchesTheVideo() {
+        val context = RuntimeEnvironment.getApplication()
+        val spec = AudioSpec(Uri.parse("file:///Movie.ru.ac3"), 0, "AC3", "ru", MimeTypes.AUDIO_AC3, 0)
+        val item = MediaItem.Builder()
+            .setUri(Uri.parse("file:///Movie.mkv"))
+            .setMediaId("video")
+            .setTag(ExternalAudioTag(listOf(spec)))
+            .build()
+        val source = ExternalAudioMerge.Factory(ReadyFactory()).createMediaSource(item)
+        var timeline: Timeline? = null
+        val caller = MediaSource.MediaSourceCaller { _, refreshed -> timeline = refreshed }
+        source.prepareSource(caller, PlayerId.UNSET, DefaultBandwidthMeter.getSingletonInstance(context))
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        val ready = timeline
+        assertNotNull(ready)
+        source.enable(caller)
+        val period = source.createPeriod(
+            MediaSource.MediaPeriodId(ready!!.getUidOfPeriod(0)),
+            DefaultAllocator(true, 64 * 1024),
+            5_000_000L,
+        )
+        period.prepare(object : MediaPeriod.Callback {
+            override fun onPrepared(mediaPeriod: MediaPeriod) = Unit
+            override fun onContinueLoadingRequested(source: MediaPeriod) = Unit
+        }, 5_000_000L)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        val enabled = period.selectTracks(
+            emptyArray(),
+            BooleanArray(0),
+            arrayOfNulls(0),
+            BooleanArray(0),
+            5_000_000L,
+        )
+        assertEquals(5_000_000L, enabled)
+        source.releasePeriod(period)
+        source.releaseSource(caller)
+    }
+
     private class ReadyFactory : MediaSource.Factory {
         override fun setDrmSessionManagerProvider(drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider) = this
         override fun setLoadErrorHandlingPolicy(loadErrorHandlingPolicy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy) = this
@@ -146,7 +185,7 @@ class ExternalAudioMergeTest {
         override fun getTrackGroups(): TrackGroupArray = TrackGroupArray(androidx.media3.common.TrackGroup(format))
         override fun discardBuffer(positionUs: Long, toKeyframe: Boolean) = Unit
         override fun readDiscontinuity(): Long = C.TIME_UNSET
-        override fun seekToUs(positionUs: Long): Long = positionUs
+        override fun seekToUs(positionUs: Long): Long = if (audio) 0L else positionUs
         override fun getAdjustedSeekPositionUs(positionUs: Long, seekParameters: SeekParameters): Long = positionUs
         override fun getBufferedPositionUs(): Long = C.TIME_END_OF_SOURCE
         override fun getNextLoadPositionUs(): Long = C.TIME_END_OF_SOURCE
@@ -160,6 +199,6 @@ class ExternalAudioMergeTest {
             streams: Array<out SampleStream?>,
             streamResetFlags: BooleanArray,
             positionUs: Long,
-        ): Long = positionUs
+        ): Long = if (audio) 0L else positionUs
     }
 }

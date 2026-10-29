@@ -38,9 +38,12 @@ object ExternalTrackJson {
         )
     }
 
+    /** `am --esa` оставляет `\,` в значении, если запятую экранировали. Для JSON это обычная запятая. */
+    fun unescapeAdbCommas(raw: String): String = raw.replace("\\,", ",")
+
     /** Целый JSON-массив, а не обломок после разрезания `adb --esa` по запятым. */
     fun isJsonArray(raw: String?): Boolean {
-        val text = raw?.trim().orEmpty()
+        val text = unescapeAdbCommas(raw?.trim().orEmpty())
         if (!text.startsWith("[")) return false
         return runCatching { JSONArray(text) }.isSuccess
     }
@@ -52,10 +55,11 @@ object ExternalTrackJson {
      */
     fun reassemble(parts: List<String>): List<String>? {
         if (parts.isEmpty()) return null
-        if (parts.all { isJsonArray(it) }) return parts
+        val clean = parts.map(::unescapeAdbCommas)
+        if (clean.all { isJsonArray(it) }) return clean
         val out = mutableListOf<String>()
         val buf = StringBuilder()
-        for (part in parts) {
+        for (part in clean) {
             if (buf.isNotEmpty()) buf.append(',')
             buf.append(part)
             if (isJsonArray(buf.toString())) {
@@ -106,7 +110,7 @@ object ExternalTrackJson {
     }
 
     private fun <T> parse(raw: String?, build: (JSONObject, Uri) -> T): List<T> {
-        val text = raw?.trim().orEmpty()
+        val text = unescapeAdbCommas(raw?.trim().orEmpty())
         if (text.isEmpty() || text == "[]") return emptyList()
         val array = runCatching { JSONArray(text) }.getOrNull() ?: return emptyList()
         return buildList {

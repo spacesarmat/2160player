@@ -62,6 +62,8 @@ import tv.p2160.core.resume.ResumeEntry
 import tv.p2160.core.resume.Covers
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.PlayerSettings
+import tv.p2160.core.subtitle.ContentSidecars
+import tv.p2160.core.subtitle.SubtitleFolders
 import tv.p2160.core.subtitle.SubtitleSupport
 
 data class PlayerUiState(
@@ -228,9 +230,11 @@ class PlayerController(
     private var nightOverridden = false
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
-    /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении). */
+    /** Внешние субтитры по индексу плейлиста (растут при ручном добавлении и из истории). */
     private val subtitles: MutableList<MutableList<ExternalSubtitle>> =
         request.items.map { it.subtitles.toMutableList() }.toMutableList()
+    /** Автопоиск файлов рядом с видео уже выполнен для этого пункта. */
+    private val sidecarsScanned = BooleanArray(request.items.size)
 
     private val trackPrefs = TrackPreferences.get(appContext)
     /** Применить привычку при первом известном списке дорожек нового файла. */
@@ -469,6 +473,13 @@ class PlayerController(
     }
 
     private suspend fun start() {
+        request.items.forEach { item ->
+            val key = ResumeStore.keyFor(item.uri)
+            item.subtitles.forEach { sub ->
+                SubtitleSupport.persistReadPermission(appContext, sub.uri)
+                store.upsertExternalSubtitle(key, sub)
+            }
+        }
         val mediaItems = request.items.indices.map { buildMediaItem(it) }
         val startIndex = request.startIndex.coerceIn(mediaItems.indices)
         player.setMediaItems(mediaItems, startIndex, C.TIME_UNSET)
@@ -725,13 +736,16 @@ class PlayerController(
             pendingSmart = false
             applySmartChoice(tracks)
         }
+        var pinnedExternal = false
         pendingExternalSelect?.let { id ->
             val option = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current).firstOrNull {
-                tracks.groups[it.groupIndex].getTrackFormat(it.trackIndex).id?.endsWith(id) == true
+                val formatId = tracks.groups[it.groupIndex].getTrackFormat(it.trackIndex).id
+                formatId == id || formatId?.endsWith(id) == true
             }
             if (option != null) {
                 selectTrack(option, user = false)
                 pendingExternalSelect = null
+                pinnedExternal = true
             }
         }
         val entry = pendingRestore ?: return
@@ -742,7 +756,9 @@ class PlayerController(
             ?: audio.firstOrNull { entry.audioLanguage != null && it.language == entry.audioLanguage })
             ?.takeUnless { it.selected }?.let { selectTrack(it, user = false) }
 
-        if (pendingExternalSelect == null) {
+        // Явный внешний файл важнее сохранённого «выключены» и языка встроенной дорожки.
+        // Пока дорожка ещё не пришла, pendingExternalSelect не даёт истории её выключить.
+        if (!pinnedExternal && pendingExternalSelect == null) {
             if (entry.textDisabled) {
                 disableText(user = false)
             } else {
@@ -797,14 +813,25 @@ class PlayerController(
         val text = candidates(tracks, C.TRACK_TYPE_TEXT)
         val selectedAudio = audio.firstOrNull { it.first.selected }?.second ?: return
         val textOff = player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-        val selectedText = if (textOff) null else text.firstOrNull { it.first.selected && !it.first.external }?.second
+        val selectedText = if (textOff) null else text.firstOrNull { it.first.selected }?.second
+        val series = currentSeriesKey()
+        val ctx = TrackRules.contextKey(audio.map { it.second })
+        var textLanguage = if (textOff) null else TrackRules.normalizeLang(selectedText?.language)
+        var textForced = !textOff && selectedText?.forced == true
+        // Выбранный внешний файл без кода языка нельзя записать как «субтитры выключены»:
+        // привычка сериала иначе погасит дорожку при следующем открытии.
+        if (!textOff && selectedText != null && textLanguage == null) {
+            val prev = trackPrefs.forSeries(series) ?: trackPrefs.forContext(ctx) ?: return
+            textLanguage = prev.textLanguage
+            textForced = prev.textForced
+        }
         val choice = TrackChoice(
             audioLanguage = TrackRules.normalizeLang(selectedAudio.language),
             audioHint = TrackRules.hintOf(selectedAudio.label),
-            textLanguage = TrackRules.normalizeLang(selectedText?.language),
-            textForced = selectedText?.forced == true,
+            textLanguage = textLanguage,
+            textForced = textForced,
         )
-        trackPrefs.remember(currentSeriesKey(), TrackRules.contextKey(audio.map { it.second }), choice)
+        trackPrefs.remember(series, ctx, choice)
     }
 
     fun dismissSmartHint() = _state.update { it.copy(smartHint = null) }
@@ -883,6 +910,17 @@ class PlayerController(
             .setTrackTypeDisabled(option.type, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
             .build()
+        if (option.type != C.TRACK_TYPE_TEXT) return
+        val index = player.currentMediaItemIndex
+        val key = keyAt(index) ?: return
+        val uri = externalUriFor(option)
+        // Автовыбор встроенной дорожки из истории не стирает запомненный внешний файл:
+        // его мог только что попросить пользователь, а дорожки ещё не совпали.
+        if (user || uri != null) {
+            store.setExternalSubtitleSelected(key, uri?.toString())
+            markExternalSelected(index, uri)
+        }
+        if (uri != null) enableRememberedText(key, option.language)
     }
 
     /** Сбрасывает ручной выбор видеодорожки - плеер снова выбирает качество сам (важно для HLS/DASH). */
@@ -901,6 +939,10 @@ class PlayerController(
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
+        if (!user) return
+        val index = player.currentMediaItemIndex
+        keyAt(index)?.let { store.setExternalSubtitleSelected(it, null) }
+        markExternalSelected(index, null)
     }
 
     /**
@@ -1045,14 +1087,22 @@ class PlayerController(
     /** Подключает внешний файл субтитров к текущему видео и сразу включает его. */
     fun addExternalSubtitle(uri: Uri, name: String? = null) {
         val index = player.currentMediaItemIndex
+        if (index < 0 || index >= subtitles.size) return
+        SubtitleSupport.persistReadPermission(appContext, uri)
         val displayName = name ?: SubtitleSupport.displayName(appContext, uri)
         val sub = ExternalSubtitle(uri, displayName, SubtitleSupport.languageFromName(displayName), select = true)
-        subtitles[index].add(sub)
+        val list = subtitles[index]
+        val existing = list.indexOfFirst { it.uri == uri }
+        if (existing >= 0) list[existing] = sub else list.add(sub)
+        markExternalSelected(index, uri)
+        pinExternalSubtitle(index, sub)
+        Log.i(PLAYER_LOG_TAG, "external subtitle name=$displayName uri=$uri")
         scope.launch {
             val position = player.currentPosition
             val playing = player.playWhenReady
             pendingExternalSelect = externalId(index, sub)
             player.replaceMediaItem(index, buildMediaItem(index))
+            pendingExternalSelect = externalId(index, sub)
             player.seekTo(index, position)
             player.playWhenReady = playing
         }
@@ -1521,22 +1571,30 @@ class PlayerController(
     private suspend fun buildMediaItem(index: Int): MediaItem {
         val entry: MediaEntry = request.items[index]
         val external = subtitles[index]
-        // Субтитры рядом с локальным файлом - у каждого пункта плейлиста, не только у стартового.
-        if (external.isEmpty()) {
-            withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, entry.uri) }.forEach { uri ->
-                val name = uri.lastPathSegment
-                external += ExternalSubtitle(uri, name, SubtitleSupport.languageFromName(name))
-            }
+        val remembered = keyAt(index)?.let(store::externalSubtitles).orEmpty()
+        val includeSidecars = !sidecarsScanned[index] && entry.subtitles.isEmpty()
+        val sidecars = if (includeSidecars) {
+            sidecarsScanned[index] = true
+            discoverSidecars(entry.uri)
+        } else emptyList()
+        val merged = SubtitleSupport.mergeExternal(external, remembered, sidecars, includeSidecars)
+        if (merged != external) {
+            external.clear()
+            external.addAll(merged)
         }
         val configs = external.map { sub ->
-            val normalized = SubtitleSupport.normalize(appContext, sub.uri, request.headers)
             val name = sub.name ?: SubtitleSupport.displayName(appContext, sub.uri)
-            MediaItem.SubtitleConfiguration.Builder(normalized)
+            val normalized = SubtitleSupport.normalize(appContext, sub.uri, request.headers, name)
+            val mime = SubtitleSupport.mimeForName(name)
+                ?: SubtitleSupport.mimeForName(normalized.lastPathSegment)
+                ?: MimeTypes.APPLICATION_SUBRIP
+            val builder = MediaItem.SubtitleConfiguration.Builder(normalized)
                 .setId(externalId(index, sub))
-                .setMimeType(SubtitleSupport.mimeForName(name) ?: MimeTypes.APPLICATION_SUBRIP)
+                .setMimeType(mime)
                 .setLanguage(sub.language ?: SubtitleSupport.languageFromName(name))
-                .setLabel(name?.substringBeforeLast('.'))
-                .build()
+                .setLabel(name?.substringBeforeLast('.')?.takeIf { it.isNotBlank() })
+            if (sub.select) builder.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            builder.build()
         }
         // ISO-образ или папка BDMV: открываем диск и играем основной фильм.
         val disc = discs[index] ?: if (DiscSessions.isCandidate(entry.uri)) {
@@ -1555,8 +1613,58 @@ class PlayerController(
         return builder.build()
     }
 
+    /**
+     * Субтитры рядом с файлом. Для `content://` без читаемого каталога один раз спрашивает папку
+     * ([SubtitleFolders]): повторный запуск того же ролика диалог не открывает.
+     */
+    private suspend fun discoverSidecars(uri: Uri): List<ExternalSubtitle> {
+        if (uri.scheme.equals("content", true)) {
+            val search = withContext(Dispatchers.IO) { ContentSidecars.search(appContext, uri) }
+            val hits = if (!search.askForFolder) search.hits else {
+                val tree = SubtitleFolders.request(appContext, uri)
+                if (tree == null) emptyList() else withContext(Dispatchers.IO) { ContentSidecars.listTree(appContext, uri, tree) }
+            }
+            return hits.map { ExternalSubtitle(it.uri, it.name, SubtitleSupport.languageFromName(it.name)) }
+        }
+        return withContext(Dispatchers.IO) { SubtitleSupport.findSidecars(appContext, uri) }.map { found ->
+            val name = found.lastPathSegment?.substringAfterLast('/')
+            ExternalSubtitle(found, name, SubtitleSupport.languageFromName(name))
+        }
+    }
+
     private fun externalId(index: Int, sub: ExternalSubtitle): String =
         "$EXTERNAL_SUB_PREFIX$index:${sub.uri.hashCode()}"
+
+    private fun externalUriFor(option: TrackOption): Uri? {
+        val formatId = option.formatId ?: return null
+        if (!option.external) return null
+        val index = player.currentMediaItemIndex
+        return subtitles.getOrNull(index)?.firstOrNull { sub ->
+            val id = externalId(index, sub)
+            formatId == id || formatId.endsWith(id)
+        }?.uri
+    }
+
+    private fun markExternalSelected(index: Int, uri: Uri?) {
+        val list = subtitles.getOrNull(index) ?: return
+        for (i in list.indices) {
+            val want = uri != null && list[i].uri == uri
+            if (list[i].select != want) list[i] = list[i].copy(select = want)
+        }
+    }
+
+    private fun pinExternalSubtitle(index: Int, sub: ExternalSubtitle) {
+        val key = keyAt(index) ?: return
+        store.upsertExternalSubtitle(key, sub)
+        enableRememberedText(key, sub.language)
+    }
+
+    /** Сохранённое «субтитры выключены» не должно погасить только что выбранный внешний файл. */
+    private fun enableRememberedText(key: String, language: String?) {
+        val entry = store.get(key) ?: return
+        if (!entry.textDisabled && entry.textLabel == null && (language == null || entry.textLanguage == language)) return
+        store.save(entry.copy(textDisabled = false, textLanguage = language ?: entry.textLanguage, textLabel = null))
+    }
 
     private fun keyAt(index: Int): String? = request.items.getOrNull(index)?.uri?.let(ResumeStore::keyFor)
 

@@ -40,6 +40,41 @@ class SubtitleAndResumeTest {
     }
 
     @Test
+    fun octetStreamDoesNotHideSrtExtension() {
+        val header = "1\n00:00:01,000 --> 00:00:02,000\nHi\n".toByteArray()
+        assertEquals(
+            "application/x-subrip",
+            SubtitleSupport.resolveMime("Tears of Steel.ru.srt", "application/octet-stream", header),
+        )
+        assertEquals("application/x-subrip", SubtitleSupport.mimeFromReported("application/x-subrip"))
+        assertNull(SubtitleSupport.mimeFromReported("application/octet-stream"))
+        assertNull(SubtitleSupport.mimeFromReported("text/plain"))
+    }
+
+    @Test
+    fun sniffPicksFormatWhenNameHasNoExtension() {
+        val srt = "1\r\n00:00:01,000 --> 00:00:02,000\r\nHi\r\n".toByteArray()
+        val vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n".toByteArray()
+        val ass = "[Script Info]\nScriptType: v4.00+\n".toByteArray()
+        val ttml = "<?xml version=\"1.0\"?><tt xmlns=\"http://www.w3.org/ns/ttml\">".toByteArray()
+        assertEquals("application/x-subrip", SubtitleSupport.resolveMime("msf:100", "application/octet-stream", srt))
+        assertEquals("text/vtt", SubtitleSupport.resolveMime(null, "text/plain", vtt))
+        assertEquals("text/x-ssa", SubtitleSupport.sniffMime(ass))
+        assertEquals("application/ttml+xml", SubtitleSupport.sniffMime(ttml))
+        assertEquals("text/vtt", SubtitleSupport.resolveMime("clip.vtt", "application/octet-stream", srt))
+    }
+
+    @Test
+    fun toUnicodeStripsBomAndDecodesCp1251AndUtf16() {
+        assertEquals(srt, SubtitleSupport.toUnicode(srt.toByteArray(Charsets.UTF_8)))
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + srt.toByteArray()
+        assertEquals(srt, SubtitleSupport.toUnicode(bom))
+        assertEquals(srt, SubtitleSupport.toUnicode(srt.toByteArray(Charset.forName("windows-1251"))))
+        val utf16 = byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + srt.toByteArray(Charsets.UTF_16LE)
+        assertEquals(srt, SubtitleSupport.toUnicode(utf16))
+    }
+
+    @Test
     fun subtitleMimeAndLanguageFromName() {
         assertEquals("application/x-subrip", SubtitleSupport.mimeForName("Movie.ru.srt"))
         assertEquals("text/x-ssa", SubtitleSupport.mimeForName("Movie.ASS"))

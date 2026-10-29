@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
+import tv.p2160.core.api.ExternalSubtitle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ data class ResumeEntry(
  * Сделано без Room, чтобы библиотека не тянула kapt/ksp в чужие проекты.
  */
 class ResumeStore private constructor(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "p2160_resume.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "p2160_resume.db", null, DB_VERSION) {
     private val appContext = context.applicationContext
 
 
@@ -63,9 +64,77 @@ class ResumeStore private constructor(context: Context) :
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX history_updated ON history(updated DESC)")
+        createExternalSubs(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createExternalSubs(db)
+    }
+
+    /** Внешние субтитры, подключённые к файлу вручную или из Intent. Пустой список - не запоминали. */
+    fun externalSubtitles(videoKey: String): List<ExternalSubtitle> =
+        readableDatabase.query(
+            "external_subs", null, "video_key = ?", arrayOf(videoKey), null, null, "rowid",
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) {
+                    add(
+                        ExternalSubtitle(
+                            uri = Uri.parse(c.getString(c.getColumnIndexOrThrow("uri"))),
+                            name = c.getString(c.getColumnIndexOrThrow("name"))?.ifBlank { null },
+                            language = c.getString(c.getColumnIndexOrThrow("language"))?.ifBlank { null },
+                            select = c.getInt(c.getColumnIndexOrThrow("selected")) == 1,
+                        )
+                    )
+                }
+            }
+        }
+
+    /** Записать или заменить один файл субтитров. [ExternalSubtitle.select] снимает выбор с остальных. */
+    fun upsertExternalSubtitle(videoKey: String, sub: ExternalSubtitle) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (sub.select) {
+                db.update("external_subs", ContentValues().apply { put("selected", 0) }, "video_key = ?", arrayOf(videoKey))
+            }
+            db.insertWithOnConflict(
+                "external_subs",
+                null,
+                ContentValues().apply {
+                    put("video_key", videoKey)
+                    put("uri", sub.uri.toString())
+                    put("name", sub.name)
+                    put("language", sub.language)
+                    put("selected", if (sub.select) 1 else 0)
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Какой внешний файл включён. `null` - ни один (дорожка выключена или выбрана встроенная). */
+    fun setExternalSubtitleSelected(videoKey: String, uri: String?) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.update("external_subs", ContentValues().apply { put("selected", 0) }, "video_key = ?", arrayOf(videoKey))
+            if (uri != null) {
+                db.update(
+                    "external_subs",
+                    ContentValues().apply { put("selected", 1) },
+                    "video_key = ? AND uri = ?",
+                    arrayOf(videoKey, uri),
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
 
     fun get(key: String): ResumeEntry? =
         readableDatabase.query("history", null, "key = ?", arrayOf(key), null, null, null).use { c ->
@@ -102,12 +171,14 @@ class ResumeStore private constructor(context: Context) :
 
     fun delete(key: String) {
         writableDatabase.delete("history", "key = ?", arrayOf(key))
+        writableDatabase.delete("external_subs", "video_key = ?", arrayOf(key))
         Covers.delete(appContext, key)
         _changes.value++
     }
 
     fun clear() {
         writableDatabase.delete("history", null, null)
+        writableDatabase.delete("external_subs", null, null)
         Covers.clear(appContext)
         _changes.value++
     }
@@ -134,7 +205,24 @@ class ResumeStore private constructor(context: Context) :
 
     private fun Cursor.str(column: String): String? = getString(getColumnIndexOrThrow(column))
 
+    private fun createExternalSubs(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS external_subs (
+                video_key TEXT NOT NULL,
+                uri TEXT NOT NULL,
+                name TEXT,
+                language TEXT,
+                selected INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (video_key, uri)
+            )
+            """.trimIndent()
+        )
+    }
+
     companion object {
+        private const val DB_VERSION = 2
+
         @Volatile private var instance: ResumeStore? = null
 
         fun get(context: Context): ResumeStore =

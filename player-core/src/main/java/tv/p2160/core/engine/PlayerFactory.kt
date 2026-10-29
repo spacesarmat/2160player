@@ -147,10 +147,10 @@ internal object PlayerFactory {
         val player = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(RtspOverTcp(DiscMediaSourceFactory(DefaultMediaSourceFactory(
+            .setMediaSourceFactory(SubtitleReload.Factory(RtspOverTcp(DiscMediaSourceFactory(DefaultMediaSourceFactory(
                 dataSourceFactory,
                 DolbyVisionFallback.ExtractorsFactoryWrapper(context, AviPlayback.factory(m2tsExtractors)),
-            ))))
+            )))))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

@@ -74,7 +74,7 @@ APK берётся из [последнего релиза](https://github.com/s
 
 ### Просмотр
 
-- Субтитры: внешние SRT, ASS, VTT, TTML, своя кодировка, автопоиск рядом с видео, задержка, стиль, двойные субтитры.
+- Субтитры: внешние SRT, ASS, VTT, TTML, своя кодировка, автопоиск рядом с видео (в том числе `content://`: папка запоминается с первого раза), загрузка из файла сразу на экран, задержка, стиль, двойные субтитры.
 - Главы и пропуск вступления, пересказа и титров: из глав, из Intent или ручные отметки на весь сериал. Кнопка или автопропуск, карточка «Следующая серия».
 - Вступление между сериями можно найти по звуку.
 - Продолжение с места, с дорожками, скоростью и задержкой субтитров. Досмотренное в следующий раз открывается с начала.
@@ -272,7 +272,7 @@ FFmpeg covers DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MP3 and MPEG-1/2 when the device 
 
 ### Playback
 
-External SRT, ASS, VTT and TTML subtitles, including two on screen at once. Chapters, intro/recap/credits skip (from chapters, from an Intent, from marks saved for a whole series, or from audio compared across episodes), and a next-episode card. Resume keeps the position, track choices, speed and subtitle delay. A file watched to the end opens from the start next time. At the end of a playlist the player moves on; a single file offers Watch again and Close. Live TV is left alone.
+External SRT, ASS, VTT and TTML subtitles, including two on screen at once. Sidecars next to a `content://` video are picked up too: the folder is asked at most once and then remembered. A file chosen in the player is shown immediately and restored for that video. Chapters, intro/recap/credits skip (from chapters, from an Intent, from marks saved for a whole series, or from audio compared across episodes), and a next-episode card. Resume keeps the position, track choices, speed and subtitle delay. A file watched to the end opens from the start next time. At the end of a playlist the player moves on; a single file offers Watch again and Close. Live TV is left alone.
 
 Night sound can follow a schedule (23:00-10:00 by default). A sleep timer runs 15-120 minutes or until the episode ends. There is a separate audio delay for Bluetooth headphones and soundbars. The player remembers a manual audio and subtitle choice per series and per set of languages in the file.
 

@@ -31,6 +31,8 @@ import tv.p2160.core.api.IntentApi
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.engine.PlayerController
 import tv.p2160.core.settings.PlayerSettings
+import tv.p2160.core.subtitle.SubtitleFolders
+import tv.p2160.core.subtitle.SubtitleSupport
 import tv.p2160.core.ui.PlayerScreen
 
 /** Держит контроллер между поворотами экрана и пересозданиями Activity. */
@@ -61,12 +63,23 @@ class Player2160Activity : ComponentActivity() {
     private val vm: PlayerViewModel by viewModels()
     private var inPip by mutableStateOf(false)
 
+    private val pickFolder = registerForActivityResult(SubtitleFolders.Contract()) { uri ->
+        SubtitleFolders.deliver(uri)
+    }
+    private val launchFolder: (Intent) -> Unit = { pickFolder.launch(it) }
+
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.controller?.addExternalSubtitle(uri)
+        if (uri != null) {
+            // Временное право живёт, пока открыта эта Activity. Сохраняем его для следующего запуска.
+            SubtitleSupport.persistReadPermission(this, uri)
+            vm.controller?.addExternalSubtitle(uri)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // До vm.open: контроллер сразу ищет субтитры рядом и может открыть выбор папки.
+        SubtitleFolders.attach(launchFolder)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         hideSystemBars()
 
@@ -95,6 +108,11 @@ class Player2160Activity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        SubtitleFolders.detach(launchFolder)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -109,7 +109,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | Торренты | Отдельный модуль `source-torrent` (libtorrent4j): magnet/.torrent, просмотр во время загрузки по схеме `torrent://` ([§21](#21-торренты-модуль-source-torrent)). |
 | Звук | «Ночной звук» (компрессия динамики + выделение диалогов) вручную или по расписанию; автоматический откат с passthrough на декодирование ([§16](#16-ночной-звук)). |
 | Дорожки | Обучаемый выбор озвучки и субтитров по сериалу и по набору языков файла ([§17](#17-умный-выбор-дорожек)). |
-| Субтитры | Внешние SRT/ASS/SSA/VTT/TTML (автоопределение кодировки), автопоиск файлов рядом с видео (file:// и smb://), задержка, размер/цвет/обводка, **двойные субтитры** (вторая дорожка сверху). |
+| Субтитры | Внешние SRT/ASS/SSA/VTT/TTML (автоопределение кодировки). Автопоиск рядом с видео для `file://`, `smb://` и `content://` (путь на диске, уже выданное дерево SAF или один запрос папки). Файл из выбора документа, HTTP и SMB подключается сразу и запоминается для этого видео. Задержка, размер/цвет/обводка, **двойные субтитры** (вторая дорожка сверху). |
 | Главы и отрезки | Главы из контейнера (FFmpeg) и с Blu-ray; пропуск вступления/пересказа/титров/анонса: из Intent, из названий глав, из ручных отметок (на весь сериал), автоопределение по звуку соседних серий ([§18](#18-поиск-вступлений-по-звуку-и-сводка-по-файлу)). Режимы «кнопка» и «авто». |
 | Продолжение просмотра | SQLite-история: позиция, аудио- и текстовая дорожка, скорость, задержка субтитров. Возврат позиции вызывающему приложению (MX Player/VLC-совместимо). |
 | UI | Телефон и Android TV (D-pad, пульт, цифровой ввод времени), жесты, PiP, превью кадров при перемотке, 6 тем оформления. |
@@ -588,7 +588,7 @@ fun PlayerScreen(
 | `controller` | Движок воспроизведения. Создаёте и освобождаете вы. |
 | `settingsStore` | Обычно `Player2160.settings(context)`. Экран читает тему, стиль субтитров, шаг перемотки, режим масштаба и пишет изменения, сделанные пользователем в панелях. |
 | `onBack` | Кнопка «Назад» в панели и системный Back (если открыта боковая панель - сначала закрывается она). Здесь закрывают экран и/или возвращают результат. |
-| `onPickSubtitle` | Пункт «Загрузить из файла…» в панели субтитров. Откройте выбор файла и передайте URI в `controller.addExternalSubtitle(uri)`. |
+| `onPickSubtitle` | Пункт «Загрузить из файла…» в панели субтитров. Откройте выбор файла (`OpenDocument`, тип `*/*`, чтобы не спрятать `.srt` с типом `application/octet-stream`) и передайте URI в `controller.addExternalSubtitle(uri)`. Для `content://` контроллер сам вызывает `takePersistableUriPermission`. |
 | `inPictureInPicture` | `true` - скрыть все элементы управления (режим PiP). |
 
 Экран занимает всё доступное место (`fillMaxSize`), рисует свою тему (`P2160Theme`) и строки
@@ -681,7 +681,7 @@ class PlayerController(
 | `fun disableSubtitles()` | Выключить субтитры. |
 | `fun setSecondarySubtitle(option: TrackOption?)` | Вторые субтитры (сверху); `null` - выключить. |
 | `fun setSubtitleDelay(ms: Long)` | Задержка субтитров. |
-| `fun addExternalSubtitle(uri: Uri, name: String? = null)` | Подключить файл субтитров к текущему элементу и сразу включить. |
+| `fun addExternalSubtitle(uri: Uri, name: String? = null)` | Подключить SRT/ASS/VTT/TTML (`file`, `content`, `http(s)`, `smb`) к текущему элементу, сразу включить и запомнить для этого файла. `content://` сохраняет право чтения. Источник пересобирается: одно лишь `replaceMediaItem` с тем же URI видео дорожку не добавляет. |
 | `fun nextChapter()` / `fun previousChapter()` / `fun seekToChapter(chapter: Chapter)` | Главы. `previousChapter()` в первые 3 с главы переходит к предыдущей. |
 | `fun skip(segment: SkipSegment)` | Пропустить отрезок; титры до конца файла при наличии следующего элемента - переход к нему. |
 | `fun markIntroStart()` / `fun markIntroEnd()` / `fun markCreditsStart()` / `fun clearMarks()` | Ручные отметки по текущей позиции (для сериала - на все серии). |
@@ -730,7 +730,11 @@ class EmbeddedPlayerActivity : ComponentActivity() {
     private var inPip by mutableStateOf(false)
 
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.controller?.addExternalSubtitle(uri)
+        if (uri != null) {
+            // Необязательно: addExternalSubtitle сам сохраняет право чтения content://.
+            tv.p2160.core.subtitle.SubtitleSupport.persistReadPermission(this, uri)
+            vm.controller?.addExternalSubtitle(uri)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1412,7 +1416,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 ### 15.3. Ограничения и известные особенности
 
 - `nowPlaying` после закрытия плеера не становится `null` (остаётся снимок с `isPlaying = false`).
-- Внешние субтитры из Intent и `Intent.type`, а также отрезки из Intent, относятся только к стартовому элементу. Через `PlaybackRequest` субтитры и отрезки задаются у каждого `MediaEntry`. Автопоиск файлов рядом с видео (`Movie.srt`, `Movie.ru.srt`, но не `Movie2.srt`) идёт для каждого пункта плейлиста, у которого список субтитров пуст.
+- Внешние субтитры из Intent и `Intent.type`, а также отрезки из Intent, относятся только к стартовому элементу. Через `PlaybackRequest` субтитры и отрезки задаются у каждого `MediaEntry`. Автопоиск (`Movie.srt`, `Movie.ru.srt`, но не `Movie2.srt`) идёт, если в запросе у пункта нет своего списка субтитров: для `file://` и `smb://` читается каталог, для `content://` - путь на диске или уже сохранённое дерево SAF. Если каталог прочитать нельзя, `Player2160Activity` один раз открывает выбор папки (на Android 8+ сразу в родительской, с подсказкой; на ТВ это системный экран с пульта). Отказ и чужая папка запоминаются, повторно плеер не спрашивает. Выбранный в плеере файл и `subs` / `subtitles_location` сохраняются в `ResumeStore` и подключаются снова без этих extras. Явный внешний файл важнее сохранённого «субтитры выключены» и привычки сериала. Кодировка приводится к UTF-8 (BOM и UTF-16 тоже), MIME берётся из расширения, а не из `application/octet-stream`.
 - Результат возвращается только при закрытии через «Назад»; позиция в результате MX-формата - `Int`.
 - Свою тему в `PlayerScreen` не добавить: `PlayerThemes.all` - фиксированный список.
 - `decoder`, предпочтительные языки, `autoPlayNext` применяются к следующему `PlayerController`.

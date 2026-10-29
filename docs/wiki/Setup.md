@@ -36,6 +36,8 @@ APK: `app/build/outputs/apk/debug/`.
 | release | `tv.p2160.player` | 2160 Player |
 | debug | `tv.p2160.player.debug` | «2160 Тест» (красная полоса «ТЕСТ») |
 
+Красная полоса «ТЕСТ» на иконке и баннере ТВ лежит в `app/src/debug/res`. Картинки собирает `design/debug-badge/make_debug_icons.py`.
+
 Установка на устройство:
 
 ```sh
@@ -68,7 +70,7 @@ adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 1. **Пользователь** - экран «Настройки», `PlayerSettings` / `Settings`, файл `p2160_settings`.
    См. [Настройки](Settings.md).
 2. **Движок для встраивания** - `Player2160.config = PlayerConfig(...)` до создания плеера:
-   предел буфера (`AUTO` - 24–128 МБ по памяти устройства), тайм-ауты HTTP, чтение глав,
+   предел буфера (`AUTO` - 24-128 МБ по памяти устройства), тайм-ауты HTTP, чтение глав,
    поиск вступлений, запись и чтение истории. Пользователь это не меняет.
 
 Запуск из кода библиотеки: `Player2160.play(context, PlaybackRequest.single(uri, title))`.

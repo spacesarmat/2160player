@@ -176,9 +176,34 @@ private class RemapSelection(
     override fun getTrackGroup(): TrackGroup = original
 }
 
-/** Длительность видео, известная после его timeline. Внешний звук длиннее неё обрезается. */
+/**
+ * Длительность видео. У mkv она часто приходит вторым timeline, уже после createPeriod.
+ * Обрезка вешается сразу и обновляется, когда длительность становится известна.
+ */
+@OptIn(UnstableApi::class)
 internal class VideoDuration {
     @Volatile var us: Long = C.TIME_UNSET
+    private val clips = ArrayList<ClippingMediaPeriod>()
+
+    fun track(period: ClippingMediaPeriod) {
+        val known = us
+        synchronized(clips) { clips += period }
+        if (known != C.TIME_UNSET && known > 0) period.updateClipping(0, known)
+    }
+
+    fun untrack(period: ClippingMediaPeriod) {
+        synchronized(clips) { clips -= period }
+    }
+
+    fun set(durationUs: Long) {
+        if (durationUs == C.TIME_UNSET || durationUs <= 0 || durationUs == us) return
+        val snapshot: List<ClippingMediaPeriod>
+        synchronized(clips) {
+            us = durationUs
+            snapshot = clips.toList()
+        }
+        for (clip in snapshot) clip.updateClipping(0, durationUs)
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -190,7 +215,7 @@ private class DurationProbe(
         if (newTimeline.periodCount > 0) {
             val period = Timeline.Period()
             newTimeline.getPeriod(0, period)
-            if (period.durationUs != C.TIME_UNSET && period.durationUs > 0) slot.us = period.durationUs
+            slot.set(period.durationUs)
         }
         super.onChildSourceInfoRefreshed(newTimeline)
     }
@@ -232,12 +257,18 @@ private class LenientSource(
 
     override fun createPeriod(id: MediaSource.MediaPeriodId, allocator: Allocator, startPositionUs: Long): MediaPeriod {
         val raw = mediaSource.createPeriod(id, allocator, startPositionUs)
-        return LenientPeriod(clipExternalToVideo(raw, videoDuration.us)) { durationUs }
+        val known = videoDuration.us
+        val end = if (known != C.TIME_UNSET && known > 0) known else C.TIME_END_OF_SOURCE
+        val clip = ClippingMediaPeriod(raw, /* enableInitialDiscontinuity = */ false, /* startUs = */ 0, end)
+        videoDuration.track(clip)
+        return LenientPeriod(clip) { durationUs }
     }
 
     override fun releasePeriod(mediaPeriod: MediaPeriod) {
         val inner = (mediaPeriod as LenientPeriod).inner
-        val raw = (inner as? ClippingMediaPeriod)?.mediaPeriod ?: inner
+        val clip = inner as? ClippingMediaPeriod
+        if (clip != null) videoDuration.untrack(clip)
+        val raw = clip?.mediaPeriod ?: inner
         mediaSource.releasePeriod(raw)
     }
 }

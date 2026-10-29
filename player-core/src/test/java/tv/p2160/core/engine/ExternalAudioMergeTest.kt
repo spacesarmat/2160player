@@ -11,7 +11,9 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.common.TrackGroup
 import androidx.media3.exoplayer.FormatHolder
+import androidx.media3.exoplayer.trackselection.FixedTrackSelection
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.SampleStream
@@ -172,6 +174,115 @@ class ExternalAudioMergeTest {
         assertTrue(ended)
     }
 
+    @Test
+    fun mergedSourceClipsAudioAfterTheVideoDurationArrives() {
+        val context = RuntimeEnvironment.getApplication()
+        val spec = AudioSpec(Uri.parse("file:///X1.ru.ac3"), 0, "X1.ru", "ru", MimeTypes.AUDIO_AC3, 0)
+        val item = MediaItem.Builder()
+            .setUri(Uri.parse("file:///X1.mkv"))
+            .setMediaId("video")
+            .setTag(ExternalAudioTag(listOf(spec)))
+            .build()
+        val factory = LateFactory()
+        val source = ExternalAudioMerge.Factory(factory).createMediaSource(item)
+        var timeline: Timeline? = null
+        val caller = MediaSource.MediaSourceCaller { _, refreshed -> timeline = refreshed }
+        source.prepareSource(caller, PlayerId.UNSET, DefaultBandwidthMeter.getSingletonInstance(context))
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        assertNotNull(timeline)
+        assertEquals(C.TIME_UNSET, timeline!!.getWindow(0, Timeline.Window()).durationUs)
+        source.enable(caller)
+        val period = source.createPeriod(
+            MediaSource.MediaPeriodId(timeline.getUidOfPeriod(0)),
+            DefaultAllocator(true, 64 * 1024),
+            0L,
+        )
+        period.prepare(object : MediaPeriod.Callback {
+            override fun onPrepared(mediaPeriod: MediaPeriod) = Unit
+            override fun onContinueLoadingRequested(source: MediaPeriod) = Unit
+        }, 0L)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        var audioGroup: TrackGroup? = null
+        val groups = period.trackGroups
+        for (i in 0 until groups.length) {
+            val format = groups[i].getFormat(0)
+            if (MimeTypes.isAudio(format.sampleMimeType)) audioGroup = groups[i]
+        }
+        assertNotNull(audioGroup)
+        val streams = arrayOfNulls<SampleStream>(1)
+        period.selectTracks(
+            arrayOf(FixedTrackSelection(audioGroup!!, 0)),
+            BooleanArray(1),
+            streams,
+            BooleanArray(1),
+            0L,
+        )
+        val stream = checkNotNull(streams[0])
+        assertEquals(1_000_000L, readSampleUs(stream))
+        factory.video!!.publish(40_000_000L)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+        val updated = checkNotNull(timeline)
+        assertEquals(40_000_000L, updated.getWindow(0, Timeline.Window()).durationUs)
+        assertEquals(null, readSampleUs(stream))
+        source.releasePeriod(period)
+        source.releaseSource(caller)
+    }
+
+    private fun readSampleUs(stream: SampleStream): Long? {
+        val buffer = DecoderInputBuffer(DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_NORMAL)
+        val holder = FormatHolder()
+        repeat(4) {
+            buffer.clear()
+            when (stream.readData(holder, buffer, 0)) {
+                C.RESULT_FORMAT_READ -> Unit
+                C.RESULT_BUFFER_READ -> return if (buffer.isEndOfStream) null else buffer.timeUs
+                else -> return null
+            }
+        }
+        return null
+    }
+
+    private class LateFactory : MediaSource.Factory {
+        var video: LateVideoSource? = null
+
+        override fun setDrmSessionManagerProvider(drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider) = this
+        override fun setLoadErrorHandlingPolicy(loadErrorHandlingPolicy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy) = this
+        override fun getSupportedTypes(): IntArray = intArrayOf(C.CONTENT_TYPE_OTHER)
+        override fun createMediaSource(mediaItem: MediaItem): MediaSource =
+            if (mediaItem.mediaId.startsWith(EXTERNAL_AUDIO_PREFIX)) LongAudioSource(mediaItem)
+            else LateVideoSource(mediaItem).also { video = it }
+    }
+
+    private class LateVideoSource(private val item: MediaItem) : BaseMediaSource() {
+        override fun prepareSourceInternal(mediaTransferListener: TransferListener?) {
+            refreshSourceInfo(SinglePeriodTimeline(C.TIME_UNSET, false, false, false, null, item))
+        }
+
+        fun publish(durationUs: Long) {
+            refreshSourceInfo(SinglePeriodTimeline(durationUs, true, false, false, null, item))
+        }
+
+        override fun releaseSourceInternal() = Unit
+        override fun maybeThrowSourceInfoRefreshError() = Unit
+        override fun getMediaItem(): MediaItem = item
+        override fun createPeriod(id: MediaSource.MediaPeriodId, allocator: Allocator, startPositionUs: Long): MediaPeriod =
+            ReadyPeriod(audio = false)
+        override fun releasePeriod(mediaPeriod: MediaPeriod) = Unit
+    }
+
+    private class LongAudioSource(private val item: MediaItem) : BaseMediaSource() {
+        override fun prepareSourceInternal(mediaTransferListener: TransferListener?) {
+            refreshSourceInfo(SinglePeriodTimeline(80_000_000L, true, false, false, null, item))
+        }
+
+        override fun releaseSourceInternal() = Unit
+        override fun maybeThrowSourceInfoRefreshError() = Unit
+        override fun getMediaItem(): MediaItem = item
+        override fun createPeriod(id: MediaSource.MediaPeriodId, allocator: Allocator, startPositionUs: Long): MediaPeriod =
+            ScriptedPeriod(longArrayOf(1_000_000L, 50_000_000L))
+        override fun releasePeriod(mediaPeriod: MediaPeriod) = Unit
+    }
+
     private class ReadyFactory : MediaSource.Factory {
         override fun setDrmSessionManagerProvider(drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider) = this
         override fun setLoadErrorHandlingPolicy(loadErrorHandlingPolicy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy) = this
@@ -239,7 +350,9 @@ class ExternalAudioMergeTest {
         }
 
         override fun maybeThrowPrepareError() = Unit
-        override fun getTrackGroups(): TrackGroupArray = TrackGroupArray()
+        override fun getTrackGroups(): TrackGroupArray = TrackGroupArray(
+            TrackGroup(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_AC3).setId("ac3").build()),
+        )
         override fun discardBuffer(positionUs: Long, toKeyframe: Boolean) = Unit
         override fun readDiscontinuity(): Long = C.TIME_UNSET
         override fun seekToUs(positionUs: Long): Long = 0L

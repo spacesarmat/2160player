@@ -1682,7 +1682,9 @@ class PlayerController(
         val tracks = p.currentTracks
         val duration = p.duration.takeIf { it != C.TIME_UNSET } ?: 0L
         val video = p.videoSize
-        val position = p.currentPosition.coerceAtLeast(0)
+        val rawPosition = p.currentPosition.coerceAtLeast(0)
+        val position = if (duration > 0 && rawPosition > duration) duration else rawPosition
+        if (duration > 0 && rawPosition >= duration) finishAtVideoEnd()
         val builtSegments = if (duration > 0) currentSegments(duration) else emptyList()
         val skipMode = settings.current.skipMode
         _state.update { prev ->
@@ -2083,7 +2085,30 @@ class PlayerController(
      * Кадры не идут, а выбрана внешняя дорожка (типичный Opus на Android 9).
      * Снимаем только её, видео продолжается.
      */
+    /**
+     * Видео доиграло, а внешний звук ещё кормит часы. Это не «дорожка не поддерживается»:
+     * не снимаем её и не запоминаем выбор встроенной.
+     */
+    private fun pastVideoEnd(): Boolean {
+        if (request.liveTv) return false
+        val duration = player.duration
+        if (duration == C.TIME_UNSET || duration <= 0) return false
+        return player.currentPosition >= duration
+    }
+
+    /** Конец ролика, даже если звуковой рендерер ещё не отпустил часы. */
+    private fun finishAtVideoEnd() {
+        if (naturalEndHandled || request.liveTv) return
+        val duration = player.duration
+        if (duration == C.TIME_UNSET || duration <= 0) return
+        if (player.currentPosition < duration) return
+        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return
+        player.playWhenReady = false
+        onNaturalEnd()
+    }
+
     private fun dropStalledExternalAudio(): Boolean {
+        if (pastVideoEnd()) return false
         val index = player.currentMediaItemIndex
         if (index !in audios.indices || audios[index].isEmpty()) return false
         val selected = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
@@ -2350,6 +2375,11 @@ class PlayerController(
             watchdogBaseFrames = frames
             watchdogBaseInput = input
             watchdogArmedAt = now
+            return
+        }
+        if (pastVideoEnd()) {
+            finishAtVideoEnd()
+            resetWatchdogClock()
             return
         }
         if (now - watchdogArmedAt < FIRST_FRAME_TIMEOUT_MS) return

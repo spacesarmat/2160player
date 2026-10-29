@@ -122,7 +122,8 @@ internal fun codecLabel(mime: String?): String = when (mime) {
 
 /**
  * Ключ строки ошибки декодера.
- * Если декодера нет в сборке, не советуем режим FFmpeg: он этот кодек не откроет.
+ * «Режим FFmpeg…» только если пользователь сам включил FFmpeg.
+ * В «Авто» и на аппаратном режиме, когда декодера нет в сборке, текст нейтральный.
  */
 internal fun decoderErrorKey(
     mime: String?,
@@ -131,12 +132,12 @@ internal fun decoderErrorKey(
     ffmpegAvailable: Boolean = ffmpegCanDecode(mime),
 ): String {
     if (mime == null) return "error.decoder"
-    val tried = mode == DecoderPreference.FFMPEG || stage >= VideoDecoderGate.FFMPEG
-    return when {
-        !ffmpegAvailable -> "error.decoder_codec_no_ffmpeg"
-        tried -> "error.decoder_codec_ffmpeg"
-        else -> "error.decoder_codec"
+    if (mode == DecoderPreference.FFMPEG) {
+        return if (ffmpegAvailable) "error.decoder_codec_ffmpeg" else "error.decoder_codec_no_ffmpeg"
     }
+    if (stage >= VideoDecoderGate.FFMPEG && ffmpegAvailable) return "error.decoder_codec_ffmpeg"
+    if (!ffmpegAvailable) return "error.decoder_codec_device"
+    return "error.decoder_codec"
 }
 
 /**

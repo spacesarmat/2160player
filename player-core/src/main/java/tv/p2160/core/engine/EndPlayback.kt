@@ -81,3 +81,22 @@ internal const val END_IDLE_CLOSE_MS = 12_000L
 internal const val END_DIM_MS = 3 * 60_000L
 internal const val PLAYLIST_DONE_MS = 2_500L
 internal const val UP_NEXT_WINDOW_MS = 15_000L
+
+/** Широкий экран: карточка «Далее» стоит справа, подсказка продолжения остаётся слева от неё. */
+internal fun upNextCardReservesSide(widthDp: Int): Boolean = widthDp >= 600
+
+/**
+ * Узкое низкое окно: карточка снизу достаёт до подсказки сверху.
+ * Пока подсказка видна, карточку не показываем.
+ */
+internal fun deferUpNextWhileResumeToast(
+    resumeToast: Boolean,
+    widthDp: Int,
+    heightDp: Int,
+    controlsVisible: Boolean,
+): Boolean {
+    if (!resumeToast || upNextCardReservesSide(widthDp)) return false
+    val cardBottom = if (controlsVisible) 110 else 32
+    val cardTop = heightDp - cardBottom - 240
+    return cardTop < 72 + 64
+}

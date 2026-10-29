@@ -98,7 +98,9 @@ import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.END_IDLE_CLOSE_MS
 import tv.p2160.core.engine.PLAYLIST_DONE_MS
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.engine.deferUpNextWhileResumeToast
 import tv.p2160.core.engine.showUpNext
+import tv.p2160.core.engine.upNextCardReservesSide
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.transportShowsRemaining
 import tv.p2160.core.api.PlayerExtensions
@@ -369,10 +371,18 @@ fun PlayerScreen(
     }
 
     // Карточка «Далее» только у конца ролика и не вместе с вопросом «Продолжить».
-    val showNextCard by remember(inPictureInPicture) {
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    val showNextCard by remember(inPictureInPicture, screenWidthDp, screenHeightDp) {
         derivedStateOf(structuralEqualityPolicy()) {
             val s = upstream.value
-            s.resumePromptMs == null && s.error == null &&
+            val deferToast = deferUpNextWhileResumeToast(
+                resumeToast = s.resumedFromMs != null,
+                widthDp = screenWidthDp,
+                heightDp = screenHeightDp,
+                controlsVisible = controlsVisible.value,
+            )
+            !deferToast && s.resumePromptMs == null && s.error == null &&
                 s.endCountdownSec == null && !s.showEndScreen && !s.playlistFinished && showUpNext(
                 action = settings.endAction,
                 hasNext = s.hasNext && nextDismissedFor != s.playlistIndex,
@@ -733,12 +743,17 @@ fun PlayerScreen(
                 if (!inPictureInPicture) {
                     // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
                     // иначе «С начала» оказывается под панелью и не нажимается.
-                    // Отступ читает панель этот узел, не весь экран.
+                    // Если справа карточка «Далее», подсказка не заходит в её колонку
+                    // (на альбомном телефоне карточка дотягивается до верхнего края).
+                    val cardOnScreen = showNextCard && panelState.value == null
+                    val wide = upNextCardReservesSide(screenWidthDp)
                     ResumeHintInset(panelState) { resumeEnd ->
+                        val endPad = if (cardOnScreen && wide) 360.dp else resumeEnd + 16.dp
                         Box(
-                            Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                            Modifier.align(if (cardOnScreen && wide) Alignment.TopStart else Alignment.TopCenter)
+                                .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                                .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
+                                .padding(top = 72.dp, start = 16.dp, end = endPad),
                         ) {
                             Row(
                                 Modifier.align(Alignment.Center).widthIn(max = 560.dp)

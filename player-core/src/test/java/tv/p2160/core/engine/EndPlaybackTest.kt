@@ -65,6 +65,17 @@ class EndPlaybackTest {
     }
 
     @Test
+    fun resumeToastDoesNotCoverTheUpNextCard() {
+        assertTrue(upNextCardReservesSide(872))
+        assertFalse(upNextCardReservesSide(392))
+        assertFalse(deferUpNextWhileResumeToast(true, 872, 392, true))
+        assertFalse(deferUpNextWhileResumeToast(true, 392, 872, true))
+        assertFalse(deferUpNextWhileResumeToast(true, 960, 540, true))
+        assertTrue(deferUpNextWhileResumeToast(true, 360, 400, true))
+        assertFalse(deferUpNextWhileResumeToast(false, 360, 400, true))
+    }
+
+    @Test
     fun stayOnFrameDimsOnlyAfterTheTimeout() {
         assertFalse(endShouldDim(holdingEnd = true, live = false, heldForMs = 60_000))
         assertTrue(endShouldDim(holdingEnd = true, live = false, heldForMs = END_DIM_MS))

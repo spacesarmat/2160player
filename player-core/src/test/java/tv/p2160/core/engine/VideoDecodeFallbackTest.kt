@@ -56,7 +56,7 @@ class VideoDecodeFallbackTest {
         )
         assertEquals(VideoDecoderGate.DEFAULT, gate.stage(MimeTypes.VIDEO_MP43))
         assertEquals(
-            "error.decoder_codec_no_ffmpeg",
+            "error.decoder_codec_device",
             decoderErrorKey(MimeTypes.VIDEO_MP43, DecoderPreference.AUTO, gate.stage(MimeTypes.VIDEO_MP43)),
         )
         val withFfmpeg = VideoDecoderGate()
@@ -109,7 +109,7 @@ class VideoDecodeFallbackTest {
             ),
         )
         assertEquals(
-            "error.decoder_codec_no_ffmpeg",
+            "error.decoder_codec_device",
             decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.HARDWARE, VideoDecoderGate.DEFAULT),
         )
         assertEquals(
@@ -117,7 +117,7 @@ class VideoDecodeFallbackTest {
             decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.FFMPEG, VideoDecoderGate.DEFAULT),
         )
         assertEquals(
-            "error.decoder_codec_no_ffmpeg",
+            "error.decoder_codec_device",
             decoderErrorKey(MimeTypes.VIDEO_MP43, DecoderPreference.AUTO, VideoDecoderGate.SOFTWARE),
         )
         assertEquals(
@@ -132,7 +132,7 @@ class VideoDecodeFallbackTest {
             "error.decoder_codec_ffmpeg",
             decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.AUTO, VideoDecoderGate.FFMPEG, ffmpegAvailable = true),
         )
-        assertEquals("error.decoder_codec_no_ffmpeg", decoderErrorKey("video/mjpeg", DecoderPreference.AUTO, VideoDecoderGate.SOFTWARE, ffmpegAvailable = false))
+        assertEquals("error.decoder_codec_device", decoderErrorKey("video/mjpeg", DecoderPreference.AUTO, VideoDecoderGate.SOFTWARE, ffmpegAvailable = false))
         assertEquals("error.decoder", decoderErrorKey(null, DecoderPreference.AUTO, VideoDecoderGate.DEFAULT))
         assertEquals(true, ffmpegMaps(MimeTypes.VIDEO_MP4V))
         assertEquals(true, ffmpegMaps(MimeTypes.VIDEO_MP43))

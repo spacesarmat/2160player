@@ -28,24 +28,19 @@ APK берётся из [последнего релиза](https://github.com/s
 
 **Телефон (POCO X5)**
 
-<p>
-<img src="docs/images/phone-home-top.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера" width="300">
-<img src="docs/images/phone-player-portrait.webp" alt="Плеер на телефоне вертикально" width="220">
-<img src="docs/images/phone-settings.webp" alt="Настройки: язык, тема, субтитры" width="220">
-</p>
-<p>
-<img src="docs/images/phone-player-landscape.webp" alt="Плеер на телефоне горизонтально" width="460">
-<img src="docs/images/phone-player-subtitles.webp" alt="Панель субтитров: задержка и размер" width="460">
-</p>
+<img src="docs/images/gallery-phone-ui.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера. Плеер на телефоне вертикально. Настройки: язык, тема, субтитры." width="860">
+
+Главный экран, плеер вертикально, настройки.
+
+<img src="docs/images/gallery-phone-player.webp" alt="Плеер на телефоне горизонтально. Панель субтитров: задержка и размер." width="860">
+
+Плеер горизонтально, панель субтитров.
 
 **Android TV (Dune HD 4K Solo)**
 
-<p>
-<img src="docs/images/tv-player.webp" alt="Плеер на ТВ, фокус пульта на паузе" width="440">
-<img src="docs/images/tv-player-audio.webp" alt="Панель звука: ночной звук и выбор дорожки" width="440">
-<img src="docs/images/tv-player-resume.webp" alt="Вопрос: продолжить просмотр или с начала" width="440">
-<img src="docs/images/tv-settings.webp" alt="Настройки воспроизведения, фокус на шаге перемотки" width="440">
-</p>
+<img src="docs/images/gallery-tv.webp" alt="Плеер на ТВ, фокус пульта на паузе. Панель звука: ночной звук и выбор дорожки. Вопрос: продолжить просмотр или с начала. Настройки воспроизведения, фокус на шаге перемотки." width="860">
+
+Плеер, звук, продолжить просмотр, настройки.
 
 Кадры видео в плеере: Tears of Steel и Sintel, Blender Foundation, CC-BY 3.0 (mango.blender.org, durian.blender.org).
 
@@ -255,12 +250,9 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 
 **2160 Player** is a media player for Android phones and Android TV. The engine is Media3 (ExoPlayer) with FFmpeg decoders, and the UI is Jetpack Compose. The `player-core` module is a library you can embed, or you can send an Intent to the standalone app. Intents line up with what MX Player and VLC already accept. The full screenshot set is in [Скриншоты](#скриншоты).
 
-<p>
-<img src="docs/images/phone-player-landscape.webp" alt="Phone player, landscape" width="440">
-<img src="docs/images/tv-player.webp" alt="Android TV player" width="440">
-</p>
+<img src="docs/images/gallery-preview.webp" alt="Phone player, landscape, and the Android TV player." width="860">
 
-Video frames are from the Blender Foundation open movies Tears of Steel and Sintel, CC-BY 3.0 (mango.blender.org, durian.blender.org).
+Phone and Android TV. Video frames are from the Blender Foundation open movies Tears of Steel and Sintel, CC-BY 3.0 (mango.blender.org, durian.blender.org).
 
 ### Download
 

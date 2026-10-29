@@ -370,8 +370,8 @@ class PlayerController(
         override fun onEvents(player: Player, events: Player.Events) = refresh()
 
         override fun onTracksChanged(tracks: Tracks) {
-            noteUnsupportedExternal(tracks)
             applyPendingSelections(tracks)
+            noteUnsupportedExternal(tracks)
             if (recordChoiceOnTracks) {
                 recordChoiceOnTracks = false
                 rememberChoice(tracks)
@@ -435,6 +435,10 @@ class PlayerController(
                 if (now - passthroughRetryAt > 30_000) passthroughRetries = 0
                 val switching = now < built.passthrough.displaySwitchUntil
                 if (switching || passthroughRetries < PASSTHROUGH_RETRIES) {
+                    if (!switching && passthroughRetries == 0) {
+                        val message = i18n.current["player.passthrough_retry"]
+                        _state.update { it.copy(warnings = (it.warnings + message).distinct()) }
+                    }
                     if (!switching) passthroughRetries++
                     passthroughRetryAt = now
                     val play = player.playWhenReady
@@ -794,10 +798,7 @@ class PlayerController(
         pendingAudioHint?.let { hint ->
             val options = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current)
             val picked = TrackCarry.pick(hint, audioCarry(options, index))
-            if (picked != null) {
-                selectTrack(options[picked], user = false)
-                pinAudio = true
-            }
+            if (picked != null) pinAudio = selectTrack(options[picked], user = false)
             pendingAudioHint = null
         }
         pendingTextHint?.let { hint ->
@@ -993,11 +994,24 @@ class PlayerController(
     }
 
     /** Выбор дорожки пользователем (запоминается как привычка). */
-    fun select(option: TrackOption) = selectTrack(option, user = true)
+    fun select(option: TrackOption) {
+        selectTrack(option, user = true)
+    }
 
-    private fun selectTrack(option: TrackOption, user: Boolean, seed: Boolean = false) {
+    /** @return false, если внешний звук устройство не декодирует: выбор не применяется. */
+    private fun selectTrack(option: TrackOption, user: Boolean, seed: Boolean = false): Boolean {
+        if (option.type == C.TRACK_TYPE_AUDIO && option.external && !option.supported) {
+            warnExternalCodec(option.label)
+            clearRememberedExternal(option)
+            if (option.selected) {
+                val embedded = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
+                    .firstOrNull { !it.external && it.supported }
+                if (embedded != null) selectTrack(embedded, user = false)
+            }
+            return false
+        }
         if (user && (option.type == C.TRACK_TYPE_AUDIO || option.type == C.TRACK_TYPE_TEXT)) recordChoiceOnTracks = true
-        val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return
+        val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return false
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(option.type, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
@@ -1006,16 +1020,17 @@ class PlayerController(
             appliedAudioOffsetMs = audioOffset(option)
             applyAudioClock()
             if (user || (seed && sessionAudio == null)) sessionAudio = hintForAudio(option)
+            val index = player.currentMediaItemIndex
+            val picked = if (option.external) audioFor(option) else null
+            markAudioSelected(index, picked?.uri)
             if (user || option.external) {
-                val index = player.currentMediaItemIndex
-                val picked = audioFor(option)
-                keyAt(index)?.let { store.setExternalAudioSelected(it, if (option.external) picked?.uri?.toString() else null) }
+                keyAt(index)?.let { store.setExternalAudioSelected(it, picked?.uri?.toString()) }
             }
-            return
+            return true
         }
-        if (option.type != C.TRACK_TYPE_TEXT) return
+        if (option.type != C.TRACK_TYPE_TEXT) return true
         val index = player.currentMediaItemIndex
-        val key = keyAt(index) ?: return
+        val key = keyAt(index) ?: return true
         val uri = externalUriFor(option)
         // Автовыбор встроенной дорожки из истории не стирает запомненный внешний файл:
         // его мог только что попросить пользователь, а дорожки ещё не совпали.
@@ -1027,6 +1042,7 @@ class PlayerController(
         appliedTextOffsetMs = textOffset(option)
         applyTextClock()
         if (user || (seed && sessionText == null)) sessionText = hintForText(option)
+        return true
     }
 
     /** Сбрасывает ручной выбор видеодорожки - плеер снова выбирает качество сам (важно для HLS/DASH). */
@@ -1916,6 +1932,41 @@ class PlayerController(
         return audios.getOrNull(player.currentMediaItemIndex)?.getOrNull(at)
     }
 
+    /** Какая внешняя дорожка сейчас выбрана: по списку плеера, иначе по флагу select. */
+    private fun selectedExternalIndex(index: Int): Int? {
+        val list = audios.getOrNull(index) ?: return null
+        val fromPlayer = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
+            .firstOrNull { it.selected && it.external }
+            ?.let { externalAudioIndex(it.formatId) }
+        if (fromPlayer != null && fromPlayer in list.indices) return fromPlayer
+        return list.indexOfFirst { it.select }.takeIf { it >= 0 }
+    }
+
+    private fun markAudioSelected(index: Int, uri: Uri?) {
+        val list = audios.getOrNull(index) ?: return
+        for (i in list.indices) {
+            val want = uri != null && list[i].uri == uri
+            if (list[i].select != want) list[i] = list[i].copy(select = want)
+        }
+    }
+
+    /** Снять запомненный выбор только этого файла. Сама строка в панели остаётся. */
+    private fun clearRememberedExternal(option: TrackOption) {
+        val index = player.currentMediaItemIndex
+        val audio = audioFor(option) ?: return
+        val list = audios.getOrNull(index) ?: return
+        val at = list.indexOfFirst { it.uri == audio.uri }
+        if (at >= 0 && list[at].select) list[at] = list[at].copy(select = false)
+        val key = keyAt(index) ?: return
+        val saved = store.externalAudio(key).firstOrNull { it.select }?.uri
+        if (saved == audio.uri) store.setExternalAudioSelected(key, null)
+    }
+
+    private fun warnExternalCodec(label: String) {
+        val message = i18n.current.format("error.external_audio_codec", label)
+        _state.update { state -> state.copy(warnings = state.warnings.filterNot { it == message } + message) }
+    }
+
     private fun audioOffset(option: TrackOption): Long {
         if (!option.external) return 0
         return audioFor(option)?.delayMs ?: 0
@@ -2002,7 +2053,7 @@ class PlayerController(
         val exo = error as? ExoPlaybackException
         val mime = exo?.rendererFormat?.sampleMimeType
         if (exo?.type == ExoPlaybackException.TYPE_RENDERER && mime != null && MimeTypes.isVideo(mime)) return false
-        val at = failingExternalIndex(error, audios[index]) ?: return false
+        val at = failingExternalIndex(error, audios[index], selectedExternalIndex(index)) ?: return false
         val codec = exo?.type == ExoPlaybackException.TYPE_RENDERER
         return dropExternalAudioAt(index, at, codec)
     }
@@ -2021,6 +2072,7 @@ class PlayerController(
             _state.update { it.copy(warnings = (it.warnings + message).distinct()) }
         }
         if (bad.none { it.selected }) return
+        bad.filter { it.selected }.forEach { clearRememberedExternal(it) }
         val embedded = audio.firstOrNull { !it.external && it.supported } ?: return
         selectTrack(embedded, user = false)
     }

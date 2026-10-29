@@ -28,6 +28,7 @@ import tv.p2160.core.api.TrackSelect
 import tv.p2160.core.api.stableId
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import tv.p2160.core.engine.AudioSpec
+import tv.p2160.core.engine.externalAudioFailureIndex
 import tv.p2160.core.engine.failingExternalIndex
 import tv.p2160.core.engine.playbackSpeedFor
 import tv.p2160.core.engine.CarryHint
@@ -311,5 +312,32 @@ class ExternalAudioTest {
         val error = UnrecognizedInputFormatException("none", bad.uri)
         assertEquals(0, failingExternalIndex(error, listOf(bad, good)))
         assertEquals(null, failingExternalIndex(error, listOf(good)))
+    }
+
+    @Test
+    fun unknownCodecExternalDoesNotNeedAnExtaFormatId() {
+        val bad = ExternalAudio(Uri.parse("file:///Bad.ac3"), "Bad")
+        val other = ExternalAudio(Uri.parse("file:///Good.mka"), "Good")
+        // Декодер WMA в .mka сообщает id дорожки контейнера «1», не exta:. Один такой файл снимается.
+        assertEquals(
+            0,
+            externalAudioFailureIndex(listOf(bad), rendererFormatId = "1", selectedIndex = null, audioFailure = true),
+        )
+        // Несколько внешних: снимается выбранная, даже если id рендерера без exta:.
+        assertEquals(
+            1,
+            externalAudioFailureIndex(listOf(other, bad), rendererFormatId = "1", selectedIndex = 1, audioFailure = true),
+        )
+        assertNull(
+            externalAudioFailureIndex(listOf(bad, other), rendererFormatId = "1", selectedIndex = null, audioFailure = true),
+        )
+        // Ошибка видео внешние файлы не трогает. Наш id важнее выбранного индекса.
+        assertNull(
+            externalAudioFailureIndex(listOf(bad), rendererFormatId = "1", selectedIndex = 0, audioFailure = false),
+        )
+        assertEquals(
+            0,
+            externalAudioFailureIndex(listOf(bad, other), rendererFormatId = "1:exta:0", selectedIndex = 1, audioFailure = true),
+        )
     }
 }

@@ -47,8 +47,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +65,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.channels.Channel
@@ -186,12 +190,21 @@ fun SidePanel(
     val chrome = remember { PanelChrome(open) }
     revealNow.index = reveal
     chrome.open = open
+    var lostFocus by remember { mutableIntStateOf(0) }
     // Пульт иначе остаётся на кнопках плеера: панель открыта, но ни одна строка не в фокусе,
     // и OK попадает в «Перейти ко времени».
     LaunchedEffect(open) {
         if (!open) return@LaunchedEffect
         withFrameNanos { }
-        runCatching { enter.requestFocus() }
+        if (!chrome.open) return@LaunchedEffect
+        if (!requestPanelFocus(enter)) requestPanelFocus(focus)
+    }
+    // Выбор строки не должен оставлять фокус нигде: Назад тогда не доходит до панели.
+    LaunchedEffect(lostFocus) {
+        if (lostFocus == 0 || !chrome.open) return@LaunchedEffect
+        withFrameNanos { }
+        if (!chrome.open) return@LaunchedEffect
+        if (!requestPanelFocus(enter)) requestPanelFocus(focus)
     }
     // Сброс только по сигналу простоя, когда панель уже за краем. Открытие его не ждёт.
     LaunchedEffect(scrollReset) {
@@ -206,6 +219,7 @@ fun SidePanel(
     Box(
         Modifier
             .focusGroup()
+            .onFocusChanged { state -> if (open && !state.hasFocus) lostFocus++ }
             .focusProperties {
                 canFocus = open
                 onEnter = { if (!open) cancelFocusChange() }
@@ -389,7 +403,7 @@ private fun PanelSlots.populate(
                             secondary = if (!t.supported) tr("panel.unsupported_audio") else null,
                             selected = t.selected,
                             onClick = { actions.onSelectTrack(t) },
-                            modifier = if (t.selected || i == 0 && state.audioTracks.none { it.selected }) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(t.selected || (i == 0 && state.audioTracks.none { it.selected }), focus),
                         )
                     }
                     if (canPickFile) item(key = "add-audio") {
@@ -398,7 +412,7 @@ private fun PanelSlots.populate(
                             selected = false,
                             onClick = actions.onAddAudio,
                             leading = Icons.Default.UploadFile,
-                            modifier = if (state.audioTracks.isEmpty()) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(state.audioTracks.isEmpty(), focus),
                         )
                     }
                 }
@@ -407,14 +421,14 @@ private fun PanelSlots.populate(
                     val active = state.sleepRemainingMs != null || state.sleepAtEnd
                     item(key = "sleep-off") {
                         PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
-                            modifier = if (!active) Modifier.focusRequester(focus) else Modifier)
+                            modifier = focusPin(!active, focus))
                     }
                     items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }, contentType = { "choice" }) { minutes ->
                         PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
                     }
                     item(key = "sleep-end") {
                         PanelRow(tr("panel.sleep_end"), selected = state.sleepAtEnd, onClick = actions.onSleepAtEnd,
-                            modifier = if (state.sleepAtEnd) Modifier.focusRequester(focus) else Modifier)
+                            modifier = focusPin(state.sleepAtEnd, focus))
                     }
                     state.sleepRemainingMs?.let { left ->
                         item(key = "sleep-left") { Hint(tr("panel.sleep_left", formatTime(left))) }
@@ -500,7 +514,7 @@ private fun PanelSlots.populate(
                             text = if (s == 1f) tr("panel.speed_normal") else "${formatSpeed(s)}×",
                             selected = selected,
                             onClick = { actions.onSpeed(s) },
-                            modifier = if (selected) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(selected, focus),
                             compact = true,
                         )
                     }
@@ -546,7 +560,7 @@ private fun PanelSlots.populate(
                             secondary = formatTime(ch.startMs),
                             selected = current,
                             onClick = { actions.onChapter(ch) },
-                            modifier = if (current) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(current, focus),
                         )
                     }
                     item(key = "marks-title") { Hint(tr("panel.marks")) }
@@ -563,7 +577,7 @@ private fun PanelSlots.populate(
                             tr("panel.mark_intro_start"),
                             secondary = state.marks.introStartMs?.let(::formatTime),
                             selected = false, onClick = actions.onMarkIntroStart, leading = Icons.Default.FirstPage,
-                            modifier = if (state.chapters.isEmpty()) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(state.chapters.isEmpty(), focus),
                         )
                     }
                     item(key = "m-ie") {
@@ -594,7 +608,7 @@ private fun PanelSlots.populate(
                             text = resizeLabel(mode),
                             selected = resizeMode == mode,
                             onClick = { actions.onResize(mode) },
-                            modifier = if (resizeMode == mode) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(resizeMode == mode, focus),
                         )
                     }
                     if (state.videoTracks.isNotEmpty()) {
@@ -784,6 +798,19 @@ private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, sc
     if (panelScrollAtTop(lazy, listState, scrollState)) return
     if (lazy) listState.scrollToItem(0) else scrollState.scrollTo(0)
 }
+
+/**
+ * Реквизит фокуса остаётся на той строке, где был при первом показе.
+ * Иначе выбор дорожки перевешивает его, строка пересобирается и пульт остаётся нигде.
+ */
+@Composable
+private fun focusPin(holds: Boolean, requester: FocusRequester): Modifier {
+    val pinned = remember { holds }
+    return if (pinned) Modifier.focusRequester(requester) else Modifier
+}
+
+private fun requestPanelFocus(requester: FocusRequester): Boolean =
+    runCatching { requester.requestFocus() }.isSuccess
 
 /** До скольких строк панель - обычная колонка, а не LazyColumn. */
 internal const val PANEL_EAGER_ROW_LIMIT = 16

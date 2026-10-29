@@ -163,6 +163,7 @@
   "stats.hardware": "hardware",
   "stats.software": "software",
   "player.tunneling_off": "Tunneled playback does not work on this device - turned off.",
+  "player.passthrough_retry": "The receiver did not open the audio. Retrying passthrough.",
   "player.decoder_try_sw": "Hardware decoder failed for %1$s, trying the software decoder",
   "player.decoder_try_ffmpeg": "Software decoder failed for %1$s, trying FFmpeg",
   "a11y.on": "On",

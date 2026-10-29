@@ -40,6 +40,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import tv.p2160.core.engine.MediaReport
 import tv.p2160.core.engine.PlayerUiState
+import tv.p2160.core.engine.ReportRow
+import tv.p2160.core.engine.ReportSection
 import tv.p2160.core.engine.TrackOption
 import tv.p2160.core.settings.ResizeMode
 import tv.p2160.core.settings.Settings
@@ -149,6 +151,39 @@ class PanelScrollTest {
         val focused = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
         assertTrue(focused.isNotEmpty())
         assertTrue(focused.none { it.config.getOrNull(SemanticsProperties.TestTag) == "behind" })
+    }
+
+    @Test
+    fun infoRowAfterTheStatsSwitchKeepsAVisibleFocus() {
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.width(400.dp).height(800.dp)) {
+                    SidePanel(
+                        panel = Panel.INFO,
+                        state = PlayerUiState(),
+                        settings = Settings(),
+                        resizeMode = ResizeMode.FIT,
+                        actions = idlePanelActions(
+                            MediaReport(
+                                listOf(ReportSection("S", listOf(ReportRow("Codec", "H.264")))),
+                                emptyList(),
+                            ),
+                        ),
+                        scrollReset = PanelScrollReset(),
+                        open = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        assertFocusOn("panel.stats_overlay")
+        rule.onNode(isFocused()).performKeyInput {
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+        }
+        rule.waitForIdle()
+        assertFocusOn("Codec")
     }
 
     @Test
@@ -268,7 +303,7 @@ private fun PanelScrollHarness(
     }
 }
 
-private fun idlePanelActions() = PanelActions(
+private fun idlePanelActions(report: MediaReport = MediaReport(emptyList(), emptyList())) = PanelActions(
     onSelectTrack = { _ -> },
     onDisableSubtitles = {},
     onAddSubtitle = {},
@@ -279,7 +314,7 @@ private fun idlePanelActions() = PanelActions(
     onAudioDelay = { _ -> },
     onSleepTimer = { _ -> },
     onSleepAtEnd = {},
-    report = { MediaReport(emptyList(), emptyList()) },
+    report = { report },
     onSubtitleSize = { _ -> },
     onSpeed = { _ -> },
     onAutoVideo = {},

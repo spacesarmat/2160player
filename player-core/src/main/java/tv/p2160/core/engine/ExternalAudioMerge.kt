@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.source.ClippingMediaPeriod
 import androidx.media3.exoplayer.source.FilteringMediaSource
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
@@ -40,12 +41,13 @@ internal object ExternalAudioMerge {
             val live = mediaItem.liveConfiguration != MediaItem.LiveConfiguration.UNSET
             val specs = if (live) emptyList() else tag?.tracks.orEmpty()
             if (specs.isEmpty()) return primary
+            val videoDuration = VideoDuration()
             val children = ArrayList<MediaSource>(specs.size + 1)
-            children += primary
+            children += DurationProbe(primary, videoDuration)
             for (spec in specs) {
                 val raw = delegate.createMediaSource(spec.toMediaItem())
                 val audioOnly = FilteringMediaSource(raw, C.TRACK_TYPE_AUDIO)
-                children += LenientSource(RelabelSource(audioOnly, spec))
+                children += LenientSource(RelabelSource(audioOnly, spec), videoDuration)
             }
             return MergingMediaSource(true, false, *children.toTypedArray())
         }
@@ -174,12 +176,49 @@ private class RemapSelection(
     override fun getTrackGroup(): TrackGroup = original
 }
 
+/** Длительность видео, известная после его timeline. Внешний звук длиннее неё обрезается. */
+internal class VideoDuration {
+    @Volatile var us: Long = C.TIME_UNSET
+}
+
+@OptIn(UnstableApi::class)
+private class DurationProbe(
+    source: MediaSource,
+    private val slot: VideoDuration,
+) : WrappingMediaSource(source) {
+    override fun onChildSourceInfoRefreshed(newTimeline: Timeline) {
+        if (newTimeline.periodCount > 0) {
+            val period = Timeline.Period()
+            newTimeline.getPeriod(0, period)
+            if (period.durationUs != C.TIME_UNSET && period.durationUs > 0) slot.us = period.durationUs
+        }
+        super.onChildSourceInfoRefreshed(newTimeline)
+    }
+}
+
+/**
+ * Сэмплы внешнего звука за концом видео становятся концом потока.
+ * Иначе отдача AC3 на ресивер продолжает часы после ролика, позиция уходит за длительность,
+ * и плеер не переходит в конец.
+ */
+@OptIn(UnstableApi::class)
+internal fun clipExternalToVideo(period: MediaPeriod, videoDurationUs: Long): MediaPeriod =
+    if (videoDurationUs != C.TIME_UNSET && videoDurationUs > 0) {
+        ClippingMediaPeriod(period, /* enableInitialDiscontinuity = */ false, /* startUs = */ 0, videoDurationUs)
+    } else {
+        period
+    }
+
 /**
  * Короткий аудиофайл не должен ронять перемотку общего источника:
  * [MergingMediaPeriod] требует, чтобы все дети вернули ту же позицию.
+ * Длинный обрезается длительностью видео, чтобы часы отдачи не шли после ролика.
  */
 @OptIn(UnstableApi::class)
-private class LenientSource(source: MediaSource) : WrappingMediaSource(source) {
+private class LenientSource(
+    source: MediaSource,
+    private val videoDuration: VideoDuration,
+) : WrappingMediaSource(source) {
     @Volatile private var durationUs: Long = C.TIME_UNSET
 
     override fun onChildSourceInfoRefreshed(newTimeline: Timeline) {
@@ -191,11 +230,15 @@ private class LenientSource(source: MediaSource) : WrappingMediaSource(source) {
         super.onChildSourceInfoRefreshed(newTimeline)
     }
 
-    override fun createPeriod(id: MediaSource.MediaPeriodId, allocator: Allocator, startPositionUs: Long): MediaPeriod =
-        LenientPeriod(mediaSource.createPeriod(id, allocator, startPositionUs)) { durationUs }
+    override fun createPeriod(id: MediaSource.MediaPeriodId, allocator: Allocator, startPositionUs: Long): MediaPeriod {
+        val raw = mediaSource.createPeriod(id, allocator, startPositionUs)
+        return LenientPeriod(clipExternalToVideo(raw, videoDuration.us)) { durationUs }
+    }
 
     override fun releasePeriod(mediaPeriod: MediaPeriod) {
-        mediaSource.releasePeriod((mediaPeriod as LenientPeriod).inner)
+        val inner = (mediaPeriod as LenientPeriod).inner
+        val raw = (inner as? ClippingMediaPeriod)?.mediaPeriod ?: inner
+        mediaSource.releasePeriod(raw)
     }
 }
 

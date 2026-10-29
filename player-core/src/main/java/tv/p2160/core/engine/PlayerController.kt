@@ -674,7 +674,9 @@ class PlayerController(
                 // Главы диска - из плейлиста (FFmpeg в ISO не заглянет).
                 val starts = d.title.chapters
                 starts.mapIndexed { i, start -> Chapter(null, start, starts.getOrElse(i + 1) { d.title.durationMs }) }
-            } ?: if (config.readChapters && !isLiveSource(entry.uri)) runCatching { analyzer.chapters(entry.uri) }.getOrDefault(emptyList()) else emptyList()
+            } ?: if (config.readChapters && !isLiveSource(entry.uri)) {
+                runCatching { analyzer.chapters(entry.uri, request.headers) }.getOrDefault(emptyList())
+            } else emptyList()
             if (player.currentMediaItemIndex != index) return@launch
             chapters = found
             // Явно переданные отрезки (Intent/медиасервер) важнее найденных по главам.

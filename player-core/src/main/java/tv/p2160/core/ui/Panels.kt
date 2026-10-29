@@ -5,6 +5,10 @@ import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +60,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -547,8 +552,8 @@ private fun PanelSlots.populate(
                     }
                     report.sections.forEachIndexed { si, section ->
                         item(key = "sec$si") { Hint(section.title) }
-                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (ri, row) ->
-                            InfoRow(row, modifier = Modifier.focusable())
+                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (_, row) ->
+                            InfoRow(row)
                         }
                     }
                 }
@@ -895,8 +900,20 @@ private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 144
 
 @Composable
 private fun InfoRow(row: ReportRow, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
-    Row(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (focused) colors.primary.copy(alpha = 0.28f) else Color.Transparent)
+            .then(if (focused) Modifier.border(2.dp, colors.primary, RoundedCornerShape(12.dp)) else Modifier)
+            .focusable(interactionSource = interaction)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
         Text(
             row.label,
             color = colors.onSurfaceVariant,

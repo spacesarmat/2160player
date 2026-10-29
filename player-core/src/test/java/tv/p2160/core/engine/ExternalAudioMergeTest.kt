@@ -11,9 +11,11 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.FormatHolder
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.SampleStream
+import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.exoplayer.source.SinglePeriodTimeline
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
@@ -141,6 +143,35 @@ class ExternalAudioMergeTest {
         source.releaseSource(caller)
     }
 
+    @Test
+    fun audioPastTheVideoEndIsEndOfStream() {
+        val child = ScriptedPeriod(longArrayOf(1_000_000L, 7_000_000L))
+        val clipped = clipExternalToVideo(child, videoDurationUs = 5_000_000L)
+        clipped.prepare(object : MediaPeriod.Callback {
+            override fun onPrepared(mediaPeriod: MediaPeriod) = Unit
+            override fun onContinueLoadingRequested(source: MediaPeriod) = Unit
+        }, 0L)
+        val streams = arrayOfNulls<SampleStream>(1)
+        clipped.selectTracks(arrayOfNulls(1), BooleanArray(1), streams, BooleanArray(1), 0L)
+        val stream = streams[0]
+        assertNotNull(stream)
+        val buffer = DecoderInputBuffer(DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_NORMAL)
+        val times = ArrayList<Long>()
+        var ended = false
+        repeat(6) {
+            buffer.clear()
+            val read = stream!!.readData(FormatHolder(), buffer, 0)
+            if (read != C.RESULT_BUFFER_READ) return@repeat
+            if (buffer.isEndOfStream) {
+                ended = true
+                return@repeat
+            }
+            times += buffer.timeUs
+        }
+        assertEquals(listOf(1_000_000L), times)
+        assertTrue(ended)
+    }
+
     private class ReadyFactory : MediaSource.Factory {
         override fun setDrmSessionManagerProvider(drmSessionManagerProvider: androidx.media3.exoplayer.drm.DrmSessionManagerProvider) = this
         override fun setLoadErrorHandlingPolicy(loadErrorHandlingPolicy: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy) = this
@@ -200,5 +231,56 @@ class ExternalAudioMergeTest {
             streamResetFlags: BooleanArray,
             positionUs: Long,
         ): Long = if (audio) 0L else positionUs
+    }
+
+    private class ScriptedPeriod(private val times: LongArray) : MediaPeriod {
+        override fun prepare(callback: MediaPeriod.Callback, positionUs: Long) {
+            callback.onPrepared(this)
+        }
+
+        override fun maybeThrowPrepareError() = Unit
+        override fun getTrackGroups(): TrackGroupArray = TrackGroupArray()
+        override fun discardBuffer(positionUs: Long, toKeyframe: Boolean) = Unit
+        override fun readDiscontinuity(): Long = C.TIME_UNSET
+        override fun seekToUs(positionUs: Long): Long = 0L
+        override fun getAdjustedSeekPositionUs(positionUs: Long, seekParameters: SeekParameters): Long = positionUs
+        override fun getBufferedPositionUs(): Long = C.TIME_END_OF_SOURCE
+        override fun getNextLoadPositionUs(): Long = C.TIME_END_OF_SOURCE
+        override fun continueLoading(loadPositionUs: androidx.media3.exoplayer.LoadingInfo): Boolean = false
+        override fun isLoading(): Boolean = false
+        override fun reevaluateBuffer(positionUs: Long) = Unit
+
+        override fun selectTracks(
+            selections: Array<out ExoTrackSelection?>,
+            mayRetainStreamFlags: BooleanArray,
+            streams: Array<out SampleStream?>,
+            streamResetFlags: BooleanArray,
+            positionUs: Long,
+        ): Long {
+            if (streams.isNotEmpty()) {
+                @Suppress("UNCHECKED_CAST")
+                (streams as Array<SampleStream?>)[0] = ScriptedStream(times)
+                streamResetFlags[0] = true
+            }
+            return 0L
+        }
+    }
+
+    private class ScriptedStream(private val times: LongArray) : SampleStream {
+        private var index = 0
+
+        override fun isReady(): Boolean = true
+        override fun maybeThrowError() = Unit
+        override fun skipData(positionUs: Long): Int = 0
+
+        override fun readData(formatHolder: FormatHolder, buffer: DecoderInputBuffer, readFlags: Int): Int {
+            if (index >= times.size) {
+                buffer.setFlags(C.BUFFER_FLAG_END_OF_STREAM)
+                return C.RESULT_BUFFER_READ
+            }
+            buffer.timeUs = times[index++]
+            buffer.setFlags(C.BUFFER_FLAG_KEY_FRAME)
+            return C.RESULT_BUFFER_READ
+        }
     }
 }

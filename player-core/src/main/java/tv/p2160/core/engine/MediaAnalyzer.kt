@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import tv.p2160.core.api.Chapter
+import tv.p2160.core.source.RandomAccessSources
 import tv.p2160.core.source.SeekableFiles
 
 /**
@@ -22,8 +23,12 @@ internal class MediaAnalyzer(private val context: Context) {
     private var openedUri: Uri? = null
     private var proxyFd: android.os.ParcelFileDescriptor? = null
 
-    suspend fun chapters(uri: Uri): List<Chapter> = mutex.withLock {
+    suspend fun chapters(uri: Uri, headers: Map<String, String> = emptyMap()): List<Chapter> = mutex.withLock {
         withContext(Dispatchers.IO) {
+            // Свой разбор Matroska не зависит от 32-битного JNI nextlib.
+            val local = runCatching { RandomAccessSources.open(context, uri, headers).use { MatroskaChapters.read(it) } }
+                .getOrDefault(emptyList())
+            if (local.isNotEmpty()) return@withContext local
             open(uri)?.chapters.orEmpty()
                 .sortedBy { it.start }
                 .map { Chapter(it.title?.trim()?.takeIf(String::isNotEmpty), it.start, it.end) }

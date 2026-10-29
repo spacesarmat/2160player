@@ -36,18 +36,32 @@ object TorrentSidecars {
         return null
     }
 
-    fun isAudioFolder(name: String): Boolean {
-        val normalized = name.trim().lowercase()
-        if (normalized in AUDIO_FOLDERS) return true
-        return normalized.endsWith(" sound") || normalized.endsWith(" sounds") ||
-            normalized.endsWith(" audio") || normalized.endsWith(" dub") || normalized.endsWith(" dubs")
+    fun isAudioFolder(name: String): Boolean = folderTokens(name).any { it in AUDIO_FOLDERS }
+
+    fun isSubsFolder(name: String): Boolean = folderTokens(name).any { it in SUBS_FOLDERS }
+
+    /** `Bonus/`, `Menu`, `RUS Subs [Shift]` не путается: смотрим слова, не суффикс всей строки. */
+    fun isExtraVideo(path: String): Boolean {
+        val folders = path.split('/', '\\').dropLast(1)
+        return folders.any { folder -> folderTokens(folder).any { it in EXTRA_FOLDERS } }
     }
 
-    fun isSubsFolder(name: String): Boolean {
-        val normalized = name.trim().lowercase()
-        if (normalized in SUBS_FOLDERS) return true
-        return normalized.endsWith(" subs") || normalized.endsWith(" subtitles") || normalized.endsWith(" sub")
+    /**
+     * Плейлист серии. Ролик из Bonus/Extras/Sample/Trailer/Menu играется один,
+     * остальные такие файлы в список серий не попадают.
+     */
+    fun episodeFiles(files: List<TorrentFile>, chosen: TorrentFile): List<TorrentFile> {
+        if (!chosen.isVideo || isExtraVideo(chosen.path)) return listOf(chosen)
+        val episodes = files.filter { it.isVideo && !isExtraVideo(it.path) }.distinctBy { it.index }
+        return episodes.ifEmpty { listOf(chosen) }
     }
+
+    /** Сколько основных видео, без бонусов. Для одного фильма с папкой Bonus это 1. */
+    fun mainVideoCount(files: List<TorrentFile>): Int =
+        files.count { it.isVideo && !isExtraVideo(it.path) }.coerceAtLeast(1)
+
+    private fun folderTokens(name: String): List<String> =
+        name.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
     /** `RUS Sound` -> rus, `Audio` -> null. */
     fun folderLanguage(name: String): String? {
@@ -122,5 +136,8 @@ object TorrentSidecars {
         "озвучка", "озвучки", "звук",
     )
     private val SUBS_FOLDERS = setOf("subs", "sub", "subtitles", "subtitle", "субтитры", "субтитр")
+    private val EXTRA_FOLDERS = setOf(
+        "bonus", "extras", "extra", "sample", "samples", "trailer", "trailers", "menu", "menus",
+    )
     private val GENERIC_WORDS = AUDIO_FOLDERS + SUBS_FOLDERS
 }

@@ -216,7 +216,13 @@ object IntentApi {
     private data class TrackPayload(val perIndex: Boolean, val raw: List<String>)
 
     private fun readTrackPayload(intent: Intent, key: String): TrackPayload? {
-        intent.getStringArrayExtra(key)?.let { return TrackPayload(perIndex = true, raw = it.toList()) }
+        intent.getStringArrayExtra(key)?.let { parts ->
+            val arrays = ExternalTrackJson.reassemble(parts.toList()) ?: return TrackPayload(perIndex = true, raw = parts.toList())
+            // Один склеенный JSON (так --esa режет одну строку) относится к стартовому пункту.
+            // Несколько целых массивов: элемент i к пункту i.
+            val perIndex = arrays.size > 1 || parts.all { ExternalTrackJson.isJsonArray(it) }
+            return TrackPayload(perIndex = perIndex, raw = arrays)
+        }
         intent.getStringExtra(key)?.let { return TrackPayload(perIndex = false, raw = listOf(it)) }
         return null
     }

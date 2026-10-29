@@ -430,7 +430,10 @@ class TorrentSession(
         @Volatile private var closed = false
 
         init {
-            entry.readers[id] = reader
+            synchronized(entry) {
+                entry.readers[id] = reader
+                entry.readersIdleSince = 0L
+            }
             replan(entry)
         }
 
@@ -505,10 +508,20 @@ class TorrentSession(
         override fun close() {
             if (closed) return
             closed = true
-            entry.readers.remove(id)
+            val idle = synchronized(entry) {
+                entry.readers.remove(id)
+                if (entry.readers.isEmpty()) {
+                    val now = System.currentTimeMillis()
+                    entry.readersIdleSince = now
+                    entry.lastActiveAt = now
+                    true
+                } else {
+                    false
+                }
+            }
             runCatching { file?.close() }
             file = null
-            if (entry.readers.isEmpty()) requestResumeData(entry.id)
+            if (idle) requestResumeData(entry.id)
             replan(entry)
             pieceLock.withLock { pieceArrived.signalAll() }
         }
@@ -576,6 +589,9 @@ class TorrentSession(
 
     /** Время последнего чтения/выбора; для автопаузы неиспользуемых торрентов. */
     fun lastActiveAt(id: String): Long = entries[id]?.lastActiveAt ?: 0
+
+    /** Момент, когда закрылся последний поток плеера. 0, пока кто-то читает или плеер ещё не открывал файл. */
+    fun readersIdleSince(id: String): Long = entries[id]?.readersIdleSince ?: 0L
     fun readerCount(id: String): Int = entries[id]?.readers?.size ?: 0
 
     fun pause(id: String) {
@@ -654,6 +670,7 @@ class TorrentSession(
         @Volatile internal var removed = false
         @Volatile internal var metadataReported = false
         @Volatile internal var lastActiveAt = System.currentTimeMillis()
+        @Volatile internal var readersIdleSince = 0L
         @Volatile internal var keepActive = false
     }
 }

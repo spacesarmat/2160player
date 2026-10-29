@@ -1,6 +1,7 @@
 package tv.p2160.torrent
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,6 +60,31 @@ class TorrentSidecarsTest {
         assertEquals("ru", hits.first { it.file.name == "Movie.ru.mka" }.language)
         assertEquals("LostFilm", hits.first { it.file.name == "dub.ac3" }.studio)
         assertEquals("rus", hits.first { it.file.name == "dub.ac3" }.language)
+    }
+
+    @Test
+    fun bracketedSubsFolderMatchesAndBonusIsNotAnEpisode() {
+        assertTrue(TorrentSidecars.isSubsFolder("RUS Subs [Shift]"))
+        assertTrue(TorrentSidecars.isAudioFolder("RUS Sound [Akikomi]"))
+        assertEquals("rus", TorrentSidecars.folderLanguage("RUS Subs [Shift]"))
+        val files = listOf(
+            file(0, "11eyes/11eyes_01.mkv"),
+            file(1, "11eyes/11eyes_02.mkv"),
+            file(2, "11eyes/Bonus/menu.mkv"),
+            file(3, "11eyes/Bonus/extra.mkv"),
+            file(4, "RUS Sound/Akikomi/11eyes_01.mka"),
+            file(5, "RUS Subs [Shift]/11eyes_01.ass"),
+            file(6, "RUS Subs [Shift]/11eyes_02.ass"),
+        )
+        val episodes = TorrentSidecars.episodeFiles(files, files[0])
+        assertEquals(listOf(0, 1), episodes.map { it.index })
+        assertEquals(listOf(files[2]), TorrentSidecars.episodeFiles(files, files[2]))
+        assertEquals(2, TorrentSidecars.mainVideoCount(files))
+        val hits = TorrentSidecars.match(files[0], files, TorrentSidecars.mainVideoCount(files))
+        assertEquals(setOf("11eyes_01.mka", "11eyes_01.ass"), hits.map { it.file.name }.toSet())
+        assertEquals("Akikomi", hits.first { it.audio }.studio)
+        assertTrue(hits.none { it.file.name.contains("02") })
+        assertFalse(TorrentSidecars.isSubsFolder("substitution"))
     }
 
     @Test

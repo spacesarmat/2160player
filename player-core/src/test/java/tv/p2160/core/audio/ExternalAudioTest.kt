@@ -33,6 +33,7 @@ import tv.p2160.core.engine.ExternalAudioTag
 import tv.p2160.core.engine.SubtitleReload
 import tv.p2160.core.engine.TrackCarry
 import tv.p2160.core.resume.ResumeStore
+import tv.p2160.core.subtitle.ContentSidecars
 import tv.p2160.core.subtitle.SubtitleSupport
 import java.io.File
 import java.nio.charset.Charset
@@ -207,5 +208,77 @@ class ExternalAudioTest {
         assertFalse(store.externalAudio(key).single().select)
         store.delete(key)
         assertTrue(store.externalAudio(key).isEmpty())
+    }
+
+    @Test
+    fun failedRememberedAudioIsDroppedWithoutForgettingTheOther() {
+        val context = RuntimeEnvironment.getApplication()
+        val store = ResumeStore.get(context)
+        val key = "audio-drop-${System.nanoTime()}"
+        store.upsertExternalAudio(key, ExternalAudio(Uri.parse("file:///missing.mka"), "Bad", "ru", select = true))
+        store.upsertExternalAudio(key, ExternalAudio(Uri.parse("file:///ok.mka"), "Ok", "en"))
+        store.deleteExternalAudio(key, "file:///missing.mka")
+        assertEquals(listOf("file:///ok.mka"), store.externalAudio(key).map { it.uri.toString() })
+        store.deleteExternalAudio(key)
+        assertTrue(store.externalAudio(key).isEmpty())
+    }
+
+    @Test
+    fun torrentUriIsNotProbedAndAMissingFileIs() {
+        val context = RuntimeEnvironment.getApplication()
+        assertTrue(AudioSupport.reachable(context, Uri.parse("torrent://0123456789abcdef0123456789abcdef01234567/3/Movie.ru.mka"), emptyMap(), 1000))
+        assertFalse(AudioSupport.reachable(context, Uri.parse("file:///no/such/Movie.ru.mka"), emptyMap(), 1000))
+    }
+
+    @Test
+    fun adbSplitsJsonOnCommasAndASingleStringStillParses() {
+        val json = """[{"uri":"http://nas/Movie.ru.mka","language":"rus","name":"Studio"}]"""
+        val pieces = json.split(",")
+        assertTrue(pieces.size > 1)
+        assertEquals(listOf(json), ExternalTrackJson.reassemble(pieces))
+        val video = Uri.parse("http://nas/Movie.mkv")
+        val shattered = Intent(IntentApi.ACTION_PLAY).setData(video)
+            .putExtra(IntentApi.EXTRA_AUDIO_TRACKS, pieces.toTypedArray())
+        val fromPieces = IntentApi.parse(shattered)!!
+        assertEquals("Studio", fromPieces.items.single().audio.single().name)
+        assertEquals("rus", fromPieces.items.single().audio.single().language)
+
+        val whole = Intent(IntentApi.ACTION_PLAY).setData(video).putExtra(IntentApi.EXTRA_AUDIO_TRACKS, json)
+        assertEquals("Studio", IntentApi.parse(whole)!!.items.single().audio.single().name)
+
+        val e1 = Uri.parse("http://nas/e1.mkv")
+        val e2 = Uri.parse("http://nas/e2.mkv")
+        val first = """[{"uri":"http://nas/e1.mka","name":"A"}]"""
+        val second = """[{"uri":"http://nas/e2.mka","name":"B"}]"""
+        val both = Intent(IntentApi.ACTION_PLAY).setData(e1)
+            .putExtra(IntentApi.EXTRA_PLAYLIST, arrayOf(e1.toString(), e2.toString()))
+            .putExtra(IntentApi.EXTRA_AUDIO_TRACKS, ExternalTrackJson.reassemble((first + "," + second).split(","))!!.toTypedArray())
+        val parsed = IntentApi.parse(both)!!
+        assertEquals("A", parsed.items[0].audio.single().name)
+        assertEquals("B", parsed.items[1].audio.single().name)
+    }
+
+    @Test
+    fun contentAudioUsesSubtitlePathAndOneAudioSubfolder() {
+        val context = RuntimeEnvironment.getApplication()
+        val root = File(context.cacheDir, "audio-root-${System.nanoTime()}").apply { mkdirs() }
+        val previous = ContentSidecars.primaryRoot
+        ContentSidecars.primaryRoot = { root }
+        try {
+            val dir = File(root, "Download").apply { mkdirs() }
+            File(dir, "Movie.mp4").writeBytes(byteArrayOf(0))
+            File(dir, "Movie.ru.srt").writeText("s")
+            File(dir, "Movie.ru.mka").writeText("a")
+            val sound = File(dir, "RUS Sound").apply { mkdirs() }
+            File(sound, "Movie.ac3").writeText("b")
+            val uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload%2FMovie.mp4")
+            val found = AudioSupport.findSidecars(context, uri, emptyMap())
+            assertEquals(setOf("Movie.ru.mka", "Movie.ac3"), found.map { it.uri.lastPathSegment }.toSet())
+            assertEquals("rus", found.first { it.uri.lastPathSegment == "Movie.ac3" }.language)
+            assertTrue(AudioSupport.isAudioFolder("RUS Sound [Shift]"))
+            assertFalse(ContentSidecars.search(context, uri).hits.any { it.name.endsWith(".mka") || it.name.endsWith(".ac3") })
+        } finally {
+            ContentSidecars.primaryRoot = previous
+        }
     }
 }

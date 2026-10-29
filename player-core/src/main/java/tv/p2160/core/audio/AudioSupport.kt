@@ -26,6 +26,9 @@ object AudioSupport {
         "track", "tracks", "озвучка", "озвучки", "звук",
     )
 
+    /** Слово внутри имени вроде `RUS Sound [Shift]`, не только точное совпадение папки. */
+    private val AUDIO_WORDS = setOf("sound", "sounds", "audio", "audios", "dub", "dubs")
+
     /** Языки, которые пробуем в HTTP-именах, если каталог не отдаёт список. */
     val HTTP_LANGUAGES = listOf("ru", "rus", "en", "eng")
 
@@ -48,11 +51,14 @@ object AudioSupport {
     }
 
     fun isAudioFolder(name: String): Boolean {
-        val normalized = name.trim().lowercase()
-        if (normalized in FOLDER_NAMES) return true
-        return normalized.endsWith(" sound") || normalized.endsWith(" sounds") ||
-            normalized.endsWith(" audio") || normalized.endsWith(" dub")
+        val tokens = folderTokens(name)
+        if (tokens.isEmpty()) return false
+        if (tokens.size == 1 && tokens[0] in FOLDER_NAMES) return true
+        return tokens.any { it in AUDIO_WORDS }
     }
+
+    private fun folderTokens(name: String): List<String> =
+        name.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
     /** `RUS Sound` -> `rus`. Обычная папка `Audio` язык не задаёт. */
     fun folderLanguage(name: String): String? {
@@ -123,12 +129,10 @@ object AudioSupport {
         }
     }
 
-    /** `content://` без читаемого каталога: ту же папку один раз спрашивает [tv.p2160.core.subtitle.SubtitleFolders]. */
+    /** `content://` без читаемого каталога и без дерева: ту же папку один раз спрашивает [tv.p2160.core.subtitle.SubtitleFolders]. */
     fun contentNeedsFolder(context: Context, videoUri: Uri): Boolean {
         if (!videoUri.scheme.equals("content", true)) return false
-        val disk = ContentSidecars.diskFile(context, videoUri)
-        if (disk?.parentFile?.listFiles() != null) return false
-        return ContentSidecars.search(context, videoUri, EXTENSIONS.toSet()).askForFolder
+        return ContentSidecars.search(context, videoUri, EXTENSIONS.toSet(), ::isAudioFolder).askForFolder
     }
 
     /** Файл открывается. Для явных ссылок таймаут больше, чем для угаданных соседей. */
@@ -148,6 +152,8 @@ object AudioSupport {
                     code in 200..299 || code == 416
                 }
                 "content" -> context.contentResolver.openInputStream(uri)?.use { it.read() >= 0 } == true
+                // Куски ещё не скачаны. Проба открытием сразу считает дорожку битой и вешает ролик.
+                "torrent" -> true
                 else -> false
             }
         }.getOrDefault(false)
@@ -181,24 +187,14 @@ object AudioSupport {
         out.sortedBy { it.name?.lowercase() }
     }.getOrDefault(emptyList())
 
-    private fun contentSidecars(context: Context, videoUri: Uri): List<ExternalAudio> {
-        val disk = ContentSidecars.diskFile(context, videoUri)
-        val parent = disk?.parentFile
-        if (disk != null && parent != null && parent.listFiles() != null) {
-            return collectDirectory(parent, disk.nameWithoutExtension).map { (file, folderLang) ->
-                fromFileName(Uri.fromFile(file), file.name, folderLang)
-            }
-        }
-        return ContentSidecars.search(context, videoUri, EXTENSIONS.toSet()).hits.map { hit ->
-            val folder = hit.uri.pathSegments.dropLast(1).lastOrNull()
-            fromFileName(hit.uri, hit.name, folder?.let(::folderLanguage))
-        }
-    }
+    private fun contentSidecars(context: Context, videoUri: Uri): List<ExternalAudio> =
+        fromHits(ContentSidecars.search(context, videoUri, EXTENSIONS.toSet(), ::isAudioFolder).hits)
 
     fun fromTree(context: Context, videoUri: Uri, treeUri: Uri): List<ExternalAudio> =
-        ContentSidecars.listTree(context, videoUri, treeUri, EXTENSIONS.toSet()).map { hit ->
-            fromFileName(hit.uri, hit.name, null)
-        }
+        fromHits(ContentSidecars.listTree(context, videoUri, treeUri, EXTENSIONS.toSet(), ::isAudioFolder))
+
+    internal fun fromHits(hits: List<ContentSidecars.Hit>): List<ExternalAudio> =
+        hits.map { hit -> fromFileName(hit.uri, hit.name, hit.folder?.let(::folderLanguage)) }
 
     private fun httpSidecars(videoUri: Uri, headers: Map<String, String>): List<ExternalAudio> {
         val name = videoUri.lastPathSegment ?: return emptyList()

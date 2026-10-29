@@ -173,6 +173,8 @@ fun SidePanel(
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
+    // Первая строка, не выбранная ниже сгиба: иначе открытие прокручивает список.
+    val enter = remember { FocusRequester() }
     val reveal = panelRevealIndex(panel, state, settings, resizeMode)
     val listState = remember(panel) { LazyListState(0, 0) }
     val scrollState = remember(panel) { ScrollState(0) }
@@ -182,6 +184,13 @@ fun SidePanel(
     val chrome = remember { PanelChrome(open) }
     revealNow.index = reveal
     chrome.open = open
+    // Пульт иначе остаётся на кнопках плеера: панель открыта, но ни одна строка не в фокусе,
+    // и OK попадает в «Перейти ко времени».
+    LaunchedEffect(open) {
+        if (!open) return@LaunchedEffect
+        withFrameNanos { }
+        runCatching { enter.requestFocus() }
+    }
     // Сброс только по сигналу простоя, когда панель уже за краем. Открытие его не ждёт.
     LaunchedEffect(scrollReset) {
         scrollReset.collect {
@@ -198,6 +207,7 @@ fun SidePanel(
             .focusProperties {
                 canFocus = open
                 onEnter = { if (!open) cancelFocusChange() }
+                onExit = { if (open) cancelFocusChange() }
             }
             .semantics { if (!open) hideFromAccessibility() }
             .then(modifier),
@@ -209,6 +219,7 @@ fun SidePanel(
             resizeMode = resizeMode,
             actions = actions,
             focus = focus,
+            enter = enter,
             listState = listState,
             scrollState = scrollState,
             bring = bring,
@@ -229,6 +240,7 @@ private fun PanelBody(
     resizeMode: ResizeMode,
     actions: PanelActions,
     focus: FocusRequester,
+    enter: FocusRequester,
     listState: LazyListState,
     scrollState: ScrollState,
     bring: BringIntoViewRequester,
@@ -240,7 +252,7 @@ private fun PanelBody(
     val infoReport = remember(panel, state.title, state.durationMs) {
         if (panel == Panel.INFO) actions.report() else null
     }
-    slots.populate(panel, state, settings, resizeMode, actions, focus, infoReport)
+    slots.populate(panel, state, settings, resizeMode, actions, focus, enter, infoReport)
     val lazy = panelUsesLazyList(slots.list.size)
     revealNow.lazy = lazy
     val colors = MaterialTheme.colorScheme
@@ -311,6 +323,7 @@ private fun PanelSlots.populate(
     resizeMode: ResizeMode,
     actions: PanelActions,
     focus: FocusRequester,
+    enter: FocusRequester,
     infoReport: MediaReport?,
 ) {
             when (panel) {
@@ -323,6 +336,7 @@ private fun PanelSlots.populate(
                             onClick = { actions.onNightMode(!state.nightMode) },
                             leading = Icons.Default.NightsStay,
                             switch = true,
+                            modifier = Modifier.focusRequester(enter),
                         )
                     }
                     item(key = "night-auto") {
@@ -376,7 +390,13 @@ private fun PanelSlots.populate(
                         )
                     }
                     item(key = "add-audio") {
-                        PanelRow(tr("panel.subs_load"), selected = false, onClick = actions.onAddAudio, leading = Icons.Default.UploadFile)
+                        PanelRow(
+                            tr("panel.subs_load"),
+                            selected = false,
+                            onClick = actions.onAddAudio,
+                            leading = Icons.Default.UploadFile,
+                            modifier = if (state.audioTracks.isEmpty()) Modifier.focusRequester(focus) else Modifier,
+                        )
                     }
                 }
 
@@ -460,14 +480,16 @@ private fun PanelSlots.populate(
                     // Не Slider: шаг 0.05 и чипы пресетов. У строки нет тени, размытия и ripple
                     // (indication = null). Дорогая первая запись уходит на кадр прогрева, не на открытие.
                     item(key = "fine") {
-                        Stepper(
-                            label = tr("panel.fine"),
-                            value = "${UiFormat.speedFine(state.speed)}×",
-                            onMinus = { actions.onSpeed(state.speed - 0.05f) },
-                            onPlus = { actions.onSpeed(state.speed + 0.05f) },
-                            onReset = { actions.onSpeed(1f) },
-                            compact = true,
-                        )
+                        Box(Modifier.focusRequester(enter).focusable()) {
+                            Stepper(
+                                label = tr("panel.fine"),
+                                value = "${UiFormat.speedFine(state.speed)}×",
+                                onMinus = { actions.onSpeed(state.speed - 0.05f) },
+                                onPlus = { actions.onSpeed(state.speed + 0.05f) },
+                                onReset = { actions.onSpeed(1f) },
+                                compact = true,
+                            )
+                        }
                     }
                     items(SPEED_PRESETS, key = { "s$it" }, contentType = { "choice" }) { s ->
                         val selected = kotlin.math.abs(state.speed - s) < 0.01f

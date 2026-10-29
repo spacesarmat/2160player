@@ -3,6 +3,8 @@ package tv.p2160.core.engine
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.Label
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackGroup
@@ -130,17 +132,36 @@ private class RelabelPeriod(
         val result = Array(source.length) { index ->
             val group = source[index]
             val formats = Array(group.length) { track ->
-                val format = group.getFormat(track)
-                val builder = format.buildUpon()
-                    .setId("$EXTERNAL_AUDIO_PREFIX${spec.listIndex}" + if (group.length > 1) "#$track" else "")
-                spec.language?.let { builder.setLanguage(TrackRules.normalizeLang(it) ?: it) }
-                spec.name?.takeIf { it.isNotBlank() }?.let { builder.setLabel(it) }
-                builder.build()
+                relabelFormat(group.getFormat(track), spec, group.length, track)
             }
             TrackGroup(group.id, *formats).also { originalByRelabeled[it] = group }
         }
         return TrackGroupArray(*result)
     }
+}
+
+/**
+ * Media3 1.11 throws if [Format.label] is set and is not one of [Format.labels].
+ * Matroska already fills `labels` from the track title, so a bare [Format.Builder.setLabel]
+ * crashes inside the playback thread. The name and the list are written together.
+ */
+@OptIn(UnstableApi::class)
+internal fun relabelFormat(format: Format, spec: AudioSpec, groupLength: Int, track: Int): Format {
+    val builder = format.buildUpon()
+        .setId("$EXTERNAL_AUDIO_PREFIX${spec.listIndex}" + if (groupLength > 1) "#$track" else "")
+    val lang = spec.language?.let { TrackRules.normalizeLang(it) ?: it }
+    if (lang != null) builder.setLanguage(lang)
+    val name = spec.name?.takeIf { it.isNotBlank() }
+    if (name != null) {
+        builder.setLabel(name)
+        builder.setLabels(listOf(Label(lang ?: format.language, name)))
+    } else if (lang != null && format.labels.isNotEmpty()) {
+        val updated = format.labels.map { Label(lang, it.value) }
+        builder.setLabels(updated)
+        val current = format.label
+        if (current != null && updated.any { it.value == current }) builder.setLabel(current)
+    }
+    return builder.build()
 }
 
 @OptIn(UnstableApi::class)
@@ -181,6 +202,21 @@ private class LenientPeriod(
     val inner: MediaPeriod,
     private val durationUs: () -> Long,
 ) : MediaPeriod by inner {
+    // MergingMediaPeriod снимает ребёнка с ожидания только если onPrepared получил тот же
+    // экземпляр, который он передал в prepare. Делегация `by inner` сообщала внутренний период,
+    // список не пустел, и общий источник не готовился: спиннер на 0:00, без MediaCodec.
+    override fun prepare(callback: MediaPeriod.Callback, positionUs: Long) {
+        inner.prepare(object : MediaPeriod.Callback {
+            override fun onPrepared(mediaPeriod: MediaPeriod) {
+                callback.onPrepared(this@LenientPeriod)
+            }
+
+            override fun onContinueLoadingRequested(source: MediaPeriod) {
+                callback.onContinueLoadingRequested(this@LenientPeriod)
+            }
+        }, positionUs)
+    }
+
     override fun selectTracks(
         selections: Array<out ExoTrackSelection?>,
         mayRetainStreamFlags: BooleanArray,

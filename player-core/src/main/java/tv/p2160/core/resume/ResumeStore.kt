@@ -197,6 +197,15 @@ class ResumeStore private constructor(context: Context) :
         }
     }
 
+    /** Убрать запомненную внешнюю дорожку. Без uri стирается весь набор этого видео. */
+    fun deleteExternalAudio(videoKey: String, uri: String? = null) {
+        if (uri == null) {
+            writableDatabase.delete("external_audio", "video_key = ?", arrayOf(videoKey))
+        } else {
+            writableDatabase.delete("external_audio", "video_key = ? AND uri = ?", arrayOf(videoKey, uri))
+        }
+    }
+
     fun setExternalAudioSelected(videoKey: String, uri: String?) {
         val db = writableDatabase
         db.beginTransaction()

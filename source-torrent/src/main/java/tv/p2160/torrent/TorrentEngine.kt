@@ -138,7 +138,11 @@ class TorrentEngine private constructor(context: Context) {
                 session.ids().forEach { id ->
                     val stats = session.stats(id) ?: return@forEach
                     // Неиспользуемые торренты ставим на паузу - не качать фильм целиком «в фоне».
-                    if (!stats.paused && stats.readers == 0 && !session.keepActive(id) && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
+                    if (!stats.paused && stats.readers == 0 && !session.keepActive(id)) {
+                        val closedAt = session.readersIdleSince(id)
+                        val idle = if (closedAt > 0L) now - closedAt > PLAYBACK_IDLE_MS else now - session.lastActiveAt(id) > IDLE_PAUSE_MS
+                        if (idle) session.pause(id)
+                    }
                     if (n % 15 == 0 && stats.hasMetadata) store.update(id) { it.copy(bytesDone = stats.wantedDone) }
                 }
                 applyRules()
@@ -343,7 +347,7 @@ class TorrentEngine private constructor(context: Context) {
         val chosen = files.firstOrNull { it.index == fileIndex } ?: throw IOException("bad file index")
         cleanup(exceptId = id)
         session.select(id, fileIndex, exclusive = true)
-        val videos = if (chosen.isVideo) files.count { it.isVideo } else 1
+        val videos = if (chosen.isVideo) TorrentSidecars.mainVideoCount(files) else 1
         session.include(id, TorrentSidecars.match(chosen, files, videos).map { it.file.index })
         val now = System.currentTimeMillis()
         store.update(id) { it.copy(lastOpenedAt = now, primaryFile = fileIndex, hasData = true) }
@@ -352,8 +356,12 @@ class TorrentEngine private constructor(context: Context) {
     }
 
     private fun buildRequest(id: String, files: List<TorrentFile>, chosen: TorrentFile): PlaybackRequest {
-        val playlist = if (chosen.isVideo) files.filter { it.isVideo }.sortedWith(NaturalOrder) else listOf(chosen)
-        val videos = playlist.size
+        val playlist = if (chosen.isVideo) {
+            TorrentSidecars.episodeFiles(files, chosen).sortedWith(NaturalOrder)
+        } else {
+            listOf(chosen)
+        }
+        val videos = if (chosen.isVideo) TorrentSidecars.mainVideoCount(files) else 1
         val items = playlist.map { file ->
             val hits = if (file.isVideo) TorrentSidecars.match(file, files, videos) else emptyList()
             MediaEntry(
@@ -488,8 +496,10 @@ class TorrentEngine private constructor(context: Context) {
         const val SCHEME = "torrent"
         private const val MAX_TORRENT_BYTES = 16 * 1024 * 1024
         private const val METADATA_TIMEOUT_MS = 120_000L
-        /** Торрент без чтения дольше этого времени ставится на паузу. */
+        /** Торрент без единого открытия плеером дольше этого времени ставится на паузу. */
         const val IDLE_PAUSE_MS = 10 * 60 * 1000L
+        /** После закрытия плеера (последний поток чтения закрыт) закачка останавливается через этот срок. Раздача по кнопке «Продолжить» не трогается. */
+        const val PLAYBACK_IDLE_MS = 15_000L
 
         @Volatile private var instance: TorrentEngine? = null
 

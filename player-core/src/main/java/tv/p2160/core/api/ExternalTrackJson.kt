@@ -38,6 +38,35 @@ object ExternalTrackJson {
         )
     }
 
+    /** Целый JSON-массив, а не обломок после разрезания `adb --esa` по запятым. */
+    fun isJsonArray(raw: String?): Boolean {
+        val text = raw?.trim().orEmpty()
+        if (!text.startsWith("[")) return false
+        return runCatching { JSONArray(text) }.isSuccess
+    }
+
+    /**
+     * `adb shell am start --esa` режет значение по запятым, поэтому один JSON приходит кусками.
+     * Куски склеиваются, пока снова не получится массив. Несколько целых массивов остаются по одному на пункт.
+     * null: собрать массивы не вышло.
+     */
+    fun reassemble(parts: List<String>): List<String>? {
+        if (parts.isEmpty()) return null
+        if (parts.all { isJsonArray(it) }) return parts
+        val out = mutableListOf<String>()
+        val buf = StringBuilder()
+        for (part in parts) {
+            if (buf.isNotEmpty()) buf.append(',')
+            buf.append(part)
+            if (isJsonArray(buf.toString())) {
+                out += buf.toString()
+                buf.setLength(0)
+            }
+        }
+        if (buf.isNotEmpty() || out.isEmpty()) return null
+        return out
+    }
+
     fun audioJson(tracks: List<ExternalAudio>): String = json(tracks) { track, obj ->
         putCommon(obj, track.uri, track.name, track.language, track.id, track.mimeType, track.delayMs, track.select)
     }

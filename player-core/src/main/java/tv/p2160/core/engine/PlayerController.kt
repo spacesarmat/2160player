@@ -18,7 +18,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.source.TrackGroupArray
@@ -368,6 +367,7 @@ class PlayerController(
         override fun onEvents(player: Player, events: Player.Events) = refresh()
 
         override fun onTracksChanged(tracks: Tracks) {
+            if (recoverMissingExternalAudio(tracks)) return
             applyPendingSelections(tracks)
             if (recordChoiceOnTracks) {
                 recordChoiceOnTracks = false
@@ -381,6 +381,7 @@ class PlayerController(
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) return
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && undoFailedAdvance()) return
             setSecondarySubtitle(null)
             onItemStarted(player.currentMediaItemIndex, explicitStart = null)
         }
@@ -400,8 +401,14 @@ class PlayerController(
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) resetWatchdogClock()
-            if (playbackState == Player.STATE_READY) scheduleIntro(player.currentMediaItemIndex)
-            if (playbackState == Player.STATE_ENDED) onNaturalEnd()
+            if (playbackState == Player.STATE_READY) {
+                holdFailedItem = -1
+                scheduleIntro(player.currentMediaItemIndex)
+            }
+            if (playbackState == Player.STATE_ENDED) {
+                if (holdFailedItem >= 0 && _state.value.error != null) return
+                onNaturalEnd()
+            }
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -409,7 +416,10 @@ class PlayerController(
             if (!playWhenReady) resetWatchdogClock()
             // pauseAtEndOfMediaItems: не последний файл не даёт STATE_ENDED, только эту причину.
             // Сон «в конце серии» обрабатывается внутри onNaturalEnd.
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) onNaturalEnd()
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
+                if (holdFailedItem >= 0 && _state.value.error != null) return
+                onNaturalEnd()
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -462,6 +472,8 @@ class PlayerController(
             }
             cancelIntro()
             introAttempts = IntroStart.MAX_ATTEMPTS
+            // Ошибка контейнера или декодера не должна открывать следующий пункт плейлиста.
+            holdFailedItem = player.currentMediaItemIndex
             _state.update { it.copy(error = describe(error)) }
         }
 
@@ -1319,6 +1331,7 @@ class PlayerController(
         introAttempts = 0
         stallRecoveries = 0
         stallStopped = false
+        holdFailedItem = -1
         resetWatchdogClock()
         _state.update { it.copy(error = null) }
         player.prepare()
@@ -1373,6 +1386,8 @@ class PlayerController(
 
     private var naturalEndHandled = false
     private var endHoldSince = 0L
+    /** Пункт, на котором показана ошибка. Автопереход к следующему отменяется. */
+    private var holdFailedItem = -1
 
     private fun onNaturalEnd() {
         if (naturalEndHandled) return
@@ -1741,7 +1756,10 @@ class PlayerController(
             val ok = withContext(Dispatchers.IO) {
                 AudioSupport.reachable(appContext, audio.uri, request.headers, if (audio.uri.scheme.equals("http", true) || audio.uri.scheme.equals("https", true)) 8000 else 4000)
             }
-            if (ok) playable += audio else failed += (audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString())
+            if (ok) playable += audio else {
+                failed += (audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString())
+                keyAt(index)?.let { store.deleteExternalAudio(it, audio.uri.toString()) }
+            }
         }
         if (failed.isNotEmpty()) {
             val message = i18n.current.format("error.external_audio", failed.joinToString())
@@ -1780,11 +1798,20 @@ class PlayerController(
         }
     }
 
-    /** Озвучка рядом с файлом. `content://` пользуется тем же поиском пути и деревом, что и субтитры. */
+    /** Озвучка рядом с файлом. `content://` идёт тем же путём, что субтитры, плюс папка озвучки на уровень ниже. */
     private suspend fun discoverAudio(uri: Uri): List<ExternalAudio> {
-        if (uri.scheme.equals("content", true) && withContext(Dispatchers.IO) { AudioSupport.contentNeedsFolder(appContext, uri) }) {
-            val tree = SubtitleFolders.request(appContext, uri)
-            return if (tree == null) emptyList() else withContext(Dispatchers.IO) { AudioSupport.fromTree(appContext, uri, tree) }
+        if (uri.scheme.equals("content", true)) {
+            val extensions = AudioSupport.EXTENSIONS.toSet()
+            val search = withContext(Dispatchers.IO) {
+                ContentSidecars.search(appContext, uri, extensions, AudioSupport::isAudioFolder)
+            }
+            val hits = if (!search.askForFolder) search.hits else {
+                val tree = SubtitleFolders.request(appContext, uri)
+                if (tree == null) emptyList() else withContext(Dispatchers.IO) {
+                    ContentSidecars.listTree(appContext, uri, tree, extensions, AudioSupport::isAudioFolder)
+                }
+            }
+            return AudioSupport.fromHits(hits)
         }
         return withContext(Dispatchers.IO) { AudioSupport.findSidecars(appContext, uri, request.headers) }
     }
@@ -1959,47 +1986,41 @@ class PlayerController(
     )
 
     /**
-     * Внешняя дорожка не открылась или её период не совпал с видео.
-     * Убираем её и продолжаем ролик с места остановки.
+     * Внешняя дорожка не открылась, её период не совпал с видео, или после подготовки звука нет.
+     * Убираем все внешние дорожки этого пункта, забываем их и продолжаем ролик.
+     * Ошибка самого видео (декодер картинки) сюда не входит.
      */
     private fun recoverExternalAudio(error: PlaybackException): Boolean {
         val index = player.currentMediaItemIndex
-        if (index !in audios.indices || audios[index].isEmpty()) return false
-        if (externalAudioRecoveries[index] >= 3) return false
         val exo = error as? ExoPlaybackException
-        val formatId = exo?.rendererFormat?.id
-        val externalDecoder = formatId?.contains(EXTERNAL_AUDIO_PREFIX) == true &&
-            error.errorCode in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES
-        val merge = generateSequence<Throwable>(error) { it.cause }.any { it is MergingMediaSource.IllegalMergeException }
-        val blob = generateSequence<Throwable>(error) { it.cause }.joinToString(" ") { it.message.orEmpty() }
-        val audioHit = audios[index].any { blob.contains(it.uri.toString()) }
-        val videoUri = request.items.getOrNull(index)?.uri?.toString().orEmpty()
-        val videoHit = videoUri.isNotEmpty() && blob.contains(videoUri)
-        val source = !videoHit && audioHit && (
-            exo?.type == ExoPlaybackException.TYPE_SOURCE ||
-                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
-                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-                error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
-            )
-        if (!externalDecoder && !merge && !source) return false
-        if (exo?.type == ExoPlaybackException.TYPE_RENDERER && !externalDecoder) return false
+        val mime = exo?.rendererFormat?.sampleMimeType
+        if (exo?.type == ExoPlaybackException.TYPE_RENDERER && mime != null && MimeTypes.isVideo(mime)) return false
+        val codec = exo?.type == ExoPlaybackException.TYPE_RENDERER
+        return dropExternalAudio(index, codec)
+    }
+
+    /** Дорожки уже готовы, а звука нет, хотя внешний файл подмешан: он и есть причина. */
+    private fun recoverMissingExternalAudio(tracks: Tracks): Boolean {
+        if (player.playbackState != Player.STATE_READY || tracks.isEmpty) return false
+        val index = player.currentMediaItemIndex
+        if (index !in audios.indices || audios[index].isEmpty()) return false
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audio.any { it.length > 0 }) return false
+        val hasPicture = tracks.groups.any { it.type != C.TRACK_TYPE_AUDIO && it.length > 0 }
+        if (!hasPicture) return false
+        return dropExternalAudio(index, codec = false)
+    }
+
+    private fun dropExternalAudio(index: Int, codec: Boolean): Boolean {
+        if (index !in audios.indices || audios[index].isEmpty()) return false
+        if (externalAudioRecoveries[index] >= 1) return false
         externalAudioRecoveries[index]++
-        val dropped = if (externalDecoder) {
-            val at = externalAudioIndex(formatId)
-            if (at != null && at in audios[index].indices) {
-                val name = audios[index][at].name ?: audios[index][at].uri.lastPathSegment
-                audios[index].removeAt(at)
-                name
-            } else {
-                audios[index].clear()
-                null
-            }
-        } else {
-            audios[index].clear()
-            null
-        }
-        val label = dropped ?: i18n.current["player.audio"]
-        val message = if (externalDecoder) i18n.current.format("error.external_audio_codec", label)
+        val names = audios[index].map { it.name ?: it.uri.lastPathSegment ?: it.uri.toString() }
+        val key = keyAt(index)
+        if (key != null) store.deleteExternalAudio(key)
+        audios[index].clear()
+        val label = names.joinToString().ifBlank { i18n.current["player.audio"] }
+        val message = if (codec) i18n.current.format("error.external_audio_codec", label)
         else i18n.current.format("error.external_audio", label)
         val position = player.currentPosition
         val play = player.playWhenReady
@@ -2009,6 +2030,22 @@ class PlayerController(
             player.seekTo(index, position.coerceAtLeast(0))
             player.prepare()
             player.playWhenReady = play
+        }
+        return true
+    }
+
+    /**
+     * Сбой текущего пункта не должен сам перейти к следующему: ошибка остаётся на этом файле.
+     * @return true, переход обработан здесь и [onItemStarted] звать не надо.
+     */
+    private fun undoFailedAdvance(): Boolean {
+        val failed = holdFailedItem
+        if (failed < 0 || player.currentMediaItemIndex == failed || _state.value.error == null) return false
+        scope.launch(Dispatchers.Main) {
+            if (holdFailedItem == failed && player.currentMediaItemIndex != failed && failed < player.mediaItemCount) {
+                player.seekTo(failed, 0)
+                player.pause()
+            }
         }
         return true
     }

@@ -24,23 +24,30 @@ APK берётся из [последнего релиза](https://github.com/s
 
 Дальше приложение обновляется само: Настройки → Обновления.
 
-<!--
 ## Скриншоты
 
-Телефон (POCO X5): одна строка картинок из docs/images/.
+**Телефон (POCO X5)**
 
 <p>
-<img src="docs/images/phone-1.png" alt="Телефон" width="220">
-<img src="docs/images/phone-2.png" alt="Телефон" width="220">
+<img src="docs/images/phone-home-top.webp" alt="Главный экран: файл, сеть, телеканалы, торренты, камера" width="230">
+<img src="docs/images/phone-player-portrait.webp" alt="Плеер на телефоне вертикально" width="108">
+<img src="docs/images/phone-settings.webp" alt="Настройки: язык, тема, субтитры" width="108">
+</p>
+<p>
+<img src="docs/images/phone-player-landscape.webp" alt="Плеер на телефоне горизонтально" width="460">
+<img src="docs/images/phone-player-subtitles.webp" alt="Панель субтитров: задержка и размер" width="460">
 </p>
 
-Android TV (Dune HD): одна строка картинок из docs/images/.
+**Android TV (Dune HD 4K Solo)**
 
 <p>
-<img src="docs/images/tv-1.png" alt="Android TV" width="480">
-<img src="docs/images/tv-2.png" alt="Android TV" width="480">
+<img src="docs/images/tv-player.webp" alt="Плеер на ТВ, фокус пульта на паузе" width="440">
+<img src="docs/images/tv-player-audio.webp" alt="Панель звука: ночной звук и выбор дорожки" width="440">
+<img src="docs/images/tv-player-resume.webp" alt="Вопрос: продолжить просмотр или с начала" width="440">
+<img src="docs/images/tv-settings.webp" alt="Настройки воспроизведения, фокус на шаге перемотки" width="440">
 </p>
--->
+
+Кадры видео в плеере: Tears of Steel и Sintel, Blender Foundation, CC-BY 3.0 (mango.blender.org, durian.blender.org).
 
 ## Возможности
 
@@ -246,7 +253,14 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 
 ## English
 
-**2160 Player** is a media player for Android phones and Android TV. The engine is Media3 (ExoPlayer) with FFmpeg decoders, and the UI is Jetpack Compose. The `player-core` module is a library you can embed, or you can send an Intent to the standalone app. Intents line up with what MX Player and VLC already accept.
+**2160 Player** is a media player for Android phones and Android TV. The engine is Media3 (ExoPlayer) with FFmpeg decoders, and the UI is Jetpack Compose. The `player-core` module is a library you can embed, or you can send an Intent to the standalone app. Intents line up with what MX Player and VLC already accept. The full screenshot set is in [Скриншоты](#скриншоты).
+
+<p>
+<img src="docs/images/phone-player-landscape.webp" alt="Phone player, landscape" width="440">
+<img src="docs/images/tv-player.webp" alt="Android TV player" width="440">
+</p>
+
+Video frames are from the Blender Foundation open movies Tears of Steel and Sintel, CC-BY 3.0 (mango.blender.org, durian.blender.org).
 
 ### Download
 

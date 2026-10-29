@@ -6,6 +6,13 @@
 Эти страницы готовы для GitHub Wiki: один файл - одна страница. Подробный справочник с примерами кода
 остаётся в репозитории: [docs/API.md](../API.md), быстрый старт - [docs/EMBEDDING.md](../EMBEDDING.md).
 
+<p>
+<img src="../images/phone-player-landscape.webp" alt="Плеер на телефоне" width="420">
+<img src="../images/tv-player.webp" alt="Плеер на Android TV" width="420">
+</p>
+
+Кадры видео в плеере: Tears of Steel и Sintel, Blender Foundation, CC-BY 3.0 (mango.blender.org, durian.blender.org).
+
 ## Страницы
 
 - [Сборка и запуск](Setup.md) - JDK, SDK, Gradle, установка APK, подпись релиза.

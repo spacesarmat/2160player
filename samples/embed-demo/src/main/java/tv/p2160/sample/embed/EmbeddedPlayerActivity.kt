@@ -32,6 +32,7 @@ import androidx.lifecycle.AndroidViewModel
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.Player2160
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.subtitle.SubtitleSupport
 import tv.p2160.core.ui.PlayerScreen
 
 /**
@@ -64,7 +65,10 @@ class EmbeddedPlayerActivity : ComponentActivity() {
 
     // Кнопка «Загрузить из файла…» в панели субтитров вызывает onPickSubtitle - выбор файла за нами.
     private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.controller?.addExternalSubtitle(uri)
+        if (uri != null) {
+            SubtitleSupport.persistReadPermission(this, uri)
+            vm.controller?.addExternalSubtitle(uri)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

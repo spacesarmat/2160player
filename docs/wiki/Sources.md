@@ -14,6 +14,12 @@
 HLS/DASH/SmoothStreaming определяются по MIME (`application/x-mpegURL`, `application/dash+xml`,
 `application/vnd.ms-sstr+xml`) или по `.m3u8` в URL.
 
+## Субтитры рядом с файлом
+
+SRT, ASS/SSA, VTT и TTML. Для `file://` и `smb://` плеер сам берёт `Movie.srt` и `Movie.ru.srt` рядом с `Movie.mkv` (`Movie2.srt` не подходит). У `content://` из системного выбора каталог не виден, поэтому рядом ничего не находится.
+
+«Загрузить из файла…» принимает тот же набор, в том числе `content://` (DocumentsUI часто отдаёт `application/octet-stream`). Дорожка включается сразу. Файл запоминается для этого видео и подключается снова при следующем открытии. Текст приводится к UTF-8.
+
 ## SMB
 
 `smb://хост/шара/путь`. Логин и пароль - в сохранённых серверах (`SmbServers`), не в URI.

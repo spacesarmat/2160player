@@ -16,7 +16,7 @@ Jetpack Compose. Играет почти всё - от IPTV-потоков до 
   «Только Wi-Fi» с вопросом перед просмотром по мобильному интернету), сколько раздавать скачанное (всегда / до 1:1 /
   24 часа / не раздавать), раздача только на зарядке и ограничение загрузки по мобильному интернету.
 - **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) - автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
-- **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео, задержка, стиль, **двойные субтитры**.
+- **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео (`file://` и SMB), загрузка из файла (в том числе `content://` из системного выбора), сразу на экран и снова при следующем открытии этого файла, задержка, стиль, **двойные субтитры**.
 - **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
 - **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению (`end_by` и `tv.p2160.extra.WATCHED`, позиция Long). Файл, досмотренный до конца, в следующий раз открывается с начала. Недосмотренный спрашивает «Продолжить с …» или «С начала»; пока вопрос на экране, карточка «Далее» скрыта, Назад продолжает с места. В списках файлов у просмотренного галочка, у недосмотренного полоска.
 - **Конец файла:** плейлист через 5 с переходит к следующему (Назад или «Отмена» останавливают отсчёт). За 15 с до конца в углу карточка «Далее» с обложкой и «Смотреть сейчас», фокус сама не берёт. Назад на отсчёте следующей серии его снимает и плеер не закрывает. Назад на ошибке декодера закрывает плеер, как «Закрыть». Один файл: «Смотреть снова» и «Закрыть». Последний в плейлисте: «Плейлист завершён» и возврат в папку. Настройка «По окончании» и заставка через 3 минуты паузы. Прямой эфир это не трогает.
@@ -202,7 +202,7 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 **2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
 decoders and a Jetpack Compose UI. It plays local files (with a built-in file browser for Android TV boxes, USB drives and SD cards), HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
-intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory
+intro/credits skipping (incl. audio-based intro detection), dual subtitles, external SRT/ASS/VTT/TTML picked from a file (including a `content://` document) shown at once and restored for that file, resume with track memory
 (a finished file opens from the start; a partly watched file asks to continue;
 when playback ends, a playlist counts down 5 s to the next item, the last item says the playlist is finished,
 and a single file offers Watch again and Close; the result adds tv.p2160.extra.WATCHED and a Long position),

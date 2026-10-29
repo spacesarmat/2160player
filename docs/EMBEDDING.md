@@ -271,7 +271,7 @@ Player2160.settings(context).update {
 
 ```kotlin
 Player2160.config = PlayerConfig(
-    bufferTargetBytes = 32 * 1024 * 1024,   // свой предел; по умолчанию PlayerConfig.AUTO - по памяти устройства (24–128 МБ)
+    bufferTargetBytes = 32 * 1024 * 1024,   // свой предел; по умолчанию PlayerConfig.AUTO - по памяти устройства (24-128 МБ)
     readTimeoutMs = 90_000,                 // медленные источники
     introDetection = false,                 // отрезки даёт ваш сервер
     readChapters = false,
@@ -322,7 +322,7 @@ adb install -r samples/embed-demo/build/outputs/apk/debug/embed-demo-debug.apk
 | Звук продолжает играть после ухода с вашего экрана | Во встроенном `PlayerScreen` пауза в `onStop` - ваша задача (шаг 5). |
 | В шторке появилось уведомление плеера | Это медиасессия `PlaybackService`: управление с экрана блокировки, гарнитуры и Bluetooth. Исчезает после `controller.release()`. |
 | Нужно остановить воспроизведение из своего кода (с любого потока) | `Player2160.pause()`. |
-| 4K падает с нехваткой памяти на слабом ТВ | По умолчанию буфер уже подбирается по памяти (`PlayerConfig.AUTO`); если мало - задайте `bufferTargetBytes` вручную (16–32 МБ). Буфер живёт в куче Java: `android:largeHeap="true"` в манифесте приложения позволяет `AUTO` взять больше на мощных устройствах. |
+| 4K падает с нехваткой памяти на слабом ТВ | По умолчанию буфер уже подбирается по памяти (`PlayerConfig.AUTO`); если мало - задайте `bufferTargetBytes` вручную (16-32 МБ). Буфер живёт в куче Java: `android:largeHeap="true"` в манифесте приложения позволяет `AUTO` взять больше на мощных устройствах. |
 | Дёргается картинка на панорамах (ТВ) | Включите `Settings.frameRateMatching` - частота экрана под видео (API.md §15.7). |
 | Нужно понять, почему тормозит | `Settings.statsOverlay` или `PlayerController.stats`: декодеры, пропущенные кадры, буфер, сеть, процессор, память. |
 | Медленный источник отваливается по тайм-ауту | Увеличьте `PlayerConfig.connectTimeoutMs` / `readTimeoutMs`. |

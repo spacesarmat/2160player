@@ -50,7 +50,7 @@
 | `seekTo` / `seekBy` | позиция в `[0, duration]` |
 | `next` / `previous` | в эфире - канал по кругу; иначе следующий файл или в начало, если прошло > 5 с |
 | `switchChannel(delta)` | только `liveTv` и если элементов ≥ 2 |
-| `setSpeed(speed)` | 0,25…4. Это скорость, которая пишется в историю |
+| `setSpeed(speed)` | 0,25…4, включая 1x. Это скорость, которая сразу пишется в историю этого файла |
 | `select` / `disableSubtitles` / `autoVideo` | дорожки; ручной выбор запоминается, если `smartTracks` |
 | `setNightMode` / `setAudioDelay` / `setSubtitleDelay` | сразу и в настройки (задержка звука - глобально, ±2000 мс) |
 | `setSleepTimer(minutes)` | `null` или `≤ 0` - выкл. Иначе затихание 8 с и пауза |

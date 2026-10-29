@@ -11,6 +11,7 @@ import tv.p2160.app.handoff.Handoff
 import tv.p2160.app.handoff.HandoffSendActivity
 import tv.p2160.core.api.Player2160
 import tv.p2160.core.api.PlayerAction
+import tv.p2160.core.picker.DocumentPicker
 
 class App : Application() {
     override fun onCreate() {
@@ -21,6 +22,9 @@ class App : Application() {
         tv.p2160.app.handoff.HandoffAuth.init(this)
         // Схема torrent:// для плеера (сам libtorrent запускается лениво).
         tv.p2160.torrent.TorrentEngine.install(this)
+        DocumentPicker.setAppPicker { context, audio ->
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_PICK, if (audio) "audio" else "text")
+        }
 
         // Передача между устройствами работает, пока приложение на экране (в т.ч. во время просмотра)
         // и пока идёт трансляция камеры - иначе другие устройства не найдут её, когда экран погашен.

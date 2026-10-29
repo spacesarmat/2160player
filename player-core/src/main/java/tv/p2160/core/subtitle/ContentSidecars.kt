@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import java.io.File
 
 /**
@@ -16,6 +17,8 @@ import java.io.File
  * [Search.askForFolder] говорит плееру спросить папку один раз.
  */
 internal object ContentSidecars {
+
+    private const val RELATIVE_PATH = "relative_path"
 
     data class Hit(val uri: Uri, val name: String, val folder: String? = null)
 
@@ -101,10 +104,13 @@ internal object ContentSidecars {
         // а уже выданный SAF как раз видит .srt и .mka.
         val disk = listedOnDisk(context, videoUri, extensions, subfolder)
         val trees = listedInGrantedTrees(context, videoUri, base, extensions, subfolder)
+        // Recents (`video:<id>`) не содержит пути родителя. Имя и RELATIVE_PATH читаем у самого
+        // документа и ищем ту же папку в уже выданном дереве.
+        val mapped = listedFromDocument(context, videoUri, base, extensions, subfolder)
         val hits = LinkedHashMap<String, Hit>()
-        (disk.orEmpty() + trees.orEmpty()).forEach { hits.putIfAbsent(it.uri.toString(), it) }
+        (disk.orEmpty() + trees.orEmpty() + mapped.orEmpty()).forEach { hits.putIfAbsent(it.uri.toString(), it) }
         if (hits.isNotEmpty()) return Search(hits.values.toList(), false)
-        if (disk != null || trees != null) return Search(emptyList(), false)
+        if (disk != null || trees != null || mapped != null) return Search(emptyList(), false)
         val key = folderKey(videoUri) ?: return Search(emptyList(), false)
         return Search(emptyList(), !SubtitleFolderMemory.wasAsked(context, key))
     }
@@ -125,6 +131,13 @@ internal object ContentSidecars {
             else -> return emptyList()
         }
         return queryChildren(context, treeUri, directoryId, base, extensions, null, subfolder, 0) ?: emptyList()
+    }
+
+    /** `Movies/PR20Test/` -> `primary:Movies/PR20Test`. */
+    internal fun primaryParentId(relativePath: String): String? {
+        val rel = relativePath.trim().trim('/')
+        if (rel.isEmpty() || rel.contains(':')) return null
+        return "primary:$rel"
     }
 
     /** Файл на диске для `content://`, если путь читается. Иначе null. */
@@ -214,6 +227,161 @@ internal object ContentSidecars {
         }
         return if (saw) found.values.toList() else null
     }
+
+    /**
+     * null: документ не прочитан и в деревьях его нет.
+     * Пустой список: папка найдена, подходящих файлов нет.
+     */
+    private fun listedFromDocument(
+        context: Context,
+        videoUri: Uri,
+        base: String,
+        extensions: Set<String>,
+        subfolder: (String) -> Boolean,
+    ): List<Hit>? {
+        val meta = documentMeta(context, videoUri) ?: return null
+        val byPath = meta.relativePath?.let { relative ->
+            val parent = primaryParentId(relative) ?: return@let null
+            childrenInGrantedParent(context, parent, base, extensions, subfolder)
+        }
+        if (!byPath.isNullOrEmpty()) return byPath
+        val byName = findByDisplayName(context, meta, base, extensions, subfolder)
+        if (!byName.isNullOrEmpty()) return byName
+        return if (byPath != null || byName != null) emptyList() else null
+    }
+
+    private data class DocMeta(val name: String, val size: Long, val relativePath: String?)
+
+    private fun documentMeta(context: Context, uri: Uri): DocMeta? {
+        readMeta(context, uri)?.let { return it }
+        val id = documentId(uri) ?: return null
+        val kind = id.substringBefore(':')
+        val num = id.substringAfter(':', "").toLongOrNull() ?: return null
+        val collection = when (kind) {
+            "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            "video", "msf" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else -> return null
+        }
+        return readMeta(context, android.content.ContentUris.withAppendedId(collection, num))
+    }
+
+    private fun readMeta(context: Context, uri: Uri): DocMeta? = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE, RELATIVE_PATH),
+            null, null, null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val nameCol = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val name = if (nameCol >= 0) cursor.getString(nameCol) else null
+            if (name.isNullOrBlank()) return@use null
+            val sizeCol = cursor.getColumnIndex(OpenableColumns.SIZE)
+            val size = if (sizeCol >= 0 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else -1L
+            val pathCol = cursor.getColumnIndex(RELATIVE_PATH)
+            val relative = if (pathCol >= 0) cursor.getString(pathCol) else null
+            DocMeta(name, size, relative)
+        }
+    }.getOrNull()
+
+    private fun childrenInGrantedParent(
+        context: Context,
+        parentId: String,
+        base: String,
+        extensions: Set<String>,
+        subfolder: (String) -> Boolean,
+    ): List<Hit>? {
+        var saw = false
+        val found = LinkedHashMap<String, Hit>()
+        for (tree in context.contentResolver.persistedUriPermissions) {
+            if (!tree.isReadPermission) continue
+            val treeUri = tree.uri
+            if (!DocumentsContract.isTreeUri(treeUri)) continue
+            val treeId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: continue
+            if (!treeCovers(treeId, parentId)) continue
+            val children = queryChildren(context, treeUri, parentId, base, extensions, null, subfolder, 0) ?: continue
+            saw = true
+            children.forEach { found.putIfAbsent(it.uri.toString(), it) }
+        }
+        return if (saw) found.values.toList() else null
+    }
+
+    private fun findByDisplayName(
+        context: Context,
+        meta: DocMeta,
+        base: String,
+        extensions: Set<String>,
+        subfolder: (String) -> Boolean,
+    ): List<Hit>? {
+        var saw = false
+        for (tree in context.contentResolver.persistedUriPermissions) {
+            if (!tree.isReadPermission) continue
+            val treeUri = tree.uri
+            if (!DocumentsContract.isTreeUri(treeUri)) continue
+            val treeId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: continue
+            val doc = findNamed(context, treeUri, treeId, meta.name, meta.size, 0, 0) ?: continue
+            saw = true
+            val parent = parentDocumentId(doc) ?: continue
+            if (!treeCovers(treeId, parent)) continue
+            val children = queryChildren(context, treeUri, parent, base, extensions, null, subfolder, 0) ?: continue
+            if (children.isNotEmpty()) return children
+        }
+        return if (saw) emptyList() else null
+    }
+
+    /** Ищет документ по имени (и размеру, если он известен). Не глубже 4 уровней и 400 узлов. */
+    private fun findNamed(
+        context: Context,
+        treeUri: android.net.Uri,
+        directoryId: String,
+        name: String,
+        size: Long,
+        depth: Int,
+        visited: Int,
+    ): String? {
+        if (depth > 4 || visited > 400) return null
+        val children = runCatching { DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, directoryId) }.getOrNull()
+            ?: return null
+        val rows = runCatching {
+            context.contentResolver.query(
+                children,
+                arrayOf(
+                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    DocumentsContract.Document.COLUMN_SIZE,
+                ),
+                null, null, null,
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val nameCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                if (idCol < 0 || nameCol < 0) return@use emptyList()
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(idCol) ?: continue
+                        val childName = cursor.getString(nameCol) ?: continue
+                        val mime = if (mimeCol >= 0) cursor.getString(mimeCol) else null
+                        val childSize = if (sizeCol >= 0 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else -1L
+                        add(ChildRow(id, childName, mime == DocumentsContract.Document.MIME_TYPE_DIR, childSize))
+                    }
+                }
+            }
+        }.getOrNull() ?: return null
+        rows.firstOrNull { row ->
+            !row.dir && row.name.equals(name, true) && (size <= 0L || row.size < 0L || row.size == size)
+        }?.let { return it.id }
+        var seen = visited + rows.size
+        for (row in rows) {
+            if (!row.dir) continue
+            val found = findNamed(context, treeUri, row.id, name, size, depth + 1, seen) ?: continue
+            return found
+        }
+        return null
+    }
+
+    private data class ChildRow(val id: String, val name: String, val dir: Boolean, val size: Long)
 
     private fun queryChildren(
         context: Context,

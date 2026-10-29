@@ -22,7 +22,7 @@ object TorrentSidecars {
 
     fun match(video: TorrentFile, files: List<TorrentFile>, videoCount: Int): List<Hit> {
         if (!video.isVideo) return emptyList()
-        return files.mapNotNull { file -> hit(video, file, videoCount) }
+        return files.mapNotNull { file -> hit(video, file, files, videoCount) }
             .sortedWith(compareBy({ it.studio == null }, { it.studio?.lowercase() }, { it.file.path.lowercase() }))
     }
 
@@ -40,11 +40,18 @@ object TorrentSidecars {
 
     fun isSubsFolder(name: String): Boolean = folderTokens(name).any { it in SUBS_FOLDERS }
 
-    /** `Bonus/`, `Menu`, `RUS Subs [Shift]` не путается: смотрим слова, не суффикс всей строки. */
+    /** `Bonus/`, `OP&ED`, `NCOP`, `Menu`. Слово целиком, не кусок другого слова. */
     fun isExtraVideo(path: String): Boolean {
-        val folders = path.split('/', '\\').dropLast(1)
-        return folders.any { folder -> folderTokens(folder).any { it in EXTRA_FOLDERS } }
+        val parts = path.split('/', '\\').filter { it.isNotEmpty() }
+        if (parts.dropLast(1).any(::isExtraName)) return true
+        val file = parts.lastOrNull()?.substringBeforeLast('.') ?: return false
+        return isExtraName(file)
     }
+
+    private fun isExtraName(name: String): Boolean = folderTokens(name).any(::isExtraToken)
+
+    private fun isExtraToken(token: String): Boolean =
+        token in EXTRA_FOLDERS || token.startsWith("ncop") || token.startsWith("nced")
 
     /**
      * Плейлист серии. Ролик из Bonus/Extras/Sample/Trailer/Menu играется один,
@@ -76,7 +83,7 @@ object TorrentSidecars {
         return slug.ifEmpty { studio.lowercase() }
     }
 
-    private fun hit(video: TorrentFile, file: TorrentFile, videoCount: Int): Hit? {
+    private fun hit(video: TorrentFile, file: TorrentFile, files: List<TorrentFile>, videoCount: Int): Hit? {
         if (file.index == video.index) return null
         val audio = file.isAudio
         val text = file.isSubtitle
@@ -90,7 +97,7 @@ object TorrentSidecars {
         }
         if (!sameItem(video, file, videoCount, container != null)) return null
         val language = SubtitleSupport.languageFromName(file.name) ?: container?.let(::folderLanguage)
-        return Hit(file, audio = audio, language = language, studio = studioFolder(file.path))
+        return Hit(file, audio = audio, language = language, studio = studioName(file, files))
     }
 
     private fun sameItem(video: TorrentFile, file: TorrentFile, videoCount: Int, inSidecarFolder: Boolean): Boolean {
@@ -110,6 +117,20 @@ object TorrentSidecars {
 
     private fun containerFolder(path: String): String? =
         folders(path).lastOrNull { isAudioFolder(it) || isSubsFolder(it) }
+
+    /**
+     * Студия из папки под `RUS Sound`, либо сама папка, если в ней только звук
+     * и это не стандартное имя (`Eladiel/01.mka`).
+     */
+    private fun studioName(file: TorrentFile, files: List<TorrentFile>): String? {
+        studioFolder(file.path)?.let { return it }
+        if (!file.isAudio) return null
+        val parent = folders(file.path).lastOrNull() ?: return null
+        if (isAudioFolder(parent) || isSubsFolder(parent) || isExtraName(parent)) return null
+        val siblings = files.filter { folders(it.path).lastOrNull().equals(parent, ignoreCase = true) }
+        if (siblings.isEmpty() || siblings.any { it.isVideo } || siblings.none { it.isAudio }) return null
+        return parent
+    }
 
     private fun studioFolder(path: String): String? {
         val parents = folders(path)
@@ -138,6 +159,7 @@ object TorrentSidecars {
     private val SUBS_FOLDERS = setOf("subs", "sub", "subtitles", "subtitle", "субтитры", "субтитр")
     private val EXTRA_FOLDERS = setOf(
         "bonus", "extras", "extra", "sample", "samples", "trailer", "trailers", "menu", "menus",
+        "op", "ed", "ncop", "nced", "creditless", "oped",
     )
     private val GENERIC_WORDS = AUDIO_FOLDERS + SUBS_FOLDERS
 }

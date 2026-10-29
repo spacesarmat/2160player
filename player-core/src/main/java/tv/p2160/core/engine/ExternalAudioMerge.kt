@@ -134,7 +134,8 @@ private class RelabelPeriod(
             val formats = Array(group.length) { track ->
                 relabelFormat(group.getFormat(track), spec, group.length, track)
             }
-            TrackGroup(group.id, *formats).also { originalByRelabeled[it] = group }
+            // Свой id группы: иначе дорожка с тем же языком, что встроенная, схлопывается с ней.
+            TrackGroup("$EXTERNAL_AUDIO_PREFIX${spec.listIndex}", *formats).also { originalByRelabeled[it] = group }
         }
         return TrackGroupArray(*result)
     }

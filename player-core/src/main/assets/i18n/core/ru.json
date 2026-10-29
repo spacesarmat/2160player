@@ -33,6 +33,7 @@
   "panel.no_audio": "Нет аудиодорожек",
   "panel.subs_off": "Выключены",
   "panel.subs_load": "Загрузить из файла…",
+  "panel.no_file_picker": "На этом устройстве нет выбора файла.",
   "panel.delay": "Задержка",
   "panel.size": "Размер",
   "panel.fine": "Точно",

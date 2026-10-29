@@ -28,6 +28,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import tv.p2160.core.picker.DocumentPicker
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -326,6 +328,7 @@ private fun PanelSlots.populate(
     enter: FocusRequester,
     infoReport: MediaReport?,
 ) {
+            val canPickFile = DocumentPicker.canPick(LocalContext.current)
             when (panel) {
                 Panel.AUDIO -> {
                     item(key = "night") {
@@ -389,7 +392,7 @@ private fun PanelSlots.populate(
                             modifier = if (t.selected || i == 0 && state.audioTracks.none { it.selected }) Modifier.focusRequester(focus) else Modifier,
                         )
                     }
-                    item(key = "add-audio") {
+                    if (canPickFile) item(key = "add-audio") {
                         PanelRow(
                             tr("panel.subs_load"),
                             selected = false,
@@ -452,7 +455,7 @@ private fun PanelSlots.populate(
                             )
                         }
                     }
-                    item(key = "add") {
+                    if (canPickFile) item(key = "add") {
                         PanelRow(tr("panel.subs_load"), selected = false, onClick = actions.onAddSubtitle, leading = Icons.Default.UploadFile)
                     }
                     item(key = "delay") {

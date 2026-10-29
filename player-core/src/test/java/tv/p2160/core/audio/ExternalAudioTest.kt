@@ -26,7 +26,10 @@ import tv.p2160.core.api.PlaybackResult
 import tv.p2160.core.api.SelectedTrack
 import tv.p2160.core.api.TrackSelect
 import tv.p2160.core.api.stableId
+import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import tv.p2160.core.engine.AudioSpec
+import tv.p2160.core.engine.failingExternalIndex
+import tv.p2160.core.engine.playbackSpeedFor
 import tv.p2160.core.engine.CarryHint
 import tv.p2160.core.engine.CarryTrack
 import tv.p2160.core.engine.ExternalAudioTag
@@ -280,5 +283,29 @@ class ExternalAudioTest {
         } finally {
             ContentSidecars.primaryRoot = previous
         }
+    }
+
+    @Test
+    fun englishAndRussianSidecarsAreBothKept() {
+        val dir = File(RuntimeEnvironment.getApplication().cacheDir, "lang-side").apply { mkdirs() }
+        File(dir, "Movie.mkv").writeBytes(byteArrayOf(1))
+        File(dir, "Movie.en.ac3").writeText("en")
+        File(dir, "Movie.ru.ac3").writeText("ru")
+        val names = AudioSupport.collectDirectory(dir, "Movie").map { it.first.name }
+        assertEquals(listOf("Movie.en.ac3", "Movie.ru.ac3"), names)
+    }
+
+    @OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test
+    fun oneTimesSpeedIsKeptAndOnlyTheBadExternalFileIsIdentified() {
+        assertEquals(1f, playbackSpeedFor(1f, 1.5f, live = false), 0.001f)
+        assertEquals(1.5f, playbackSpeedFor(1.5f, 1f, live = false), 0.001f)
+        assertEquals(1.5f, playbackSpeedFor(null, 1.5f, live = false), 0.001f)
+        assertEquals(1f, playbackSpeedFor(1.5f, 1f, live = true), 0.001f)
+        val bad = ExternalAudio(Uri.parse("file:///Bad.ac3"), "Bad")
+        val good = ExternalAudio(Uri.parse("file:///V1.ru.mka"), "Good")
+        val error = UnrecognizedInputFormatException("none", bad.uri)
+        assertEquals(0, failingExternalIndex(error, listOf(bad, good)))
+        assertEquals(null, failingExternalIndex(error, listOf(good)))
     }
 }

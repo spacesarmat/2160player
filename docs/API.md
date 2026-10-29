@@ -1135,7 +1135,7 @@ Player2160.settings(context).update {
 | `language` | `String` = `I18n.SYSTEM` (`"system"`) | Сразу |
 | `themeId` | `String` = `"cinema"` | Сразу |
 | `subtitleStyle` | `SubtitleStyle()` | Сразу |
-| `defaultSpeed` | `Float` = `1f` | При старте элемента (если для файла не сохранена своя скорость) |
+| `defaultSpeed` | `Float` = `1f` | При старте элемента, если для файла ещё нет своей скорости. Сохранённая 1x тоже своя скорость, она не подменяется этим значением. |
 | `decoder` | `DecoderPreference` = `AUTO` | Для следующего `PlayerController` |
 | `preferredAudioLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
 | `preferredSubtitleLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
@@ -2121,7 +2121,7 @@ lifecycleScope.launch {
 
 `prepare` выбирает файл (остальные перестают качаться) и возвращает `PlaybackRequest`: видео
 торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт - с выбранного. Папки
-`Bonus`, `Extras`, `Sample`, `Trailer` и `Menu` в этот плейлист не входят. Файл из такой папки,
+`Bonus`, `Extras`, `Sample`, `Trailer`, `Menu`, `OP&ED`, `NCOP`, `NCED`, `OP`, `ED` и `Creditless` в этот плейлист не входят. Папка, в которой лежат только аудиофайлы (`Eladiel/*.mka`), даёт имя студии. Файл из такой папки,
 открытый явно, играется один. Озвучка и субтитры из этого же торрента подключаются внешними
 дорожками: то же начало имени (`Movie.ru.mka`), номер серии (`S01E01`, `1x01`) и папки
 `RUS Sound/<студия>`, `Audio`, `Sound`, `Rus Subs`, `Subs`. Имя с хвостом в квадратных скобках

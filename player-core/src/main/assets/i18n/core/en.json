@@ -33,6 +33,7 @@
   "panel.no_audio": "No audio tracks",
   "panel.subs_off": "Off",
   "panel.subs_load": "Load from file…",
+  "panel.no_file_picker": "This device has no file picker.",
   "panel.delay": "Delay",
   "panel.size": "Size",
   "panel.fine": "Fine",

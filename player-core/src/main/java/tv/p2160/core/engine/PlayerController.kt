@@ -244,6 +244,9 @@ class PlayerController(
     private val audios: MutableList<MutableList<ExternalAudio>> =
         request.items.map { it.audio.toMutableList() }.toMutableList()
     private val audioSidecarsScanned = BooleanArray(request.items.size)
+    /** URI, которые в этом запуске уже сломали воспроизведение. Сайдкары при следующем открытии ищутся снова. */
+    private val rejectedAudio = Array(request.items.size) { HashSet<String>() }
+    private val warnedExternal = BooleanArray(request.items.size)
     /** Предпочтение, которое переносится на следующую серию этого запуска. */
     private var sessionAudio: CarryHint? = null
     private var sessionText: CarryHint? = null
@@ -367,7 +370,7 @@ class PlayerController(
         override fun onEvents(player: Player, events: Player.Events) = refresh()
 
         override fun onTracksChanged(tracks: Tracks) {
-            if (recoverMissingExternalAudio(tracks)) return
+            noteUnsupportedExternal(tracks)
             applyPendingSelections(tracks)
             if (recordChoiceOnTracks) {
                 recordChoiceOnTracks = false
@@ -560,7 +563,7 @@ class PlayerController(
         }
         resumeFrom?.let { player.seekTo(index, it) }
 
-        val speed = if (request.liveTv) 1f else entry?.speed?.takeIf { it != 1f } ?: s.defaultSpeed
+        val speed = playbackSpeedFor(entry?.speed, s.defaultSpeed, request.liveTv)
         playbackSpeed = speed
         liveCatchup = false
         player.playbackParameters = PlaybackParameters(speed)
@@ -985,6 +988,7 @@ class PlayerController(
         liveCatchup = false
         if (speedBeforeBoost != null) speedBeforeBoost = value
         else player.playbackParameters = PlaybackParameters(value)
+        saveProgress()
         refresh()
     }
 
@@ -1744,11 +1748,15 @@ class PlayerController(
                 ?.also { discs[index] = it }
         } else null
         disc?.disc?.discTitle?.let { if (entry.title.isNullOrBlank()) titles[index] = it }
-        if (!audioSidecarsScanned[index] && !request.liveTv) {
-            audioSidecarsScanned[index] = true
+        if (!request.liveTv) {
+            val scheme = entry.uri.scheme?.lowercase()
+            val http = scheme == "http" || scheme == "https"
             val remembered = keyAt(index)?.let(store::externalAudio).orEmpty()
-            for (audio in remembered) if (audios[index].none { it.uri == audio.uri }) audios[index] += audio
-            for (audio in discoverAudio(entry.uri)) if (audios[index].none { it.uri == audio.uri }) audios[index] += audio
+            val discovered = if (http && audioSidecarsScanned[index]) emptyList() else {
+                if (http) audioSidecarsScanned[index] = true
+                discoverAudio(entry.uri)
+            }
+            for (audio in remembered + discovered) considerAudio(index, audio)
         }
         val playable = mutableListOf<ExternalAudio>()
         val failed = mutableListOf<String>()
@@ -1756,10 +1764,7 @@ class PlayerController(
             val ok = withContext(Dispatchers.IO) {
                 AudioSupport.reachable(appContext, audio.uri, request.headers, if (audio.uri.scheme.equals("http", true) || audio.uri.scheme.equals("https", true)) 8000 else 4000)
             }
-            if (ok) playable += audio else {
-                failed += (audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString())
-                keyAt(index)?.let { store.deleteExternalAudio(it, audio.uri.toString()) }
-            }
+            if (ok) playable += audio else failed += (audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString())
         }
         if (failed.isNotEmpty()) {
             val message = i18n.current.format("error.external_audio", failed.joinToString())
@@ -1986,40 +1991,68 @@ class PlayerController(
     )
 
     /**
-     * Внешняя дорожка не открылась, её период не совпал с видео, или после подготовки звука нет.
-     * Убираем все внешние дорожки этого пункта, забываем их и продолжаем ролик.
+     * Ошибка относится к одной внешней дорожке. Остальные остаются.
      * Ошибка самого видео (декодер картинки) сюда не входит.
+     * Запись в истории стирается только у этого URI. Сайдкар рядом с файлом найдётся снова,
+     * но в этом запуске уже не подмешивается.
      */
     private fun recoverExternalAudio(error: PlaybackException): Boolean {
         val index = player.currentMediaItemIndex
+        if (index !in audios.indices || audios[index].isEmpty()) return false
         val exo = error as? ExoPlaybackException
         val mime = exo?.rendererFormat?.sampleMimeType
         if (exo?.type == ExoPlaybackException.TYPE_RENDERER && mime != null && MimeTypes.isVideo(mime)) return false
+        val at = failingExternalIndex(error, audios[index]) ?: return false
         val codec = exo?.type == ExoPlaybackException.TYPE_RENDERER
-        return dropExternalAudio(index, codec)
+        return dropExternalAudioAt(index, at, codec)
     }
 
-    /** Дорожки уже готовы, а звука нет, хотя внешний файл подмешан: он и есть причина. */
-    private fun recoverMissingExternalAudio(tracks: Tracks): Boolean {
-        if (player.playbackState != Player.STATE_READY || tracks.isEmpty) return false
+    /** Внешний файл, который декодер объявил, но не играет. В списке остаётся, видео идёт со встроенной. */
+    private fun noteUnsupportedExternal(tracks: Tracks) {
+        val index = player.currentMediaItemIndex
+        if (index !in audios.indices || tracks.isEmpty) return
+        val audio = TrackLabels.collect(tracks, C.TRACK_TYPE_AUDIO, i18n.current)
+        val bad = audio.filter { it.external && !it.supported }
+        if (bad.isEmpty()) return
+        if (!warnedExternal[index]) {
+            warnedExternal[index] = true
+            val label = bad.joinToString { it.label }
+            val message = i18n.current.format("error.external_audio_codec", label)
+            _state.update { it.copy(warnings = (it.warnings + message).distinct()) }
+        }
+        if (bad.none { it.selected }) return
+        val embedded = audio.firstOrNull { !it.external && it.supported } ?: return
+        selectTrack(embedded, user = false)
+    }
+
+    /**
+     * Кадры не идут, а выбрана внешняя дорожка (типичный Opus на Android 9).
+     * Снимаем только её, видео продолжается.
+     */
+    private fun dropStalledExternalAudio(): Boolean {
         val index = player.currentMediaItemIndex
         if (index !in audios.indices || audios[index].isEmpty()) return false
-        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-        if (audio.any { it.length > 0 }) return false
-        val hasPicture = tracks.groups.any { it.type != C.TRACK_TYPE_AUDIO && it.length > 0 }
-        if (!hasPicture) return false
-        return dropExternalAudio(index, codec = false)
+        val selected = TrackLabels.collect(player.currentTracks, C.TRACK_TYPE_AUDIO, i18n.current)
+            .firstOrNull { it.selected && it.external }
+        val at = externalAudioIndex(selected?.formatId) ?: return false
+        if (at !in audios[index].indices) return false
+        resetWatchdogClock()
+        return dropExternalAudioAt(index, at, codec = true)
     }
 
-    private fun dropExternalAudio(index: Int, codec: Boolean): Boolean {
-        if (index !in audios.indices || audios[index].isEmpty()) return false
-        if (externalAudioRecoveries[index] >= 1) return false
+    private fun considerAudio(index: Int, audio: ExternalAudio) {
+        if (audio.uri.toString() in rejectedAudio[index]) return
+        if (audios[index].none { it.uri == audio.uri }) audios[index] += audio
+    }
+
+    private fun dropExternalAudioAt(index: Int, at: Int, codec: Boolean): Boolean {
+        if (index !in audios.indices || at !in audios[index].indices) return false
+        if (externalAudioRecoveries[index] >= 3) return false
         externalAudioRecoveries[index]++
-        val names = audios[index].map { it.name ?: it.uri.lastPathSegment ?: it.uri.toString() }
-        val key = keyAt(index)
-        if (key != null) store.deleteExternalAudio(key)
-        audios[index].clear()
-        val label = names.joinToString().ifBlank { i18n.current["player.audio"] }
+        val audio = audios[index].removeAt(at)
+        rejectedAudio[index] += audio.uri.toString()
+        keyAt(index)?.let { store.deleteExternalAudio(it, audio.uri.toString()) }
+        val label = audio.name ?: audio.uri.lastPathSegment ?: audio.uri.toString()
         val message = if (codec) i18n.current.format("error.external_audio_codec", label)
         else i18n.current.format("error.external_audio", label)
         val position = player.currentPosition
@@ -2272,9 +2305,11 @@ class PlayerController(
         Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms $snap inputAdvanced=$inputAdvanced")
         if (!inputAdvanced) {
             Log.i(PLAYER_LOG_TAG, "video input stalled, decoder switch skipped")
+            if (dropStalledExternalAudio()) return
             showStallError()
             return
         }
+        if (dropStalledExternalAudio()) return
         recoverStall()
     }
 

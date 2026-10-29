@@ -89,6 +89,7 @@ class ExternalSubtitleTest {
 
     @Test
     fun documentParentAndTreeCover() {
+        assertEquals("primary:Movies/PR20Test", ContentSidecars.primaryParentId("Movies/PR20Test/"))
         assertEquals("primary:Download", ContentSidecars.parentDocumentId("primary:Download/Tears of Steel.mp4"))
         assertEquals(null, ContentSidecars.parentDocumentId("msf:100"))
         assertTrue(ContentSidecars.treeCovers("primary:Download", "primary:Download/Tears of Steel.mp4"))

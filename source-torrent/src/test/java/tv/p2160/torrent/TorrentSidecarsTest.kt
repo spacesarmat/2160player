@@ -88,6 +88,27 @@ class TorrentSidecarsTest {
     }
 
     @Test
+    fun openingAndEndingAreNotEpisodesAndStudioIsTheAudioFolder() {
+        val files = listOf(
+            file(0, "01.mkv"),
+            file(1, "12.mkv"),
+            file(2, "SP01.mkv"),
+            file(3, "OP&ED/NCOP.mkv"),
+            file(4, "OP&ED/NCED.mkv"),
+            file(5, "Eladiel/01.mka"),
+            file(6, "Sub/01.ass"),
+        )
+        val episodes = TorrentSidecars.episodeFiles(files, files[0])
+        assertEquals(listOf("01.mkv", "12.mkv", "SP01.mkv"), episodes.map { it.name })
+        assertTrue(TorrentSidecars.isExtraVideo("OP&ED/NCOP.mkv"))
+        assertTrue(TorrentSidecars.isExtraVideo("Creditless.mkv"))
+        assertFalse(TorrentSidecars.isExtraVideo("SP01.mkv"))
+        val hits = TorrentSidecars.match(files[0], files, TorrentSidecars.mainVideoCount(files))
+        assertEquals("Eladiel", hits.first { it.audio }.studio)
+        assertEquals("01.ass", hits.first { !it.audio }.file.name)
+    }
+
+    @Test
     fun episodeTenDoesNotMatchEpisodeOne() {
         val files = listOf(
             file(0, "Show.S01E01.mkv"),

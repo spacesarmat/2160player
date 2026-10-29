@@ -1,0 +1,239 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
+package tv.p2160.core.avi
+
+import androidx.media3.common.C
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.ParsableByteArray
+import androidx.media3.extractor.TrackOutput
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+
+class AviMp3Test {
+    @Test
+    fun frameAt48kHzIs24msAndPaddingDoesNotDropIt() {
+        val frame = ByteArray(384)
+        frame[0] = 0xFF.toByte()
+        frame[1] = 0xFB.toByte()
+        frame[2] = 0x94.toByte()
+        assertEquals(384, MpegAudio.frameAt(frame, 0)?.size)
+        val step = 1152L * 1_000_000L / 48000L
+        assertEquals(24_000L, step)
+        val chunk = frame + ByteArray(16)
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, AviMp3Index()) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).setSampleRate(48000).build())
+        audio.sampleData(ParsableByteArray(chunk), chunk.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, chunk.size, 0, null)
+        assertEquals(listOf(0L), out.times)
+        assertEquals(listOf(384), out.sizes)
+    }
+
+    @Test
+    fun frameHeaderGives1152SamplesAt44100() {
+        val frame = mpeg1Layer3Frame()
+        val parsed = MpegAudio.frameAt(frame, 0)
+        assertEquals(417, parsed?.size)
+        assertEquals(44100, parsed?.sampleRate)
+        assertEquals(1152, parsed?.samplesPerFrame)
+    }
+
+    @Test
+    fun twoFramesInOneChunkGetFrameDurationsNotTheContainerStamp() {
+        val frame = mpeg1Layer3Frame()
+        val chunk = frame + frame
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, AviMp3Index()) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).setSampleRate(44100).build())
+        audio.sampleData(ParsableByteArray(chunk), chunk.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        // Контейнер ставит на весь кусок одну метку. Кадры должны разойтись на 1152/44100 с.
+        audio.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, chunk.size, 0, null)
+        assertEquals(2, out.times.size)
+        assertEquals(0L, out.times[0])
+        val step = 1152L * 1_000_000L / 44100L
+        assertEquals(step, out.times[1])
+        assertTrue(out.sizes.all { it == 417 })
+    }
+
+    @Test
+    fun frameSplitAcrossChunksIsOneFrame() {
+        val frame = mpeg1Layer3Frame()
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, AviMp3Index()) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).setSampleRate(44100).build())
+        val head = frame.copyOf(200)
+        val tail = frame.copyOfRange(200, frame.size)
+        audio.sampleData(ParsableByteArray(head), head.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(0, C.BUFFER_FLAG_KEY_FRAME, head.size, 0, null)
+        assertTrue(out.times.isEmpty())
+        audio.sampleData(ParsableByteArray(tail), tail.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(50_000, C.BUFFER_FLAG_KEY_FRAME, tail.size, 0, null)
+        assertEquals(listOf(0L), out.times)
+        assertEquals(listOf(417), out.sizes)
+    }
+
+    @Test
+    fun freeFormatFallsBackToContainerTime() {
+        val junk = byteArrayOf(0xFF.toByte(), 0xFB.toByte(), 0x02, 0x00, 1, 2, 3, 4)
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, AviMp3Index()) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).build())
+        audio.sampleData(ParsableByteArray(junk), junk.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(12_000, C.BUFFER_FLAG_KEY_FRAME, junk.size, 0, null)
+        assertEquals(listOf(12_000L), out.times)
+        assertEquals(listOf(junk.size), out.sizes)
+    }
+
+    @Test
+    fun seekRestoresSampleClockNotContainerStamp() {
+        val frame = mpeg1Layer3Frame()
+        val step = 1152L * 1_000_000L / 44100L
+        val index = AviMp3Index()
+        val out = CollectingTrack()
+        val audio = AviMp3AudioOutput(out, index) { null }
+        audio.format(Format.Builder().setSampleMimeType(MimeTypes.AUDIO_MPEG).setSampleRate(44100).build())
+        // Куски по 1 и 3 кадра. Метки контейнера нарочно ровные и неверные.
+        emit(audio, frame, 1, 0)
+        emit(audio, frame, 3, 10_000)
+        audio.onSeek()
+        out.times.clear()
+        out.sizes.clear()
+        emit(audio, frame, 3, 10_000)
+        assertEquals(3, out.times.size)
+        assertEquals(1152L * 1_000_000L / 44100L, out.times[0])
+        assertEquals(2304L * 1_000_000L / 44100L, out.times[1])
+        assertEquals(3456L * 1_000_000L / 44100L, out.times[2])
+    }
+
+    @Test
+    fun seekEntryUsesBinarySearchOnSampleTime() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        val step = 1152L * 1_000_000L / 44100L
+        repeat(8) { i -> index.add(i * 10_000L, i * 400L, i * 400L + 8, 1152) }
+        index.add(10_000L, 1, 1, 1152)
+        assertEquals(0L, index.seekEntry(0)?.containerTimeUs)
+        assertEquals(0L, index.seekEntry(step - 1)?.containerTimeUs)
+        assertEquals(10_000L, index.seekEntry(step)?.containerTimeUs)
+        val lastTime = 7 * 1152L * 1_000_000L / 44100
+        assertEquals(70_000L, index.seekEntry(lastTime)?.containerTimeUs)
+        assertNull(index.seekEntry(lastTime + 2_000_000L))
+        assertEquals(1152L, index.samplesBefore(10_000L))
+        assertNull(index.samplesBefore(15_000L))
+        assertEquals(0L, index.samplesBeforePosition(0L))
+    }
+
+    @Test
+    fun seekWhileLoadingDoesNotThrow() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        val error = AtomicReference<Throwable>()
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        Thread {
+            try {
+                start.await()
+                repeat(30_000) { i -> index.add(i.toLong(), i * 8L, i * 8L + 8, 1152) }
+            } catch (t: Throwable) {
+                error.set(t)
+            } finally {
+                done.countDown()
+            }
+        }.start()
+        Thread {
+            try {
+                start.await()
+                repeat(30_000) { i ->
+                    index.seekEntry(i * 1_000L)
+                    index.samplesBefore(i.toLong())
+                    index.samplesBeforePosition(i * 8L)
+                }
+            } catch (t: Throwable) {
+                error.set(t)
+            } finally {
+                done.countDown()
+            }
+        }.start()
+        start.countDown()
+        assertTrue(done.await(20, TimeUnit.SECONDS))
+        assertNull(error.get())
+        val lastTime = 29_999L * 1152 * 1_000_000L / 44100
+        assertEquals(29_999L, index.seekEntry(lastTime)?.containerTimeUs)
+        assertNull(index.seekEntry(lastTime + 5_000_000L))
+    }
+
+    @Test
+    fun midFileChunkIsNotSampleZero() {
+        val index = AviMp3Index()
+        index.noteRate(44100)
+        index.add(26_080_000L, 50_000_000L, 50_000_008L, 1152)
+        assertNull(index.seekEntry(26_080_000L))
+        assertNull(index.samplesBeforePosition(50_000_008L))
+        assertNull(index.samplesBefore(26_080_000L))
+    }
+
+    @Test
+    fun idx1AudioSeekIsAbsoluteAndLogarithmic() {
+        val offsets = LongArray(1000) { it * 1000L + 100 }
+        val bytes = LongArray(1000) { it * 417L }
+        AviProbe.audioIndex = AviAudioIndex(
+            headerOffsets = offsets,
+            bytesBefore = bytes,
+            sampleRate = 44100,
+            bytesPerSec = 417 * 44100 / 1152,
+        )
+        try {
+            val index = AviMp3Index()
+            index.noteFrame(417, 1152, 44100)
+            val target = (1152L * 800 + 10) * 1_000_000L / 44100
+            val entry = index.seekEntry(target)
+            assertEquals(800 * 1000L + 100, entry?.offset)
+            assertEquals(1152L * 800, index.samplesBeforePosition(800 * 1000L + 108))
+            // Наращивание с нуля не перебивает idx1.
+            index.add(0L, 1L, 9L, 1152)
+            assertEquals(800 * 1000L + 100, index.seekEntry(target)?.offset)
+        } finally {
+            AviProbe.clear()
+        }
+    }
+
+    private fun emit(audio: AviMp3AudioOutput, frame: ByteArray, count: Int, containerUs: Long) {
+        val chunk = ByteArray(frame.size * count)
+        repeat(count) { frame.copyInto(chunk, it * frame.size) }
+        audio.sampleData(ParsableByteArray(chunk), chunk.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
+        audio.sampleMetadata(containerUs, C.BUFFER_FLAG_KEY_FRAME, chunk.size, 0, null)
+    }
+
+    private fun mpeg1Layer3Frame(): ByteArray {
+        val frame = ByteArray(417)
+        frame[0] = 0xFF.toByte()
+        frame[1] = 0xFB.toByte()
+        frame[2] = 0x90.toByte()
+        frame[3] = 0x00
+        return frame
+    }
+}
+
+private class CollectingTrack : TrackOutput {
+    val times = ArrayList<Long>()
+    val sizes = ArrayList<Int>()
+
+    override fun format(format: Format) = Unit
+
+    override fun sampleData(input: androidx.media3.common.DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int = 0
+
+    override fun sampleData(data: ParsableByteArray, length: Int, sampleDataPart: Int) {
+        data.skipBytes(length)
+    }
+
+    override fun sampleMetadata(timeUs: Long, flags: Int, size: Int, offset: Int, cryptoData: TrackOutput.CryptoData?) {
+        times += timeUs
+        sizes += size
+    }
+}

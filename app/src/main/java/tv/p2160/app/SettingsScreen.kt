@@ -229,7 +229,21 @@ fun SettingsScreen(
                     android.widget.Toast.makeText(context, strings["settings.smart_reset_done"], android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-            item { ToggleRow(tr("settings.auto_next"), null, s.autoPlayNext) { v -> update { it.copy(autoPlayNext = v) } } }
+            item {
+                val ends = listOf(
+                    Choice(strings["settings.end_next"], tv.p2160.core.settings.EndAction.NEXT),
+                    Choice(strings["settings.end_close"], tv.p2160.core.settings.EndAction.CLOSE),
+                    Choice(strings["settings.end_stay"], tv.p2160.core.settings.EndAction.STAY),
+                    Choice(strings["settings.end_repeat"], tv.p2160.core.settings.EndAction.REPEAT),
+                )
+                val endLabel = ends.first { it.value == s.endAction }.label
+                SettingRow(tr("settings.end_action"), value = endLabel) {
+                    ask(strings["settings.end_action"], ends, s.endAction) { v ->
+                        update { it.copy(endAction = v, autoPlayNext = v == tv.p2160.core.settings.EndAction.NEXT) }
+                    }
+                }
+            }
+            item { ToggleRow(tr("settings.oled_saver"), tr("settings.oled_saver_hint"), s.oledSaver) { v -> update { it.copy(oledSaver = v) } } }
             item { ToggleRow(tr("settings.night_mode"), tr("settings.night_mode_hint"), s.nightMode) { v -> update { it.copy(nightMode = v) } } }
             item {
                 ToggleRow(

@@ -209,7 +209,10 @@ fun DlnaBrowserScreen(
                                     },
                                     imageUrl = obj.albumArtUrl,
                                     title = obj.title,
-                                    subtitle = describeItem(obj, strings["dlna.transcoded"], strings["dlna.subtitles"]),
+                                    subtitle = listOfNotNull(
+                                        describeItem(obj, strings["dlna.transcoded"], strings["dlna.subtitles"]),
+                                        if (resume?.finished == true) strings["browse.watched"] else null,
+                                    ).joinToString(" · ").ifEmpty { null },
                                     progress = resume?.takeIf { !it.finished && it.positionMs > 0 }?.progress,
                                     modifier = modifier,
                                     onClick = {

@@ -474,7 +474,10 @@ fun LocalBrowserScreen(
                                         LocalKind.DISC -> if (file.isDirectory) tr("browse.bluray") else "${tr("browse.bluray")} · ${formatLocalSize(file.length())}"
                                         LocalKind.SUBTITLE -> tr("local.subtitle_file")
                                         LocalKind.PLAYLIST -> tr("local.playlist")
-                                        else -> formatLocalSize(file.length())
+                                        else -> listOfNotNull(
+                                            formatLocalSize(file.length()),
+                                            if (resume?.finished == true) tr("browse.watched") else null,
+                                        ).joinToString(" · ")
                                     },
                                     progress = resume?.takeIf { !it.finished && it.positionMs > 0 }?.progress,
                                     modifier = if (file == focusTarget) Modifier.focusRequester(requester) else Modifier,

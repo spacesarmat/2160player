@@ -179,7 +179,10 @@ fun BrowserScreen(
                             subtitle = when {
                                 kind == EntryKind.DISC -> tr("browse.bluray")
                                 entry.isDirectory -> null
-                                else -> formatSize(entry.size)
+                                else -> listOfNotNull(
+                                    formatSize(entry.size),
+                                    if (resume?.finished == true) tr("browse.watched") else null,
+                                ).joinToString(" · ")
                             },
                             progress = resume?.takeIf { !it.finished && it.positionMs > 0 }?.progress,
                             modifier = if (entry == focusTarget) Modifier.focusRequester(requester) else Modifier,

@@ -52,6 +52,8 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 | `data` | Uri | на каком элементе остановились |
 | `position`, `duration` | Int, мс | как у MX Player |
 | `end_by` | String | `user` или `playback_completion` |
+| `tv.p2160.extra.WATCHED` | Boolean | досмотрено до конца. `end_by` остаётся |
+| `tv.p2160.extra.POSITION`, `tv.p2160.extra.DURATION` | Long, мс | полная позиция и длительность. Если досмотрено, позиция равна длительности |
 | `extra_position`, `extra_duration` | Long | как у VLC |
 
 Свайп из «Недавних» и убийство процесса - `RESULT_CANCELED` без extras.

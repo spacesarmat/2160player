@@ -9,7 +9,7 @@ Jetpack Compose. Играет почти всё - от IPTV-потоков до 
 
 ## Возможности
 
-- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MPEG-2, VC-1 там, где устройство их не умеет; passthrough на ресивер.
+- **Форматы:** MKV, MP4, WebM, TS/M2TS, AVI, FLV, OGG, MP3, FLAC и др.; FFmpeg-декодеры для DTS/DTS-HD, TrueHD, AC-3/E-AC-3, MP3 и MPEG-1/2 там, где устройство их не умеет. MPEG-4 Part 2 (XviD/DivX) играет программный MediaCodec устройства, если поток ему подходит. MS-MPEG4 (`DIV3`/`DIV4`) открывается как `video/divx3` и пробует декодеры `divx3` и `video/mp43`. Если компонент из списка устройства создать нельзя и программного декодера нет, показывается ошибка с именем кодека, а не один звук. В «Авто» это «На этом устройстве нет декодера для …»; про режим FFmpeg текст говорит, только если выбран он. Для MPEG-4 с GMC текст отдельный: декодер есть, но GMC не поддерживает. Длительность AVI берётся из video `strh`, а не из завышенного `avih`. Файл `RIFF....AVI ` не отдаётся экстрактору MP3. Вшитый FFmpeg не содержит декодеры MPEG-4, MS-MPEG4, H.263, WMV и VC-1: тогда ошибка с именем кодека, а не звук без картинки. В AVI время MP3 берётся из кадров, а не из куска контейнера. Passthrough на ресивер.
 - **Сеть:** HLS, DASH, SmoothStreaming, RTSP, HTTP(S) с заголовками; SMB 2/3 с сохранёнными серверами и обзором папок; **DLNA/UPnP**-серверы (Jellyfin, Plex, Kodi, NAS) с автопоиском в сети.
 - **IPTV:** M3U-плейлисты с группами и логотипами, телегид XMLTV, режим эфира (без перемотки, текущая передача под названием канала).
 - **Торренты:** magnet-ссылки и `.torrent`-файлы, просмотр во время загрузки (libtorrent), выбор файла из раздачи, остановка и продолжение раздач (свайпом влево/вправо или кнопкой); состояние раздачи видно по цвету и метке («Качается», «Раздаётся», «Остановлена»…), со скоростью, пирами и прогрессом. Настройки раздач: сеть («Везде», «Раздача по Wi-Fi» - по умолчанию,
@@ -18,7 +18,8 @@ Jetpack Compose. Играет почти всё - от IPTV-потоков до 
 - **Blu-ray:** образы `.iso` и папки `BDMV` (файлы, SMB, HTTP) - автоматический выбор основного фильма, главы, языки дорожек; M2TS с TrueHD, LPCM, DTS-HD MA, PGS.
 - **Субтитры:** внешние SRT/ASS/VTT/TTML с автоопределением кодировки, автопоиск рядом с видео, задержка, стиль, **двойные субтитры**.
 - **Главы и пропуск** вступлений, пересказов и титров: из глав, из Intent, ручные отметки на весь сериал; кнопка или автопропуск, карточка «Следующая серия».
-- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению.
+- **Продолжение просмотра** с сохранением дорожек, скорости и задержки субтитров; возврат позиции вызывающему приложению (`end_by` и `tv.p2160.extra.WATCHED`, позиция Long). Файл, досмотренный до конца, в следующий раз открывается с начала. Недосмотренный спрашивает «Продолжить с …» или «С начала»; пока вопрос на экране, карточка «Далее» скрыта, Назад продолжает с места. В списках файлов у просмотренного галочка, у недосмотренного полоска.
+- **Конец файла:** плейлист через 5 с переходит к следующему (Назад или «Отмена» останавливают отсчёт). За 15 с до конца в углу карточка «Далее» с обложкой и «Смотреть сейчас», фокус сама не берёт. Назад на отсчёте следующей серии его снимает и плеер не закрывает. Назад на ошибке декодера закрывает плеер, как «Закрыть». Один файл: «Смотреть снова» и «Закрыть». Последний в плейлисте: «Плейлист завершён» и возврат в папку. Настройка «По окончании» и заставка через 3 минуты паузы. Прямой эфир это не трогает.
 - **Телефон и ТВ:** жесты, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, PiP.
 - **Встроенный обзор файлов** для Android TV и приставок без системного выбора файлов: внутренняя память, флешки USB и карты памяти, папки Blu-ray и образы ISO, плейлист из папки для «Следующей серии».
 - **Масштаб картинки:** целиком, по ширине, по высоте, заполнить экран с обрезкой, растянуть; на телефоне - щипком двумя пальцами.
@@ -201,7 +202,10 @@ NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 **2160 Player** is an Android (phone + TV) media player built on Media3/ExoPlayer with FFmpeg
 decoders and a Jetpack Compose UI. It plays local files (with a built-in file browser for Android TV boxes, USB drives and SD cards), HTTP/HLS/DASH/RTSP streams, SMB shares, DLNA servers, IPTV M3U playlists (XMLTV guide), torrents (stream while downloading)
 and Blu-ray ISO images/BDMV folders (M2TS with TrueHD, LPCM, DTS-HD, PGS), supports chapters,
-intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory,
+intro/credits skipping (incl. audio-based intro detection), dual subtitles, resume with track memory
+(a finished file opens from the start; a partly watched file asks to continue;
+when playback ends, a playlist counts down 5 s to the next item, the last item says the playlist is finished,
+and a single file offers Watch again and Close; the result adds tv.p2160.extra.WATCHED and a Long position),
 learned audio/subtitle preferences, scheduled night sound, hand-off between devices on the LAN,
 themes, JSON language packs and self-updates from GitHub Releases (if the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry). It can also stream the phone camera or screen
 (RTSP server, SRT to OBS, NDI®, RTMP to YouTube/Twitch; LAN/Wi-Fi only, never mobile data; optional Lowest latency shortens send queues) with a per-session RTSP password that is not the pairing PIN, shows cameras of other 2160 Players on the
@@ -217,7 +221,7 @@ The `player-core` module is an embeddable library:
   activity `tv.p2160.core.Player2160Activity`) with MX Player–compatible extras (`title`, `position`,
   `headers`, `subs`, `video_list`, `return_result`…) plus `tv.p2160.extra.*` (segments, MIME types);
   results are returned in MX Player and VLC formats.
-- **Library** - `implementation("tv.p2160:player-core:0.2.15")` (module, composite build, mavenLocal
+- **Library** - `implementation("tv.p2160:player-core:0.2.16")` (module, composite build, mavenLocal
   or GitHub Packages), `minSdk 24`, `compileSdk 37`, and the required
   `packaging { jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so") }`.
   Then `Player2160.play(context, PlaybackRequest.single(uri))`, `Player2160.PlayContract()` for

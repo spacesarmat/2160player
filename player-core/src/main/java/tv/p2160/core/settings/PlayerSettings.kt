@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import tv.p2160.core.i18n.I18n
 
 enum class DecoderPreference {
-    /** Аппаратные декодеры, FFmpeg - если устройство формат не умеет. */
+    /** Аппаратные декодеры, затем программный MediaCodec. FFmpeg - только если декодер собран. */
     AUTO,
     /** Только аппаратные (MediaCodec). */
     HARDWARE,
@@ -21,6 +21,18 @@ enum class ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }
 
 /** Что делать с вступлениями и титрами. */
 enum class SkipMode { OFF, BUTTON, AUTO }
+
+/** Что делать, когда файл доигран. Живые потоки это не используют. */
+enum class EndAction {
+    /** Плейлист: отсчёт 5 с и следующий. Один файл и последний в плейлисте: экран конца. */
+    NEXT,
+    /** Сразу закрыть плеер. */
+    CLOSE,
+    /** Остаться на последнем кадре. Через несколько минут кадр гаснет, чтобы не выжечь OLED. */
+    STAY,
+    /** Начать этот же файл сначала. */
+    REPEAT,
+}
 
 enum class SubtitleEdge { NONE, OUTLINE, SHADOW }
 
@@ -47,6 +59,10 @@ data class Settings(
     val seekStepSeconds: Int = 10,
     val resizeMode: ResizeMode = ResizeMode.FIT,
     val autoPlayNext: Boolean = true,
+    /** [EndAction.NEXT], если ключ ещё не записан и [autoPlayNext] включено. */
+    val endAction: EndAction = EndAction.NEXT,
+    /** Через несколько минут паузы приглушить кадр. Любая клавиша возвращает картинку. */
+    val oledSaver: Boolean = true,
     val skipMode: SkipMode = SkipMode.BUTTON,
     /** «Ночной звук»: сжатие динамики и выделение диалогов. */
     val nightMode: Boolean = false,
@@ -147,6 +163,9 @@ class PlayerSettings private constructor(context: Context) {
             seekStepSeconds = prefs.getInt("seek_step", d.seekStepSeconds),
             resizeMode = enumOr(prefs.getString("resize", null), d.resizeMode),
             autoPlayNext = prefs.getBoolean("auto_next", d.autoPlayNext),
+            endAction = prefs.getString("end_action", null)?.let { runCatching { EndAction.valueOf(it) }.getOrNull() }
+                ?: if (prefs.getBoolean("auto_next", d.autoPlayNext)) EndAction.NEXT else EndAction.STAY,
+            oledSaver = prefs.getBoolean("oled_saver", d.oledSaver),
             skipMode = enumOr(prefs.getString("skip_mode", null), d.skipMode),
             nightMode = prefs.getBoolean("night_mode", d.nightMode),
             nightAuto = prefs.getBoolean("night_auto", d.nightAuto),
@@ -183,6 +202,8 @@ class PlayerSettings private constructor(context: Context) {
             .putInt("seek_step", s.seekStepSeconds)
             .putString("resize", s.resizeMode.name)
             .putBoolean("auto_next", s.autoPlayNext)
+            .putString("end_action", s.endAction.name)
+            .putBoolean("oled_saver", s.oledSaver)
             .putString("skip_mode", s.skipMode.name)
             .putBoolean("night_mode", s.nightMode)
             .putBoolean("night_auto", s.nightAuto)

@@ -32,8 +32,8 @@ android {
         applicationId = "tv.p2160.player"
         minSdk = 24
         targetSdk = 36
-        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 27
-        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.15"
+        versionCode = (findProperty("p2160.versionCode") as String?)?.toInt() ?: 28
+        versionName = (findProperty("p2160.versionName") as String?) ?: "0.2.16"
         buildConfigField("boolean", "NDI", (ndiSdkDir != null).toString())
         if (ndiSdkDir != null) {
             externalNativeBuild {
@@ -86,7 +86,7 @@ android {
         }
     }
 
-    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg - берём одну копию.
+    // player-core уже содержит JNI FFmpeg, nextlib-mediainfo - те же .so. Берём одну копию.
     packaging {
         // Нативные библиотеки (FFmpeg, libtorrent) храним сжатыми: APK меньше примерно на 10 МБ на ABI.
         jniLibs.useLegacyPackaging = true

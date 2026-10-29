@@ -50,6 +50,11 @@ object IntentApi {
     const val RESULT_END_BY = "end_by"
     const val END_BY_USER = "user"
     const val END_BY_COMPLETION = "playback_completion"
+    /** Досмотрено до конца (или почти: порог ResumeStore.isFinished). Не заменяет `end_by`. */
+    const val EXTRA_WATCHED = "tv.p2160.extra.WATCHED"
+    /** Позиция и длительность в миллисекундах, Long. Старые ключи `position` и `duration` остаются Int. */
+    const val EXTRA_RESULT_POSITION = "tv.p2160.extra.POSITION"
+    const val EXTRA_RESULT_DURATION = "tv.p2160.extra.DURATION"
 
     // Дублируем в формате VLC, чтобы его клиенты тоже получили позицию.
     private const val VLC_RESULT_POSITION = "extra_position"
@@ -134,17 +139,23 @@ object IntentApi {
         putExtra(RESULT_POSITION, result.positionMs.toInt())
         putExtra(RESULT_DURATION, result.durationMs.toInt())
         putExtra(RESULT_END_BY, if (result.completed) END_BY_COMPLETION else END_BY_USER)
+        putExtra(EXTRA_WATCHED, result.completed)
+        putExtra(EXTRA_RESULT_POSITION, result.positionMs)
+        putExtra(EXTRA_RESULT_DURATION, result.durationMs)
         putExtra(VLC_RESULT_POSITION, result.positionMs)
         putExtra(VLC_RESULT_DURATION, result.durationMs)
     }
 
     fun parseResult(resultCode: Int, intent: Intent?): PlaybackResult? {
         if (resultCode != Activity.RESULT_OK || intent == null) return null
+        val position = if (intent.hasExtra(EXTRA_RESULT_POSITION)) intent.longOrInt(EXTRA_RESULT_POSITION) else intent.longOrInt(RESULT_POSITION)
+        val duration = if (intent.hasExtra(EXTRA_RESULT_DURATION)) intent.longOrInt(EXTRA_RESULT_DURATION) else intent.longOrInt(RESULT_DURATION)
         return PlaybackResult(
             uri = intent.data,
-            positionMs = intent.longOrInt(RESULT_POSITION),
-            durationMs = intent.longOrInt(RESULT_DURATION),
-            completed = intent.getStringExtra(RESULT_END_BY) == END_BY_COMPLETION,
+            positionMs = position,
+            durationMs = duration,
+            completed = intent.getBooleanExtra(EXTRA_WATCHED, false) ||
+                intent.getStringExtra(RESULT_END_BY) == END_BY_COMPLETION,
         )
     }
 

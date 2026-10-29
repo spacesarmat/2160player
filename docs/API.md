@@ -46,7 +46,7 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 
 | Возможность | Подробности |
 |---|---|
-| Форматы | Всё, что умеет Media3 (MP4, MKV, WebM, TS, FLV, OGG, MP3, FLAC…), плюс FFmpeg-декодеры (nextlib) для того, чего не умеет устройство: DTS/DTS-HD, TrueHD, AC-3/E-AC-3 без лицензии, FLAC/ALAC/Opus в MKV, MPEG-2/VC-1. Режим декодеров выбирается в настройках (`DecoderPreference`). |
+| Форматы | Всё, что умеет Media3 (MP4, MKV, WebM, TS, AVI, FLV, OGG, MP3, FLAC…), плюс FFmpeg-декодеры (nextlib) для того, чего не умеет устройство и что реально собрано в `libavcodec`: DTS/DTS-HD, TrueHD, AC-3/E-AC-3 без лицензии, FLAC/ALAC/Opus в MKV, MPEG-1/2, H.264, H.265, VP8, VP9, AV1. MPEG-4 Part 2 (XviD/DivX) идёт через программный MediaCodec устройства, если тот принимает поток. MS-MPEG4 (DIV3), H.263, WMV и VC-1 эта сборка FFmpeg не декодирует: нет декодера, показывается ошибка с именем кодека, звук один не играет. Если устройство отказывает в создании компонента (на Dune `OMX.realtek.video.dec.mp43`, `InvalidComponentName`), запасной пустой проход не прячет видео. Файл с заголовком `RIFF....AVI ` не открывается как MP3. Режим декодеров выбирается в настройках (`DecoderPreference`). |
 | Сетевые потоки | HLS (`.m3u8`), DASH, SmoothStreaming, RTSP, прогрессивный HTTP(S) с заголовками (`User-Agent`, `Referer`, `Authorization`…). Разрешён cleartext HTTP. |
 | Blu-ray | Образы `.iso` и папки `BDMV` с файлов, `content://`, SMB и HTTP(S) (для ISO). Основной фильм выбирается автоматически, главы берутся из плейлиста диска. |
 | M2TS | Свой экстрактор 192-байтных пакетов: TrueHD (+ AC-3 ядро), LPCM, DTS-HD HRA/MA, E-AC-3, субтитры PGS, языки дорожек из MPLS. |
@@ -157,7 +157,12 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `data` | `Uri` | URI элемента, на котором остановились (в плейлисте - текущий). |
 | `position` | `Int` (мс) | Позиция остановки (MX Player). |
 | `duration` | `Int` (мс) | Длительность (MX Player). |
-| `end_by` | `String` | `"user"` - закрыл пользователь, `"playback_completion"` - досмотрено до конца. |
+| `end_by` | `String` | `"user"` - закрыл пользователь, `"playback_completion"` - досмотрено до конца. Старый ключ, его смысл не менялся. |
+| `tv.p2160.extra.WATCHED` | `Boolean` | Досмотрено до конца: `STATE_ENDED` или порог `ResumeStore.isFinished` (больше 97 % или хвост короче 30 с при длительности больше 30 с). |
+| `tv.p2160.extra.POSITION` | `Long` (мс) | Последняя позиция. Если `WATCHED`, это длительность. |
+| `tv.p2160.extra.DURATION` | `Long` (мс) | Длительность. |
+
+`position` и `duration` остаются `Int`, как у MX Player. Новые ключи держат полный `Long`. Разбор только по `end_by` по-прежнему верен.
 | `extra_position` | `Long` (мс) | Позиция (VLC). |
 | `extra_duration` | `Long` (мс) | Длительность (VLC). |
 
@@ -179,6 +184,8 @@ val launcher = registerForActivityResult(ActivityResultContracts.StartActivityFo
         val positionMs = data.getIntExtra("position", 0)
         val durationMs = data.getIntExtra("duration", 0)
         val completed = data.getStringExtra("end_by") == "playback_completion"
+        val watched = data.getBooleanExtra("tv.p2160.extra.WATCHED", completed)
+        val positionLong = data.getLongExtra("tv.p2160.extra.POSITION", positionMs.toLong())
     }
 }
 
@@ -272,7 +279,7 @@ android {
     compileSdk = 37            // библиотека собрана с compileSdk 37
     defaultConfig { minSdk = 24 }
 
-    // ОБЯЗАТЕЛЬНО: nextlib-media3ext и nextlib-mediainfo несут одинаковые .so FFmpeg.
+    // ОБЯЗАТЕЛЬНО: player-core уже содержит JNI FFmpeg, nextlib-mediainfo - те же .so.
     packaging {
         jniLibs.pickFirsts += listOf(
             "**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so",
@@ -281,7 +288,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.15")
+    implementation("tv.p2160:player-core:0.2.16")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) - Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -916,7 +923,9 @@ Player2160.settings(context).update {
 | `autoResume` | `Boolean` = `true` | При старте элемента |
 | `seekStepSeconds` | `Int` = `10` | Сразу (UI); шаг кнопок ExoPlayer - для следующего контроллера |
 | `resizeMode` | `ResizeMode` = `FIT` | При открытии `PlayerScreen` |
-| `autoPlayNext` | `Boolean` = `true` | Переход к следующему элементу - для следующего контроллера; карточка «Следующая серия» - сразу |
+| `autoPlayNext` | `Boolean` = `true` | Совместимость. Если ключа `end_action` ещё нет: `true` - `EndAction.NEXT`, `false` - `EndAction.STAY`. Экран настроек пишет его вместе с `endAction` |
+| `endAction` | `EndAction` = `NEXT` | Конец файла: `NEXT` (отсчёт 5 с и следующий; один файл - экран конца; последний в плейлисте - «Плейлист завершён»), `CLOSE`, `STAY` (кадр гаснет через 3 минуты), `REPEAT`. Ключ `end_action`. Сразу. Эфир не затрагивается |
+| `oledSaver` | `Boolean` = `true` | Через 3 минуты паузы погасить кадр. Любая клавиша возвращает картинку. Ключ `oled_saver`. «Остаться на кадре» гаснет и при `false` |
 | `skipMode` | `SkipMode` = `BUTTON` | Сразу |
 | `nightMode` | `Boolean` = `false` | «Ночной звук» всегда (см. [§16](#16-ночной-звук)). При старте `PlayerController`; живой контроллер переключайте через `setNightMode()` |
 | `nightAuto` | `Boolean` = `false` | Включать ночной звук по расписанию `[nightStartMinute, nightEndMinute)`. Проверяется при старте и раз в минуту |
@@ -961,7 +970,7 @@ Player2160.settings(context).update {
 
 Перечисления:
 
-- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` - аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg.
+- `DecoderPreference { AUTO, HARDWARE, FFMPEG }` - аппаратные + FFmpeg как запасной / только MediaCodec / всегда FFmpeg. В «Авто» ошибка видео посреди потока (декодер уже отдал кадры) для этого MIME переключает на программный MediaCodec, затем на FFmpeg, но только если `FfmpegLibrary.supportsFormat` истинно. Сопоставление MIME (`video/mp4v-es` → `mpeg4` и т.д.) само по себе декодер не включает. В nextlib 1.11.1-0.16.0 `mpeg4`, `msmpeg4`, `h263`, WMV и VC-1 не собраны. Если видео взять нечем, ошибка называет кодек и воспроизведение останавливается. Размер APK от сопоставления не растёт.
 - `ResizeMode { FIT, FIT_WIDTH, FIT_HEIGHT, ZOOM, FILL }` - целиком / по ширине / по высоте / заполнить экран с обрезкой / растянуть. В плеере: панель «Видео» (кнопка-рамка, TalkBack «Масштаб и качество»; само нажатие режим не крутит) и щипок двумя пальцами (развести - `ZOOM`, свести - `FIT`).
 - `SkipMode { OFF, BUTTON, AUTO }` - не показывать / кнопка «Пропустить» / автоматически (титры с переходом к следующей серии - всегда через обратный отсчёт).
 - `SubtitleEdge { NONE, OUTLINE, SHADOW }`.
@@ -1399,7 +1408,7 @@ class App : Application() {
 | Механизм | Как работает |
 |---|---|
 | Вывод видео | `SurfaceView` (`PlayerView`): кадры идут в аппаратный композитор без копий через GPU; HDR - сразу на дисплей. |
-| Декодеры | Аппаратные `MediaCodec` в приоритете, FFmpeg (nextlib) - только для того, что устройство не умеет. Программное декодирование видео видно в сводке и предупреждении при старте. |
+| Декодеры | Аппаратные `MediaCodec` в приоритете, FFmpeg (nextlib) - для того, что устройство не умеет и что собрано в `libavcodec`, и как второй запасной, если аппаратный декодер упал посреди потока. Для MPEG-4 сначала пробуется `c2.android` / `OMX.google`. FFmpeg для этого MIME не вызывается: декодера `mpeg4` в сборке нет. MS-MPEG4 ищется в списке декодеров устройства (`video/mp43`, затем `video/divx3`): MIME дорожки остаётся как у дорожки, в MediaFormat пишется тип самого кодека. Если программных декодеров нет, отказ создания не переключается на пустой список и не оставляет один звук. MP3 в AVI получает время по кадрам; если часы всё равно не идут, звук один раз уходит на FFmpeg MP3. Предупреждение о программном видео смотрит на выбранный декодер. Если за 8 с нет первого кадра, ошибка называет кодек. |
 | Динамическое планирование | `ExoPlayer.Builder.experimentalSetDynamicSchedulingEnabled(true)`: цикл воспроизведения просыпается, только когда рендерерам есть работа. |
 | Буфер по памяти | `PlayerConfig.AUTO` → `DeviceProfile.bufferTargetBytes(context)`. Приложение 2160 Player объявляет `android:largeHeap="true"`, поэтому на телефонах с большой памятью буфер - до 128 МБ. |
 | Видео в фоне | Видеодорожка отключается (`setInBackground`), звук без видео может уйти в offload. |

@@ -2,6 +2,7 @@ package tv.p2160.core.engine
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -14,6 +15,8 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DecoderCounters
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
@@ -35,6 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.graphics.Bitmap
+import tv.p2160.core.avi.AviProbe
 import tv.p2160.core.api.Chapter
 import tv.p2160.core.bluray.DiscSession
 import tv.p2160.core.bluray.DiscSessions
@@ -115,6 +119,22 @@ data class PlayerUiState(
     val sleepAtEnd: Boolean = false,
     /** Частота кадров текущего видео (для подбора частоты экрана); -1 - неизвестна. */
     val videoFrameRate: Float = -1f,
+    /** Секунды до следующего файла. null - отсчёта нет. */
+    val endCountdownSec: Int? = null,
+    /** Файл доигран и следующего нет: «Смотреть снова» и «Закрыть». */
+    val showEndScreen: Boolean = false,
+    /** Кадр погашен после долгого стояния на конце. Любая клавиша возвращает картинку. */
+    val endDim: Boolean = false,
+    /** Плеер просит активность закрыться. */
+    val requestClose: Boolean = false,
+    /** Последний файл плейлиста: короткая надпись и возврат в папку. */
+    val playlistFinished: Boolean = false,
+    /** Сохранённая позиция, если перед стартом надо спросить. */
+    val resumePromptMs: Long? = null,
+    /** Название следующего файла для карточки. */
+    val nextTitle: String? = null,
+    /** Файл или URI обложки следующего файла. */
+    val nextCoverPath: String? = null,
 )
 
 /**
@@ -134,6 +154,10 @@ private const val LIVE_FAR_SPEED = 1.25f
 
 /** Сколько раз повторять открытие сжатого звука (passthrough), прежде чем декодировать самим. */
 private const val PASSTHROUGH_RETRIES = 3
+private const val FIRST_FRAME_TIMEOUT_MS = 8_000L
+private const val SEEK_QUIET_MS = 2_000L
+private const val MAX_STALL_RECOVERIES = 2
+private const val PLAYER_LOG_TAG = "Player2160"
 
 @OptIn(UnstableApi::class)
 class PlayerController(
@@ -152,6 +176,23 @@ class PlayerController(
     /** Когда последний раз повторяли открытие сжатого звука после ошибки выхода. */
     private var passthroughRetryAt = 0L
     private var passthroughRetries = 0
+    /** Повтор декодера уже поставлен в очередь: дорожки на этот миг ещё без видео, ошибку не показываем. */
+    private var videoRetryPending = false
+    /** onTracksChanged пришёл, пока шёл повтор prepare: проверку видео нельзя пропустить. */
+    private var unsupportedCheckDeferred = false
+    /** Звуковые часы AVI+MP3 не идут: не больше двух попыток на файл, дальше ошибка. */
+    private var ffmpegAudioTried = false
+    private var audioDiscontinuityCount = 0
+    private var audioDiscontinuitySince = 0L
+    private var stallItem = -1
+    private var stallRecoveries = 0
+    private var stallStopped = false
+    private var watchdogArmedAt = 0L
+    private var watchdogBaseFrames = -1
+    private var watchdogBaseInput = -1
+    /** После перемотки кадры не считаются зависанием. */
+    private var seekQuietUntil = 0L
+    private var videoCounters: DecoderCounters? = null
     /** Смена режима дисплея (частоту под видео переключает система или мы) - сбои звука после неё временные. */
     private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
@@ -224,12 +265,34 @@ class PlayerController(
 
     /** Какие декодеры реально выбраны - для сводки по файлу. */
     private val analytics = object : AnalyticsListener {
+        override fun onVideoEnabled(eventTime: AnalyticsListener.EventTime, decoderCounters: DecoderCounters) {
+            videoCounters = decoderCounters
+        }
+
         override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(video = decoderName)
+            Log.i(PLAYER_LOG_TAG, "video decoder $decoderName")
         }
 
         override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
             decoders = decoders.copy(audio = decoderName, audioPassthrough = false)
+            Log.i(PLAYER_LOG_TAG, "audio decoder $decoderName")
+        }
+
+        override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+            val gap = audioSinkError as? AudioSink.UnexpectedDiscontinuityException
+            if (gap != null) {
+                Log.w(
+                    PLAYER_LOG_TAG,
+                    "audio discontinuity actualUs=${gap.actualPresentationTimeUs} expectedUs=${gap.expectedPresentationTimeUs} audio=${decoders.audio} video=${decoders.video}",
+                )
+            }
+            if (gap == null && !isTimestampDiscontinuity(audioSinkError)) return
+            scope.launch { noteAudioDiscontinuity() }
+        }
+
+        override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            Log.i(PLAYER_LOG_TAG, "first video frame audio=${decoders.audio} video=${decoders.video}")
         }
 
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
@@ -286,6 +349,9 @@ class PlayerController(
                 recordChoiceOnTracks = false
                 rememberChoice(tracks)
             }
+            logAviTracks(tracks)
+            reportMissingAviVideo(tracks)
+            reportUnsupportedVideo(tracks)
             refresh()
         }
 
@@ -296,6 +362,9 @@ class PlayerController(
         }
 
         override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                armSeekQuiet()
+            }
             // Переход к следующему элементу: сохраняем прогресс предыдущего как досмотренный.
             if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION && old.mediaItemIndex != new.mediaItemIndex) {
                 val window = player.currentTimeline.takeIf { old.mediaItemIndex < it.windowCount }
@@ -306,17 +375,17 @@ class PlayerController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) resetWatchdogClock()
             if (playbackState == Player.STATE_READY) scheduleIntro(player.currentMediaItemIndex)
-            if (playbackState == Player.STATE_ENDED) {
-                completed = true
-                saveProgress()
-                if (_state.value.sleepAtEnd) cancelSleepTimer()
-            }
+            if (playbackState == Player.STATE_ENDED) onNaturalEnd()
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            // Таймер «в конце серии» сработал: плеер встал на паузу в конце файла.
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && _state.value.sleepAtEnd) cancelSleepTimer()
+            // Пауза и стоп не должны досчитывать таймаут «нет кадра».
+            if (!playWhenReady) resetWatchdogClock()
+            // pauseAtEndOfMediaItems: не последний файл не даёт STATE_ENDED, только эту причину.
+            // Сон «в конце серии» обрабатывается внутри onNaturalEnd.
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) onNaturalEnd()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -359,6 +428,8 @@ class PlayerController(
                 player.play()
                 return
             }
+            if (retryVideoDecoder(error)) return
+            if (error.errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK && recoverAviStall()) return
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 player.seekToDefaultPosition()
                 player.prepare()
@@ -380,7 +451,7 @@ class PlayerController(
         player.setVideoFrameMetadataListener(frameRateProbe)
         appContext.getSystemService(android.hardware.display.DisplayManager::class.java)
             ?.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
-        player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        player.pauseAtEndOfMediaItems = true
         built.passthrough.audioDelayUs = settings.current.audioDelayMs * 1000L
         _state.update { it.copy(audioDelayMs = settings.current.audioDelayMs) }
         PlaybackSessions.attach(appContext, this)
@@ -401,20 +472,33 @@ class PlayerController(
         val mediaItems = request.items.indices.map { buildMediaItem(it) }
         val startIndex = request.startIndex.coerceIn(mediaItems.indices)
         player.setMediaItems(mediaItems, startIndex, C.TIME_UNSET)
-        onItemStarted(startIndex, explicitStart = request.startPositionMs)
+        onItemStarted(startIndex, explicitStart = request.startPositionMs, opening = true)
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = _state.value.resumePromptMs == null
         startProgressLoop()
     }
 
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
-    private fun onItemStarted(index: Int, explicitStart: Long?) {
+    private fun onItemStarted(index: Int, explicitStart: Long?, opening: Boolean = false) {
         cancelIntro()
         introItem = -1
         introAttempts = 0
         completed = false
+        naturalEndHandled = false
+        endHoldSince = 0L
         detectedFrameRate = -1f
         frameRateProbe.reset()
+        audioDiscontinuityCount = 0
+        resetWatchdogClock()
+        if (index != stallItem) {
+            stallItem = index
+            stallRecoveries = 0
+            stallStopped = false
+            if (ffmpegAudioTried && settings.current.decoder != tv.p2160.core.settings.DecoderPreference.FFMPEG) {
+                built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.AUTO)
+            }
+            ffmpegAudioTried = false
+        }
         // Телеканалы: ни продолжения с места, ни сохранённых дорожек - сразу эфир.
         val entry = if (request.liveTv || !config.restoreFromHistory) null else keyAt(index)?.let(store::get)
         val s = settings.current
@@ -440,7 +524,32 @@ class PlayerController(
         // Явно запрошенные внешние субтитры важнее сохранённого выбора.
         subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
 
-        _state.update { it.copy(resumedFromMs = resumeFrom, error = null, title = titleAt(index), subtitle = liveSubtitle(index)) }
+        val offer = if (opening) {
+            resumeOfferMs(
+                autoResume = s.autoResume,
+                explicitStart = explicitStart,
+                savedMs = resumeFrom,
+                finished = entry?.finished == true,
+                live = request.liveTv || isLiveSource(request.items[index].uri),
+            )
+        } else null
+        val next = request.items.getOrNull(index + 1)
+        _state.update {
+            it.copy(
+                resumedFromMs = if (offer != null) null else resumeFrom,
+                resumePromptMs = offer,
+                error = null,
+                title = titleAt(index),
+                subtitle = liveSubtitle(index),
+                nextTitle = next?.title?.takeIf { t -> t.isNotBlank() } ?: next?.uri?.lastPathSegment,
+                nextCoverPath = if (next != null) previewSource(index + 1) else null,
+                endCountdownSec = null,
+                showEndScreen = false,
+                playlistFinished = false,
+                endDim = false,
+                requestClose = false,
+            )
+        }
         applyPendingSelections(player.currentTracks)
         // Главы и поиск вступления в эфире бессмысленны (и FFmpeg повис бы на бесконечном потоке).
         if (!request.liveTv) loadChaptersAndSegments(index)
@@ -716,6 +825,7 @@ class PlayerController(
 
     fun seekTo(positionMs: Long) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        armSeekQuiet()
         player.seekTo(positionMs.coerceIn(0, duration))
         refresh()
     }
@@ -725,6 +835,15 @@ class PlayerController(
     fun next() {
         if (request.liveTv) return switchChannel(1)
         if (player.hasNextMediaItem()) { saveProgress(); player.seekToNextMediaItem() }
+    }
+
+    /** Карточка «Дальше»: следующий файл и сразу воспроизведение. */
+    fun playNextNow() {
+        if (player.hasNextMediaItem()) {
+            saveProgress()
+            player.seekToNextMediaItem()
+            player.play()
+        }
     }
 
     fun previous() {
@@ -895,7 +1014,7 @@ class PlayerController(
         sleepFadeJob?.cancel()
         sleepFadeJob = null
         player.volume = 1f
-        player.pauseAtEndOfMediaItems = !settings.current.autoPlayNext
+        player.pauseAtEndOfMediaItems = true
         _state.update { it.copy(sleepRemainingMs = null, sleepAtEnd = false) }
     }
 
@@ -1026,12 +1145,151 @@ class PlayerController(
     fun retry() {
         introItem = -1
         introAttempts = 0
+        stallRecoveries = 0
+        stallStopped = false
+        resetWatchdogClock()
         _state.update { it.copy(error = null) }
         player.prepare()
         player.play()
     }
 
     fun dismissResumeHint() = _state.update { it.copy(resumedFromMs = null) }
+
+    fun continueFromPrompt() {
+        _state.update { it.copy(resumePromptMs = null, resumedFromMs = it.resumePromptMs) }
+        player.play()
+    }
+
+    fun startOverFromPrompt() {
+        _state.update { it.copy(resumePromptMs = null, resumedFromMs = null) }
+        player.seekTo(0)
+        player.play()
+    }
+
+    fun cancelEndCountdown() {
+        endHoldSince = SystemClock.elapsedRealtime()
+        _state.update { it.copy(endCountdownSec = null, endDim = false) }
+    }
+
+    fun advanceAfterEnd() {
+        _state.update { it.copy(endCountdownSec = null, showEndScreen = false) }
+        if (player.hasNextMediaItem()) {
+            player.seekToNextMediaItem()
+            player.play()
+        }
+    }
+
+    fun watchAgain() {
+        naturalEndHandled = false
+        completed = false
+        endHoldSince = 0L
+        _state.update { it.copy(showEndScreen = false, endCountdownSec = null, endDim = false) }
+        player.seekTo(0)
+        player.play()
+    }
+
+    fun requestClose() = _state.update { it.copy(requestClose = true) }
+
+    fun acknowledgeClose() = _state.update { it.copy(requestClose = false) }
+
+    fun dismissEndDim() {
+        val now = SystemClock.elapsedRealtime()
+        if (endHoldSince != 0L) endHoldSince = now
+        pausedSince = now
+        _state.update { it.copy(endDim = false) }
+    }
+
+    private var naturalEndHandled = false
+    private var endHoldSince = 0L
+
+    private fun onNaturalEnd() {
+        if (naturalEndHandled) return
+        naturalEndHandled = true
+        if (_state.value.sleepAtEnd) {
+            cancelSleepTimer()
+            return
+        }
+        val live = isLivePlayback()
+        if (!live) {
+            completed = true
+            saveProgress()
+        }
+        val plan = endPlan(settings.current.endAction, player.hasNextMediaItem(), request.items.size, live)
+        when {
+            plan.repeat -> {
+                naturalEndHandled = false
+                completed = false
+                player.seekTo(0)
+                player.play()
+            }
+            plan.closeNow -> requestClose()
+            plan.countdown -> _state.update { it.copy(endCountdownSec = END_COUNTDOWN_SEC, showEndScreen = false, playlistFinished = false, endDim = false) }
+            plan.playlistDone -> _state.update { it.copy(playlistFinished = true, endCountdownSec = null, showEndScreen = false, endDim = false) }
+            plan.endScreen -> _state.update { it.copy(showEndScreen = true, endCountdownSec = null, playlistFinished = false, endDim = false) }
+            plan.stay -> {
+                endHoldSince = if (live) 0L else SystemClock.elapsedRealtime()
+                _state.update { it.copy(endCountdownSec = null, showEndScreen = false, playlistFinished = false, endDim = false) }
+            }
+        }
+    }
+
+    private fun isLivePlayback(): Boolean {
+        if (request.liveTv || player.isCurrentMediaItemLive || _state.value.isLive) return true
+        val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri
+        return uri != null && isLiveSource(uri)
+    }
+
+    private var pausedSince = 0L
+
+    private fun tickEndHold() {
+        val live = isLivePlayback()
+        val ui = _state.value
+        val blocked = live || ui.error != null || ui.showEndScreen || ui.endCountdownSec != null ||
+            ui.playlistFinished || ui.resumePromptMs != null
+        if (player.isPlaying || blocked) {
+            if (player.isPlaying) {
+                endHoldSince = 0L
+                pausedSince = 0L
+            }
+            if (ui.endDim && (player.isPlaying || blocked)) _state.update { it.copy(endDim = false) }
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (endHoldSince == 0L) {
+            if (!settings.current.oledSaver) {
+                pausedSince = 0L
+                if (ui.endDim) _state.update { it.copy(endDim = false) }
+                return
+            }
+            if (pausedSince == 0L) pausedSince = now
+            if (endShouldDim(true, false, now - pausedSince) && !ui.endDim) {
+                _state.update { it.copy(endDim = true) }
+            }
+            return
+        }
+        if (endShouldDim(true, false, now - endHoldSince) && !ui.endDim) {
+            _state.update { it.copy(endDim = true) }
+        }
+    }
+
+    /** Обложка следующего пункта: уже сохранённая, переданная или картинка рядом с локальным файлом. */
+    private fun previewSource(index: Int): String? {
+        val item = request.items.getOrNull(index) ?: return null
+        keyAt(index)?.let { key -> Covers.get(appContext, key)?.absolutePath }?.let { return it }
+        val art = item.artworkUri
+        if (art != null) {
+            when (art.scheme?.lowercase()) {
+                "file" -> art.path?.takeIf { java.io.File(it).isFile }?.let { return it }
+                "http", "https", "content" -> return art.toString()
+            }
+        }
+        if (item.uri.scheme?.lowercase() == "file") {
+            return Covers.sidecarCandidates(item.uri).firstNotNullOfOrNull { candidate ->
+                candidate.path?.takeIf { java.io.File(it).isFile }
+            }
+        }
+        return null
+    }
 
     /** Начать текущий файл с начала (кнопка в подсказке «Продолжено с …»). */
     fun restartFromBeginning() {
@@ -1041,12 +1299,17 @@ class PlayerController(
 
     // endregion
 
-    fun result(): PlaybackResult = PlaybackResult(
-        uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
-        positionMs = player.currentPosition,
-        durationMs = player.duration.coerceAtLeast(0),
-        completed = completed,
-    )
+    fun result(): PlaybackResult {
+        val duration = player.duration.coerceAtLeast(0)
+        val position = if (completed) duration else player.currentPosition.coerceAtLeast(0)
+        val watched = completed || ResumeStore.isFinished(position, duration)
+        return PlaybackResult(
+            uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
+            positionMs = if (watched) duration else position,
+            durationMs = duration,
+            completed = watched,
+        )
+    }
 
     fun saveProgress() {
         val duration = player.duration
@@ -1153,9 +1416,11 @@ class PlayerController(
                 maybeAutoSkip()
                 keepLiveEdge()
                 tickSleepTimer()
+                tickEndHold()
                 if (++ticks % 10 == 0 && player.isPlaying) saveProgress()
                 if (ticks % 2 == 0) publishNowPlaying()
                 if (ticks % 120 == 0) applyNightSchedule()
+                maybeRecoverStall()
                 // Подпись обновляем раз в 30 с; пока телегид грузится - чаще.
                 if (request.liveTv && ticks % (if (_state.value.subtitle == null) 10 else 60) == 0) {
                     val subtitle = liveSubtitle(player.currentMediaItemIndex)
@@ -1231,10 +1496,15 @@ class PlayerController(
                 } else prev.videoAspect,
                 hasNext = if (request.liveTv) p.mediaItemCount > 1 else p.hasNextMediaItem(),
                 hasPrevious = if (request.liveTv) p.mediaItemCount > 1 else p.hasPreviousMediaItem(),
-                isLive = transportIsLive(
-                    isCurrentMediaItemLive = p.isCurrentMediaItemLive,
-                    isCurrentMediaItemDynamic = p.isCurrentMediaItemDynamic,
-                    hasLiveConfiguration = p.currentMediaItem?.liveConfiguration != null,
+                isLive = transportShowsLiveBadge(
+                    requestedLive = request.liveTv,
+                    playerSaysLive = transportIsLive(
+                        isCurrentMediaItemLive = p.isCurrentMediaItemLive,
+                        isCurrentMediaItemDynamic = p.isCurrentMediaItemDynamic,
+                        hasLiveConfiguration = p.currentMediaItem?.liveConfiguration != null,
+                    ),
+                    durationMs = duration,
+                    playbackReady = p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_ENDED,
                 ),
                 playlistIndex = p.currentMediaItemIndex,
                 title = if (includeTracks) titleAt(p.currentMediaItemIndex) else prev.title,
@@ -1312,6 +1582,275 @@ class PlayerController(
         }
     }
 
+    /**
+     * Аппаратный декодер отдал первые кадры и упал (типичный XviD/DIVX на Allwinner).
+     * В режиме «Авто» один раз пробуем программный MediaCodec этого MIME.
+     * FFmpeg - только если [ffmpegCanDecode]. Повтор идёт следующим кадром главного потока:
+     * синхронный prepare() внутри onPlayerError бьёт в уже отпущенный MediaCodec
+     * (queueInputBuffer в состоянии Released).
+     */
+    private fun retryVideoDecoder(error: PlaybackException): Boolean {
+        if (error.errorCode !in PlaybackException.ERROR_CODE_DECODER_INIT_FAILED..PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) {
+            return false
+        }
+        val exo = error as? ExoPlaybackException ?: return false
+        if (exo.type != ExoPlaybackException.TYPE_RENDERER) return false
+        val mime = exo.rendererFormat?.sampleMimeType ?: return false
+        val next = built.videoGate.advance(
+            mime = mime,
+            failedDecoder = decoders.video,
+            allowFallback = settings.current.decoder == tv.p2160.core.settings.DecoderPreference.AUTO,
+            softwareAvailable = softwareVideoDecoderExists(mime),
+        ) ?: return false
+        val label = codecLabel(mime)
+        Log.i(PLAYER_LOG_TAG, "video retry mime=$mime stage=$next was=${decoders.video} audio=${decoders.audio}")
+        val warning = if (next == VideoDecoderGate.FFMPEG) {
+            i18n.current.format("player.decoder_try_ffmpeg", label)
+        } else {
+            i18n.current.format("player.decoder_try_sw", label)
+        }
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        val play = player.playWhenReady
+        videoRetryPending = true
+        _state.update { it.copy(warnings = it.warnings + warning, error = null) }
+        scope.launch(Dispatchers.Main) {
+            try {
+                player.stop()
+                player.prepare()
+                if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
+                if (play) player.play()
+            } finally {
+                finishVideoRetry()
+            }
+        }
+        return true
+    }
+
+    /**
+     * Видео в файле есть, а декодера нет. Иначе селектор дорожек оставляет звук и рисует обложку
+     * без ошибки (так было с DIV3 и с FFmpeg-режимом на XviD: libavcodec без mpeg4).
+     */
+    private fun logAviTracks(tracks: Tracks) {
+        if (!currentItemIsAvi()) return
+        if (tracks.groups.isEmpty()) return
+        for (group in tracks.groups) {
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                Log.i(
+                    PLAYER_LOG_TAG,
+                    "AVI player track type=${group.type} mime=${format.sampleMimeType} " +
+                        "id=${format.id} selected=${group.isTrackSelected(i)} supported=${group.isTrackSupported(i)}",
+                )
+            }
+        }
+    }
+
+    private fun finishVideoRetry() {
+        videoRetryPending = false
+        if (!unsupportedCheckDeferred) return
+        unsupportedCheckDeferred = false
+        val tracks = player.currentTracks
+        reportMissingAviVideo(tracks)
+        reportUnsupportedVideo(tracks)
+    }
+
+    /** В контейнере видео объявлено, а экстрактор дорожку не создал. Звук без ошибки больше не оставляем. */
+    private fun reportMissingAviVideo(tracks: Tracks) {
+        if (videoRetryPending) {
+            unsupportedCheckDeferred = true
+            return
+        }
+        if (_state.value.error != null || !currentItemIsAvi()) return
+        val declared = AviProbe.video ?: return
+        val extracted = tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+        if (extracted) return
+        val name = declared.compression.ifBlank { declared.handler }.ifBlank { "AVI" }
+        Log.i(PLAYER_LOG_TAG, "AVI declares video $name but no video track was exposed")
+        val message = i18n.current.format("error.avi_video_missing", name)
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
+    }
+
+    private fun reportUnsupportedVideo(tracks: Tracks) {
+        if (videoRetryPending) {
+            unsupportedCheckDeferred = true
+            return
+        }
+        if (_state.value.error != null) return
+        val mime = unsupportedVideoMime(
+            tracks.groups,
+            player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
+        ) ?: return
+        val message = i18n.current.format(videoErrorKey(mime), codecLabel(mime))
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
+    }
+
+    private fun isTimestampDiscontinuity(error: Exception): Boolean {
+        val name = error.javaClass.name
+        return "Discontinuity" in name || error.message?.contains("timestamp discontinuity") == true
+    }
+
+    /** 8 разрывов за 2 с: так Realtek пишет, когда метки MP3 в AVI не сходятся с кадрами. */
+    private fun noteAudioDiscontinuity() {
+        if (_state.value.error != null || videoRetryPending || stallStopped) return
+        if (!playbackIsDriving()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - audioDiscontinuitySince > 2_000) {
+            audioDiscontinuitySince = now
+            audioDiscontinuityCount = 0
+        }
+        audioDiscontinuityCount++
+        if (audioDiscontinuityCount >= 8 && currentItemIsAvi()) recoverStall()
+    }
+
+    /**
+     * Нет новых кадров 8 с, и в декодер за это время тоже ничего не пришло.
+     * Буферизация, пауза, перемотка и удержание D-pad часы не копят.
+     * Если вход декодера не растёт, это экстрактор: звуковой декодер не переключаем.
+     */
+    private fun maybeRecoverStall() {
+        if (stallStopped || _state.value.error != null || videoRetryPending) return
+        if (request.liveTv) return
+        val now = SystemClock.elapsedRealtime()
+        if (!player.isPlaying || player.playbackState != Player.STATE_READY || now < seekQuietUntil) {
+            resetWatchdogClock()
+            return
+        }
+        val video = player.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.length > 0 }
+        if (!video) return
+        videoCounters?.ensureUpdated()
+        val frames = renderedFrames()
+        val input = videoCounters?.queuedInputBufferCount ?: 0
+        if (watchdogArmedAt == 0L) {
+            watchdogArmedAt = now
+            watchdogBaseFrames = frames
+            watchdogBaseInput = input
+            return
+        }
+        if (frames > watchdogBaseFrames) {
+            watchdogBaseFrames = frames
+            watchdogBaseInput = input
+            watchdogArmedAt = now
+            return
+        }
+        if (now - watchdogArmedAt < FIRST_FRAME_TIMEOUT_MS) return
+        val snap = "rendered=$frames input=$input dropped=${videoCounters?.droppedBufferCount ?: -1} " +
+            "state=${player.playbackState} pos=${player.currentPosition} audio=${decoders.audio} video=${decoders.video}"
+        val inputAdvanced = watchdogBaseInput >= 0 && input > watchdogBaseInput
+        Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms $snap inputAdvanced=$inputAdvanced")
+        if (!inputAdvanced) {
+            Log.i(PLAYER_LOG_TAG, "video input stalled, decoder switch skipped")
+            showStallError()
+            return
+        }
+        recoverStall()
+    }
+
+    private fun renderedFrames(): Int = videoCounters?.renderedOutputBufferCount ?: 0
+
+    private fun armSeekQuiet() {
+        seekQuietUntil = SystemClock.elapsedRealtime() + SEEK_QUIET_MS
+        resetWatchdogClock()
+    }
+
+    private fun playbackIsDriving(): Boolean =
+        player.playWhenReady && player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+
+    private fun resetWatchdogClock() {
+        watchdogArmedAt = 0L
+        watchdogBaseFrames = -1
+        watchdogBaseInput = -1
+        audioDiscontinuityCount = 0
+    }
+
+    /** Не больше [MAX_STALL_RECOVERIES] prepare() на файл. Дальше только ошибка. */
+    private fun recoverStall() {
+        if (stallStopped || videoRetryPending) return
+        if (stallRecoveries >= MAX_STALL_RECOVERIES) {
+            showStallError()
+            return
+        }
+        stallRecoveries++
+        resetWatchdogClock()
+        if (!switchAviMp3ToFfmpeg()) showStallError()
+    }
+
+    /**
+     * AVI с MP3: один раз декодируем звук через FFmpeg (декодер mp3 в libavcodec есть).
+     * @return true, если переключение запущено.
+     */
+    private fun switchAviMp3ToFfmpeg(): Boolean {
+        if (ffmpegAudioTried || !currentItemIsAvi()) return false
+        val audioMime = player.audioFormat?.sampleMimeType
+        if (audioMime != MimeTypes.AUDIO_MPEG || !ffmpegCanDecode(MimeTypes.AUDIO_MPEG)) return false
+        ffmpegAudioTried = true
+        audioDiscontinuityCount = 0
+        Log.i(PLAYER_LOG_TAG, "AVI MP3 switch to FFmpeg audio=${decoders.audio} video=${decoders.video}")
+        built.decoderManager.selectAudioDecoder(io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode.FFMPEG)
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        val play = player.playWhenReady
+        val warning = i18n.current.format("player.decoder_try_ffmpeg", codecLabel(MimeTypes.AUDIO_MPEG))
+        videoRetryPending = true
+        _state.update { it.copy(warnings = it.warnings + warning, error = null) }
+        scope.launch(Dispatchers.Main) {
+            try {
+                player.stop()
+                player.prepare()
+                if (index >= 0) player.seekTo(index, position) else player.seekTo(position)
+                if (play) player.play()
+            } finally {
+                finishVideoRetry()
+            }
+        }
+        return true
+    }
+
+    /**
+     * Картинка так и не пошла. Ошибка называет кодек, вместо бесконечного индикатора.
+     * @return true, ошибка плеера обработана здесь.
+     */
+    private fun showStallError(): Boolean {
+        if (stallStopped) return true
+        stallStopped = true
+        if (_state.value.error != null) return true
+        val mime = player.videoFormat?.sampleMimeType ?: player.audioFormat?.sampleMimeType
+        Log.i(PLAYER_LOG_TAG, "playback stalled audio=${decoders.audio} video=${decoders.video} mime=$mime")
+        val message = i18n.current.format("error.stalled", codecLabel(mime))
+        _state.update { it.copy(error = message) }
+        scope.launch(Dispatchers.Main) {
+            if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
+        }
+        return true
+    }
+
+    /** Залипший буфер AVI: тот же предел попыток, что и у сторожа кадров. */
+    private fun recoverAviStall(): Boolean {
+        if (!currentItemIsAvi() || stallStopped) return false
+        recoverStall()
+        return true
+    }
+
+    private fun currentItemIsAvi(): Boolean {
+        val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri ?: return false
+        val path = uri.lastPathSegment ?: uri.toString()
+        return path.endsWith(".avi", ignoreCase = true)
+    }
+
+    /** GMC в MPEG-4 - не «декодера нет», а «этот поток устройство не берёт». */
+    private fun videoErrorKey(mime: String): String = decoderErrorKey(
+        mime,
+        settings.current.decoder,
+        built.videoGate.stage(mime),
+        gmc = mime == MimeTypes.VIDEO_MP4V && AviProbe.mpeg4Gmc,
+    )
+
     private fun describe(e: PlaybackException): String {
         val t = i18n.current
         return when (e.errorCode) {
@@ -1325,7 +1864,11 @@ class PlayerController(
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> t["error.decoder"]
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> {
+                val mime = (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+                if (mime == null) t["error.decoder"]
+                else t.format(videoErrorKey(mime), codecLabel(mime))
+            }
             PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> t["error.drm"]
             else -> t.format("error.generic", e.errorCodeName)
         }

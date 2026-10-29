@@ -15,7 +15,7 @@ android {
         versionName = "0.1.0"
     }
 
-    // nextlib-media3ext и nextlib-mediainfo несут одинаковые сборки FFmpeg - берём одну копию.
+    // player-core уже содержит JNI FFmpeg, nextlib-mediainfo - те же .so. Берём одну копию.
     // Без этого блока сборка любого приложения с player-core падает на mergeNativeLibs.
     packaging {
         jniLibs.pickFirsts += listOf("**/libavcodec.so", "**/libavutil.so", "**/libswscale.so", "**/libswresample.so")

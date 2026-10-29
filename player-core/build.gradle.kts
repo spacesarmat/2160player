@@ -6,7 +6,7 @@ plugins {
 
 // Версия публикуемого артефакта: ./gradlew -PplayerCoreVersion=1.2.3 ...
 group = "tv.p2160"
-version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.15")
+version = providers.gradleProperty("playerCoreVersion").getOrElse("0.2.16")
 
 android {
     namespace = "tv.p2160.core"
@@ -38,6 +38,12 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory("build/patched-nextlib/jni")
+    }
+}
+
 kotlin {
     jvmToolchain(17)
 }
@@ -45,6 +51,30 @@ kotlin {
 composeCompiler {
     reportsDestination = layout.buildDirectory.dir("compose-reports")
     metricsDestination = layout.buildDirectory.dir("compose-metrics")
+}
+
+val patchNextlib = tasks.register("patchNextlib") {
+    val nextlibVersion = libs.versions.nextlib.get()
+    val outDir = layout.buildDirectory.dir("patched-nextlib")
+    inputs.file(layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py"))
+    inputs.property("nextlib", nextlibVersion)
+    outputs.dir(outDir)
+    doLast {
+        val out = outDir.get().asFile
+        out.mkdirs()
+        val nextlibAar = configurations.detachedConfiguration(
+            dependencies.create("io.github.anilbeesetti:nextlib-media3ext:$nextlibVersion"),
+        ).apply { isTransitive = false }.resolve().single { it.extension == "aar" }
+        val script = layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py").asFile.absolutePath
+        val cmd = listOf("python3", script, nextlibAar.absolutePath, out.absolutePath)
+        val code = ProcessBuilder(cmd).inheritIO().start().waitFor()
+        if (code != 0) error("patch nextlib exited $code")
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(patchNextlib) }
+tasks.configureEach {
+    if (name.contains("JniLib")) dependsOn(patchNextlib)
 }
 
 dependencies {
@@ -55,7 +85,7 @@ dependencies {
     implementation(libs.media3.exoplayer.rtsp)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
-    implementation(libs.nextlib.media3ext)
+    implementation(files(layout.buildDirectory.file("patched-nextlib/nextlib-classes.jar")).builtBy(patchNextlib))
     implementation(libs.nextlib.mediainfo)
     implementation(libs.smbj)
     // Список общих папок сервера (SRVSVC NetShareEnum)

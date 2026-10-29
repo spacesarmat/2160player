@@ -44,7 +44,8 @@ PlayerSettings.get(context).update { it.copy(keepScreenOn = false) }
 | Не выключать экран | `keepScreenOn` | `true` |
 | Продолжать с места остановки | `autoResume` | `true` |
 | Запоминать выбор дорожек | `smartTracks` | `true` |
-| Следующий файл | `autoPlayNext` | `true` |
+| По окончании | `endAction` | `NEXT` (следующий, закрыть, остаться на кадре, повтор). Старый `autoPlayNext` без `end_action` читается как раньше |
+| Заставка при паузе | `oledSaver` | `true`, через 3 минуты гасит кадр |
 | Ночной звук / по расписанию | `nightMode`, `nightAuto`, `nightStartMinute`, `nightEndMinute` | выкл, 23:00–10:00 |
 | Вступления и титры | `skipMode` | кнопка |
 | Скорость, шаг перемотки | `defaultSpeed`, `seekStepSeconds` | 1×, 10 с |

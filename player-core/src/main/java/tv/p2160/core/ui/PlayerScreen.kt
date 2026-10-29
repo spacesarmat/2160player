@@ -11,6 +11,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -95,7 +95,12 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import tv.p2160.core.engine.END_IDLE_CLOSE_MS
+import tv.p2160.core.engine.PLAYLIST_DONE_MS
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.engine.deferUpNextWhileResumeToast
+import tv.p2160.core.engine.showUpNext
+import tv.p2160.core.engine.upNextCardReservesSide
 import tv.p2160.core.engine.PlayerUiState
 import tv.p2160.core.engine.transportShowsRemaining
 import tv.p2160.core.api.PlayerExtensions
@@ -104,6 +109,8 @@ import tv.p2160.core.engine.TimeInput
 import tv.p2160.core.api.SegmentType
 import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowLeft
@@ -205,12 +212,21 @@ fun PlayerScreen(
     var goToDialog by remember { mutableStateOf(false) }
     // Карточка «Следующая серия»: отменена для текущего элемента плейлиста.
     var nextDismissedFor by remember { mutableIntStateOf(-1) }
+    var upNextArmed by remember { mutableStateOf(false) }
+    val resumeFocus = remember { FocusRequester() }
     // Плашка канала после переключения стрелками (IPTV).
     var zapTick by remember { mutableIntStateOf(0) }
     var zapVisible by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
+    val errorFocus = remember { FocusRequester() }
     // Когда панель скрыта, фокус держит сам экран - иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
+    val closeFocus = remember { FocusRequester() }
+    val countdownFocus = remember { FocusRequester() }
+    var endIdle by remember { mutableIntStateOf(0) }
+    var countdownLeft by remember(state.endCountdownSec, state.playlistIndex) {
+        mutableIntStateOf(state.endCountdownSec ?: 0)
+    }
 
     fun poke() { interaction++ }
     fun show() { controlsVisible.value = true; poke() }
@@ -227,7 +243,10 @@ fun PlayerScreen(
     )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     LaunchedEffect(state.error) {
-        if (state.error != null) panelState.value = null
+        if (state.error != null) {
+            panelState.value = null
+            runCatching { errorFocus.requestFocus() }
+        }
     }
     // Кадр для превью подгружаем с небольшой задержкой, чтобы не дёргать FFmpeg на каждый пиксель.
     LaunchedEffect(scrubTarget?.div(2_000)) {
@@ -266,12 +285,59 @@ fun PlayerScreen(
         digits = ""
     }
     LaunchedEffect(state.resumedFromMs) { if (state.resumedFromMs != null) { delay(7_000); controller.dismissResumeHint() } }
-    LaunchedEffect(state.ended, settings.autoPlayNext) {
-        if (state.ended) controlsVisible.value = true
+    LaunchedEffect(state.endCountdownSec, state.playlistIndex) {
+        val start = state.endCountdownSec ?: return@LaunchedEffect
+        var left = start
+        while (left > 0 && controller.state.value.endCountdownSec != null) {
+            delay(1_000)
+            left--
+            countdownLeft = left
+        }
+        if (controller.state.value.endCountdownSec != null) controller.advanceAfterEnd()
+    }
+    LaunchedEffect(state.showEndScreen, endIdle) {
+        if (!state.showEndScreen) return@LaunchedEffect
+        delay(END_IDLE_CLOSE_MS)
+        if (controller.state.value.showEndScreen) onBack()
+    }
+    LaunchedEffect(state.showEndScreen) {
+        if (state.showEndScreen) runCatching { closeFocus.requestFocus() }
+    }
+    LaunchedEffect(state.endCountdownSec) {
+        if (state.endCountdownSec != null) runCatching { countdownFocus.requestFocus() }
+    }
+    LaunchedEffect(state.requestClose) {
+        if (state.requestClose) {
+            controller.acknowledgeClose()
+            onBack()
+        }
+    }
+    LaunchedEffect(state.playlistIndex) { upNextArmed = false }
+    LaunchedEffect(state.playlistFinished) {
+        if (!state.playlistFinished) return@LaunchedEffect
+        delay(PLAYLIST_DONE_MS)
+        if (controller.state.value.playlistFinished) onBack()
+    }
+    LaunchedEffect(state.resumePromptMs) {
+        if (state.resumePromptMs != null) {
+            upNextArmed = false
+            runCatching { resumeFocus.requestFocus() }
+        }
     }
 
     BackHandler {
         when {
+            state.error != null -> onBack()
+            state.endDim -> controller.dismissEndDim()
+            state.endCountdownSec != null -> controller.cancelEndCountdown()
+            state.resumePromptMs != null -> {
+                controller.continueFromPrompt()
+                runCatching { rootFocus.requestFocus() }
+            }
+            upNextArmed -> {
+                upNextArmed = false
+                runCatching { rootFocus.requestFocus() }
+            }
             panelState.value != null -> panelState.value = null
             else -> onBack()
         }
@@ -304,16 +370,32 @@ fun PlayerScreen(
         flashTick++
     }
 
-    // «Почти конец» меняется один раз за ролик, а не на каждом тике позиции.
-    val nearEnd by remember {
+    // Карточка «Далее» только у конца ролика и не вместе с вопросом «Продолжить».
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    val showNextCard by remember(inPictureInPicture, screenWidthDp, screenHeightDp) {
         derivedStateOf(structuralEqualityPolicy()) {
             val s = upstream.value
-            !s.isLive && !s.liveTv && s.hasNext && s.durationMs > 60_000L && s.durationMs - s.positionMs in 1L..15_000L
+            val deferToast = deferUpNextWhileResumeToast(
+                resumeToast = s.resumedFromMs != null,
+                widthDp = screenWidthDp,
+                heightDp = screenHeightDp,
+                controlsVisible = controlsVisible.value,
+            )
+            !deferToast && s.resumePromptMs == null && s.error == null &&
+                s.endCountdownSec == null && !s.showEndScreen && !s.playlistFinished && showUpNext(
+                action = settings.endAction,
+                hasNext = s.hasNext && nextDismissedFor != s.playlistIndex,
+                live = s.isLive || s.liveTv,
+                ended = s.ended,
+                positionMs = s.positionMs,
+                durationMs = s.durationMs,
+                inLastChapter = s.chapters.size > 1 && s.chapterIndex == s.chapters.lastIndex,
+                lastChapterTitle = s.chapters.lastOrNull()?.title,
+            ) && !inPictureInPicture
         }
     }
-    val creditsWithNext = !state.liveTv && state.hasNext && (state.activeSegment?.type == SegmentType.CREDITS || nearEnd)
-    val showNextCard = creditsWithNext && nextDismissedFor != state.playlistIndex && !inPictureInPicture && settings.autoPlayNext
-    val skippable = state.activeSegment?.takeIf { !creditsWithNext }
+    val skippable = state.activeSegment?.takeIf { !showNextCard }
 
     CompositionLocalProvider(LocalStrings provides strings) {
     P2160Theme(theme) {
@@ -324,6 +406,45 @@ fun PlayerScreen(
                 .focusRequester(rootFocus)
                 .focusable()
                 .onPreviewKeyEvent { e ->
+                    if (state.endDim) {
+                        if (e.key == Key.Back || e.key == Key.Escape) return@onPreviewKeyEvent false
+                        controller.dismissEndDim()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (state.showEndScreen) endIdle++
+                    // Назад на отсчёте «Следующая серия» снимает его и не закрывает плеер.
+                    // Иначе фокус «Отмена» съедает клавишу, и серия всё равно сменяется.
+                    if (state.endCountdownSec != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            controller.cancelEndCountdown()
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                    // Диалог ошибки: Назад как «Закрыть». Иначе пульт уводит фокус с кнопок и замирает.
+                    if (state.error != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) onBack()
+                        return@onPreviewKeyEvent true
+                    }
+                    // Вопрос «Продолжить»: Назад принимает продолжение, как и обработчик Back.
+                    if (state.resumePromptMs != null && (e.key == Key.Back || e.key == Key.Escape)) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            controller.continueFromPrompt()
+                            runCatching { rootFocus.requestFocus() }
+                        }
+                        return@onPreviewKeyEvent true
+                    }
+                    // Диалоги сами держат фокус. Не отдаём OK спрятанной кнопке панели.
+                    if (state.showEndScreen || state.endCountdownSec != null || state.resumePromptMs != null || state.error != null) {
+                        return@onPreviewKeyEvent false
+                    }
+                    if (upNextArmed && showNextCard) {
+                        if (e.type == KeyEventType.KeyDown && (e.key == Key.Back || e.key == Key.Escape)) {
+                            upNextArmed = false
+                            runCatching { rootFocus.requestFocus() }
+                            return@onPreviewKeyEvent true
+                        }
+                        return@onPreviewKeyEvent false
+                    }
                     if (e.type == KeyEventType.KeyUp) {
                         if (keyScrubbing && (e.key == Key.DirectionLeft || e.key == Key.DirectionRight)) {
                             commitKeyScrub()
@@ -358,6 +479,10 @@ fun PlayerScreen(
                             }
                             Key.Back, Key.Escape, Key.Backspace -> { digits = ""; return@onPreviewKeyEvent true }
                         }
+                    }
+                    if (showNextCard && !upNextArmed && e.key == Key.DirectionDown && panelState.value == null && !goToDialog) {
+                        upNextArmed = true
+                        return@onPreviewKeyEvent true
                     }
                     if (controlsVisible.value) { poke(); return@onPreviewKeyEvent false }
                     // Удержание стрелки ускоряет перемотку; обрабатываем каждый 3-й повтор, чтобы не улетать.
@@ -470,7 +595,12 @@ fun PlayerScreen(
             // Кнопки не выбрасываются после затухания: иначе каждый показ заново собирает верхнюю
             // полосу, транспорт и тексты (на POCO 25–47 мс recompose + onForgotten).
             if (!inPictureInPicture) {
-            PanelBoundControls(panelState = panelState, visible = controlsVisible) { panelOpen ->
+            PanelBoundControls(
+                panelState = panelState,
+                visible = controlsVisible,
+                allowFocus = state.error == null && !state.showEndScreen && state.endCountdownSec == null &&
+                    state.resumePromptMs == null && !state.playlistFinished && !state.endDim,
+            ) { panelOpen ->
                 Controls(
                     controller = controller,
                     state = state,
@@ -528,12 +658,17 @@ fun PlayerScreen(
                     controlsVisible = controlsVisible,
                     skippable = skippable,
                     showNextCard = showNextCard,
-                    playlistIndex = state.playlistIndex,
-                    isPlaying = state.isPlaying,
+                    nextTitle = state.nextTitle,
+                    nextCoverPath = state.nextCoverPath,
+                    upNextArmed = upNextArmed,
                     theme = theme,
                     onSkip = { seg -> controller.skip(seg); poke() },
-                    onNext = controller::next,
-                    onDismissNext = { nextDismissedFor = state.playlistIndex },
+                    onPlayNow = controller::playNextNow,
+                    onDismissNext = {
+                        upNextArmed = false
+                        nextDismissedFor = state.playlistIndex
+                        runCatching { rootFocus.requestFocus() }
+                    },
                 )
             }
 
@@ -577,15 +712,19 @@ fun PlayerScreen(
 
             if (state.warnings.isNotEmpty() && !inPictureInPicture) {
                 LaunchedEffect(state.warnings) { delay(8_000); controller.dismissWarnings() }
-                Column(
-                    Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(start = 24.dp, top = 72.dp).widthIn(max = 520.dp)
-                        .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
-                        .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) {
-                    state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
-                    Text(tr("info.more"), color = theme.accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                // Узкий портрет кладёт кнопки вторым рядом (48 + 48 dp). 72 dp накрывали этот ряд.
+                val warningShown = if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600) 132.dp else 76.dp
+                OverlayTopPadding(controlsVisible, shown = warningShown, hidden = 16.dp) { top ->
+                    Column(
+                        Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(start = 24.dp, top = top).widthIn(max = 520.dp)
+                            .clip(RoundedCornerShape(16.dp)).background(theme.surface.copy(alpha = 0.95f))
+                            .clickable { panelState.value = Panel.INFO; controller.dismissWarnings() }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        state.warnings.take(3).forEach { Text("⚠ $it", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodyMedium) }
+                        Text(tr("info.more"), color = theme.accent, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                    }
                 }
             }
 
@@ -604,12 +743,19 @@ fun PlayerScreen(
                 if (!inPictureInPicture) {
                     // Как полоса перемотки: подсказка остаётся в свободной зоне слева от панели,
                     // иначе «С начала» оказывается под панелью и не нажимается.
-                    // Отступ читает панель этот узел, не весь экран.
+                    // Если справа карточка «Далее», подсказка не заходит в её колонку
+                    // (на альбомном телефоне карточка дотягивается до верхнего края).
+                    val cardOnScreen = showNextCard && panelState.value == null
+                    val wide = upNextCardReservesSide(screenWidthDp)
+                    // Портрет: второй ряд кнопок. 72 dp накрывали иконки панели.
+                    val belowToolbar = if (wide) 72.dp else 128.dp
                     ResumeHintInset(panelState) { resumeEnd ->
+                        val endPad = if (cardOnScreen && wide) 360.dp else resumeEnd + 16.dp
                         Box(
-                            Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                            Modifier.align(if (cardOnScreen && wide) Alignment.TopStart else Alignment.TopCenter)
+                                .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                                .padding(top = 72.dp, start = 16.dp, end = resumeEnd + 16.dp),
+                                .padding(top = belowToolbar, start = 16.dp, end = endPad),
                         ) {
                             Row(
                                 Modifier.align(Alignment.Center).widthIn(max = 560.dp)
@@ -644,9 +790,12 @@ fun PlayerScreen(
                 actions = panelActions,
             )
             state.error?.let { message ->
-                // Выше панели (zIndex 1) и с непрозрачной подложкой: панель не просвечивает.
+                // Выше панели. Подложка не берёт фокус: иначе Назад сажает его мимо «Повторить» и «Закрыть».
                 Box(
-                    Modifier.matchParentSize().zIndex(2f).background(Color.Black),
+                    Modifier.matchParentSize().zIndex(2f).background(Color.Black)
+                        .consumeTouches()
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } },
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -657,15 +806,108 @@ fun PlayerScreen(
                         Text(message, color = theme.onSurface, style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.size(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = controller::retry) { Text(tr("player.retry"), color = theme.accent) }
+                            TextButton(onClick = controller::retry, modifier = Modifier.focusRequester(errorFocus)) {
+                                Text(tr("player.retry"), color = theme.accent)
+                            }
                             TextButton(onClick = onBack) { Text(tr("player.close"), color = theme.muted) }
                         }
                     }
                 }
             }
+            if (!inPictureInPicture && state.endCountdownSec != null) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.45f))
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            tr("player.next_episode_in", countdownLeft),
+                            color = Color.White,
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        Spacer(Modifier.size(12.dp))
+                        TextButton(onClick = controller::cancelEndCountdown, modifier = Modifier.focusRequester(countdownFocus)) {
+                            Text(tr("player.cancel"), color = theme.accent)
+                        }
+                    }
+                }
+            }
+            if (!inPictureInPicture && state.showEndScreen) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.55f))
+                        .focusGroup()
+                        .focusProperties { onExit = { cancelFocusChange() } }
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { endIdle++ },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { endIdle++; controller.watchAgain() }) {
+                            Text(tr("player.watch_again"), color = theme.accent)
+                        }
+                        TextButton(onClick = onBack, modifier = Modifier.focusRequester(closeFocus)) {
+                            Text(tr("player.close"), color = Color.White)
+                        }
+                    }
+                }
+            }
+            if (!inPictureInPicture && state.playlistFinished) {
+                Box(
+                    Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.72f))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = onBack,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(tr("player.playlist_done"), color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                }
+            }
+            state.resumePromptMs?.let { saved ->
+                if (!inPictureInPicture) {
+                    Box(
+                        Modifier.matchParentSize().zIndex(3f).background(Color.Black.copy(alpha = 0.55f))
+                            .focusGroup()
+                            .focusProperties { onExit = { cancelFocusChange() } },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            Modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(20.dp)).background(theme.surface).padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            TextButton(onClick = controller::continueFromPrompt, modifier = Modifier.focusRequester(resumeFocus)) {
+                                Text(tr("player.continue_from", formatTime(saved)), color = theme.accent)
+                            }
+                            TextButton(onClick = controller::startOverFromPrompt) {
+                                Text(tr("player.start_over"), color = theme.muted)
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.endDim) {
+                Box(
+                    Modifier.matchParentSize().zIndex(4f).background(Color.Black)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = controller::dismissEndDim,
+                        ),
+                )
+            }
         }
     }
     }
+}
+
+/** Касание не проходит к плееру под диалогом и не делает подложку целью пульта. */
+private fun Modifier.consumeTouches(): Modifier = pointerInput(Unit) {
+    detectTapGestures(onPress = { tryAwaitRelease() })
 }
 
 /** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
@@ -701,10 +943,11 @@ private fun ControlsAutoHide(
 private fun PanelBoundControls(
     panelState: State<Panel?>,
     visible: State<Boolean>,
+    allowFocus: Boolean = true,
     content: @Composable (panelOpen: Boolean) -> Unit,
 ) {
     val panelOpen = panelReservesSpace(panelState.value != null)
-    ControlsFade(visible = visible.value, panelOpen = panelOpen) {
+    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus) {
         content(panelOpen)
     }
 }
@@ -750,11 +993,12 @@ private fun BoxScope.EdgeActions(
     controlsVisible: State<Boolean>,
     skippable: SkipSegment?,
     showNextCard: Boolean,
-    playlistIndex: Int,
-    isPlaying: Boolean,
+    nextTitle: String?,
+    nextCoverPath: String?,
+    upNextArmed: Boolean,
     theme: PlayerTheme,
     onSkip: (SkipSegment) -> Unit,
-    onNext: () -> Unit,
+    onPlayNow: () -> Unit,
     onDismissNext: () -> Unit,
 ) {
     if (panelState.value != null) return
@@ -765,23 +1009,19 @@ private fun BoxScope.EdgeActions(
             type = seg.type,
             onClick = { onSkip(seg) },
             theme = theme,
-            takeFocus = !shown,
+            takeFocus = !shown && !upNextArmed,
             modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(end = 24.dp, bottom = bottomOffset),
         )
     }
     if (showNextCard) {
-        var left by remember(playlistIndex) { mutableIntStateOf(NEXT_COUNTDOWN_SEC) }
-        LaunchedEffect(playlistIndex, isPlaying) {
-            while (isPlaying && left > 0) { delay(1_000); left-- }
-            if (left == 0) onNext()
-        }
         NextEpisodeCard(
-            secondsLeft = left,
-            totalSeconds = NEXT_COUNTDOWN_SEC,
-            onPlayNow = onNext,
+            title = nextTitle,
+            coverPath = nextCoverPath,
+            onPlayNow = onPlayNow,
             onCancel = onDismissNext,
             theme = theme,
+            takeFocus = upNextArmed,
             modifier = Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(end = 24.dp, bottom = bottomOffset),
         )
@@ -962,6 +1202,7 @@ private fun Controls(
     controlsVisible: State<Boolean>,
 ) {
     val hasChapters = state.chapters.size > 1
+    val toolbarFocus = remember { FocusRequester() }
     val topScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(theme.scrim, Color.Transparent)) }
     val bottomScrim = remember(theme.scrim) { Brush.verticalGradient(listOf(Color.Transparent, theme.scrim)) }
     Box(Modifier.fillMaxSize()) {
@@ -972,26 +1213,31 @@ private fun Controls(
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            // Телефон в портрете: кнопки не помещаются рядом с названием - переносим их во второй ряд (с прокруткой).
+            // Телефон в портрете: кнопки не помещаются рядом с названием - второй ряд, размер по ширине.
             val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
-            val actionButtons: @Composable () -> Unit = {
-                val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
-                val context = LocalContext.current
+            val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            val actionButtons: @Composable (Dp) -> Unit = { icon ->
+                val compact = icon < 48.dp
                 extraActions.forEach { action ->
                     ControlButton(
                         action.icon, LocalStrings.current[action.label],
                         { action.onClick(context, PlayerExtensions.nowPlaying.value) },
-                        accent = theme.accent,
+                        size = icon, compact = compact, accent = theme.accent,
                     )
                 }
-                ControlButton(Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) }, accent = theme.accent)
-                ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, accent = theme.accent)
-                ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)
-                ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
-                ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
-                ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
+                ControlButton(
+                    Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) },
+                    modifier = Modifier.focusRequester(toolbarFocus).focusProperties { down = playFocus },
+                    size = icon, compact = compact, accent = theme.accent,
+                )
+                ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, size = icon, compact = compact, accent = theme.accent)
                 // Открывает панель масштаба и качества. Сама кнопка картинку не переключает - это щипок.
-                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
+                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, size = icon, compact = compact, accent = theme.accent)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
@@ -1004,14 +1250,18 @@ private fun Controls(
                         Text(secondLine, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (!narrow) actionButtons()
+                if (!narrow) actionButtons(48.dp)
             }
             if (narrow) {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { actionButtons() }
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val count = 7 + extraActions.size
+                    val fitted = (maxWidth / count).coerceIn(32.dp, 48.dp)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { actionButtons(fitted) }
+                }
             }
 
             // Сдвиг полосы - один padding в том же кадре, что и старт выезда, без анимации ширины:
@@ -1023,16 +1273,20 @@ private fun Controls(
             Column(Modifier.weight(1f).fillMaxWidth().padding(end = panelReserve)) {
             Spacer(Modifier.weight(1f))
 
+            val toToolbar = Modifier.focusProperties { up = toolbarFocus }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, accent = theme.accent)
-                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, accent = theme.accent)
-                ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, size = 56.dp, accent = theme.accent)
+                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, modifier = toToolbar, accent = theme.accent)
+                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, modifier = toToolbar, accent = theme.accent)
+                ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
                 if (state.isBuffering && state.error == null) {
-                    Box(Modifier.size(76.dp).focusRequester(playFocus), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.size(76.dp).focusRequester(playFocus).then(toToolbar).focusable(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         CircularProgressIndicator(Modifier.size(56.dp), color = theme.accent, strokeWidth = 4.dp)
                     }
                 } else {
@@ -1046,12 +1300,12 @@ private fun Controls(
                         onClick = onPlayPause,
                         size = 76.dp,
                         accent = theme.accent,
-                        modifier = Modifier.focusRequester(playFocus),
+                        modifier = Modifier.focusRequester(playFocus).then(toToolbar),
                     )
                 }
-                ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, size = 56.dp, accent = theme.accent)
-                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, accent = theme.accent)
-                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, accent = theme.accent)
+                ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
+                if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, modifier = toToolbar, accent = theme.accent)
+                if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, modifier = toToolbar, accent = theme.accent)
             }
 
             Spacer(Modifier.weight(1f))
@@ -1085,7 +1339,7 @@ internal const val CONTROLS_HIDE_MS = 150
  * Фокус и TalkBack - снаружи слоя, чтобы скрытие не перезаписывало его содержимое.
  */
 @Composable
-internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Composable () -> Unit) {
+internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, allowFocus: Boolean = true, content: @Composable () -> Unit) {
     val opacity = remember { Animatable(if (visible) 1f else 0f) }
     // Не читается в композиции: смена двигает только параметры слоя.
     val shown = remember { mutableStateOf(visible) }
@@ -1112,12 +1366,12 @@ internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, content: @Compos
         }
     }
     // Свойства, не состав и не содержимое слоя: тот же focusGroup, другое значение при скрытии.
-    val chrome = remember(visible) {
+    val chrome = remember(visible, allowFocus) {
         Modifier
             .focusGroup()
             .focusProperties {
-                canFocus = visible
-                onEnter = { if (!visible) cancelFocusChange() }
+                canFocus = visible && allowFocus
+                onEnter = { if (!visible || !allowFocus) cancelFocusChange() }
             }
             .semantics { if (!visible) hideFromAccessibility() }
     }
@@ -1433,8 +1687,6 @@ private fun SubtitleView.applyPanelInset(
     val insetPx = with(density) { transportEndInsetDp(panelOpen, screenWidthDp).dp.roundToPx() }
     if (paddingRight != insetPx) setPadding(paddingLeft, paddingTop, insetPx, paddingBottom)
 }
-
-private const val NEXT_COUNTDOWN_SEC = 10
 
 private const val TAG_SUBS = 0x2160_0001
 private const val TAG_SEC_STYLE = 0x2160_0002

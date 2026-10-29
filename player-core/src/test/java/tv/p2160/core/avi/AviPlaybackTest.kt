@@ -5,6 +5,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.avi.AviExtractor
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -150,6 +151,12 @@ class AviPlaybackTest {
         assertEquals("video/divx3", info.codecMimeType)
         assertTrue(info.hardwareAccelerated)
         assertTrue(!info.softwareOnly)
+    }
+
+    @Test
+    fun gmcVolIsRecognizedAndPlainXvidIsNot() {
+        assertTrue(Mpeg4Vol.usesGmc(File(dir, "xvid-gmc-mp3.avi").readBytes()))
+        assertFalse(Mpeg4Vol.usesGmc(File(dir, "xvid-unpacked-mp3.avi").readBytes()))
     }
 
     @Test

@@ -1684,10 +1684,7 @@ class PlayerController(
             tracks.groups,
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
         ) ?: return
-        val message = i18n.current.format(
-            decoderErrorKey(mime, settings.current.decoder, built.videoGate.stage(mime)),
-            codecLabel(mime),
-        )
+        val message = i18n.current.format(videoErrorKey(mime), codecLabel(mime))
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
@@ -1846,6 +1843,14 @@ class PlayerController(
         return path.endsWith(".avi", ignoreCase = true)
     }
 
+    /** GMC в MPEG-4 - не «декодера нет», а «этот поток устройство не берёт». */
+    private fun videoErrorKey(mime: String): String = decoderErrorKey(
+        mime,
+        settings.current.decoder,
+        built.videoGate.stage(mime),
+        gmc = mime == MimeTypes.VIDEO_MP4V && AviProbe.mpeg4Gmc,
+    )
+
     private fun describe(e: PlaybackException): String {
         val t = i18n.current
         return when (e.errorCode) {
@@ -1862,10 +1867,7 @@ class PlayerController(
             PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> {
                 val mime = (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
                 if (mime == null) t["error.decoder"]
-                else t.format(
-                    decoderErrorKey(mime, settings.current.decoder, built.videoGate.stage(mime)),
-                    codecLabel(mime),
-                )
+                else t.format(videoErrorKey(mime), codecLabel(mime))
             }
             PlaybackException.ERROR_CODE_DRM_UNSPECIFIED -> t["error.drm"]
             else -> t.format("error.generic", e.errorCodeName)

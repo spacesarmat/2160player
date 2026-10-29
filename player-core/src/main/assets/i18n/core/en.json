@@ -65,6 +65,7 @@
   "error.decoder_codec_ffmpeg": "Decoder error (%1$s). FFmpeg mode could not play it either",
   "error.decoder_codec_no_ffmpeg": "Decoder error (%1$s). FFmpeg mode does not include this codec",
   "error.decoder_codec_device": "This device has no decoder for %1$s",
+  "error.decoder_codec_gmc": "This device's decoder does not support GMC in %1$s",
   "error.stalled": "Playback did not start (%1$s)",
   "error.avi_video_missing": "The file contains video (%1$s), but the track was not opened",
   "error.drm": "Protected (DRM) content is not supported",

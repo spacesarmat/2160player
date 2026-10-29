@@ -65,6 +65,7 @@
   "error.decoder_codec_ffmpeg": "Ошибка декодера (%1$s). Режим FFmpeg тоже не смог",
   "error.decoder_codec_no_ffmpeg": "Ошибка декодера (%1$s). Режим FFmpeg этот кодек не декодирует",
   "error.decoder_codec_device": "На этом устройстве нет декодера для %1$s",
+  "error.decoder_codec_gmc": "Декодер этого устройства не поддерживает GMC в %1$s",
   "error.stalled": "Воспроизведение не началось (%1$s)",
   "error.avi_video_missing": "В файле есть видео (%1$s), но дорожка не открылась",
   "error.drm": "Защищённый контент (DRM) не поддерживается",

@@ -130,11 +130,13 @@ internal fun decoderErrorKey(
     mode: DecoderPreference,
     stage: Int,
     ffmpegAvailable: Boolean = ffmpegCanDecode(mime),
+    gmc: Boolean = false,
 ): String {
     if (mime == null) return "error.decoder"
     if (mode == DecoderPreference.FFMPEG) {
         return if (ffmpegAvailable) "error.decoder_codec_ffmpeg" else "error.decoder_codec_no_ffmpeg"
     }
+    if (gmc && mime == MimeTypes.VIDEO_MP4V) return "error.decoder_codec_gmc"
     if (stage >= VideoDecoderGate.FFMPEG && ffmpegAvailable) return "error.decoder_codec_ffmpeg"
     if (!ffmpegAvailable) return "error.decoder_codec_device"
     return "error.decoder_codec"

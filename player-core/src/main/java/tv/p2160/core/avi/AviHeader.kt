@@ -57,10 +57,27 @@ internal object AviProbe {
     @Volatile
     var audioIndex: AviAudioIndex? = null
 
+    /** В MPEG-4 есть GMC: декодер устройства может быть, но этот поток он не берёт. */
+    @Volatile
+    var mpeg4Gmc: Boolean = false
+
+    @Volatile
+    private var mpeg4VolSeen: Boolean = false
+
     fun clear() {
         facts = null
         moviStart = -1L
         audioIndex = null
+        mpeg4Gmc = false
+        mpeg4VolSeen = false
+    }
+
+    fun noteMpeg4(data: ByteArray) {
+        if (mpeg4Gmc || mpeg4VolSeen || data.isEmpty()) return
+        val scan = Mpeg4Vol.scan(data)
+        if (!scan.sawVol) return
+        mpeg4VolSeen = true
+        mpeg4Gmc = scan.gmc
     }
 
     val durationUs: Long

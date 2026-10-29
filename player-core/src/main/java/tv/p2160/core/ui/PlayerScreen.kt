@@ -11,6 +11,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -747,13 +747,15 @@ fun PlayerScreen(
                     // (на альбомном телефоне карточка дотягивается до верхнего края).
                     val cardOnScreen = showNextCard && panelState.value == null
                     val wide = upNextCardReservesSide(screenWidthDp)
+                    // Портрет: второй ряд кнопок. 72 dp накрывали иконки панели.
+                    val belowToolbar = if (wide) 72.dp else 128.dp
                     ResumeHintInset(panelState) { resumeEnd ->
                         val endPad = if (cardOnScreen && wide) 360.dp else resumeEnd + 16.dp
                         Box(
                             Modifier.align(if (cardOnScreen && wide) Alignment.TopStart else Alignment.TopCenter)
                                 .fillMaxWidth()
                                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                                .padding(top = 72.dp, start = 16.dp, end = endPad),
+                                .padding(top = belowToolbar, start = 16.dp, end = endPad),
                         ) {
                             Row(
                                 Modifier.align(Alignment.Center).widthIn(max = 560.dp)
@@ -1211,30 +1213,31 @@ private fun Controls(
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            // Телефон в портрете: кнопки не помещаются рядом с названием - переносим их во второй ряд (с прокруткой).
+            // Телефон в портрете: кнопки не помещаются рядом с названием - второй ряд, размер по ширине.
             val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
-            val actionButtons: @Composable () -> Unit = {
-                val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
-                val context = LocalContext.current
+            val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            val actionButtons: @Composable (Dp) -> Unit = { icon ->
+                val compact = icon < 48.dp
                 extraActions.forEach { action ->
                     ControlButton(
                         action.icon, LocalStrings.current[action.label],
                         { action.onClick(context, PlayerExtensions.nowPlaying.value) },
-                        accent = theme.accent,
+                        size = icon, compact = compact, accent = theme.accent,
                     )
                 }
                 ControlButton(
                     Icons.Default.Info, tr("player.info"), { onPanel(Panel.INFO) },
                     modifier = Modifier.focusRequester(toolbarFocus).focusProperties { down = playFocus },
-                    accent = theme.accent,
+                    size = icon, compact = compact, accent = theme.accent,
                 )
-                ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, accent = theme.accent)
-                ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, accent = theme.accent)
-                ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, accent = theme.accent)
-                ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, accent = theme.accent)
-                ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, accent = theme.accent)
+                ControlButton(Icons.Default.Bookmarks, tr("player.chapters"), { onPanel(Panel.CHAPTERS) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Audiotrack, tr("player.audio"), { onPanel(Panel.AUDIO) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Subtitles, tr("player.subtitles"), { onPanel(Panel.SUBTITLES) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Speed, tr("player.speed"), { onPanel(Panel.SPEED) }, size = icon, compact = compact, accent = theme.accent)
+                ControlButton(Icons.Default.Bedtime, tr("player.sleep"), { onPanel(Panel.SLEEP) }, size = icon, compact = compact, accent = theme.accent)
                 // Открывает панель масштаба и качества. Сама кнопка картинку не переключает - это щипок.
-                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, accent = theme.accent)
+                ControlButton(Icons.Default.AspectRatio, tr("player.video_menu"), { onPanel(Panel.VIDEO) }, size = icon, compact = compact, accent = theme.accent)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ControlButton(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), onBack, accent = theme.accent)
@@ -1247,14 +1250,18 @@ private fun Controls(
                         Text(secondLine, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (!narrow) actionButtons()
+                if (!narrow) actionButtons(48.dp)
             }
             if (narrow) {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { actionButtons() }
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val count = 7 + extraActions.size
+                    val fitted = (maxWidth / count).coerceIn(32.dp, 48.dp)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { actionButtons(fitted) }
+                }
             }
 
             // Сдвиг полосы - один padding в том же кадре, что и старт выезда, без анимации ширины:

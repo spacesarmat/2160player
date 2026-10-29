@@ -133,6 +133,18 @@ class VideoDecodeFallbackTest {
             decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.AUTO, VideoDecoderGate.FFMPEG, ffmpegAvailable = true),
         )
         assertEquals("error.decoder_codec_device", decoderErrorKey("video/mjpeg", DecoderPreference.AUTO, VideoDecoderGate.SOFTWARE, ffmpegAvailable = false))
+        assertEquals(
+            "error.decoder_codec_gmc",
+            decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.AUTO, VideoDecoderGate.DEFAULT, gmc = true),
+        )
+        assertEquals(
+            "error.decoder_codec_device",
+            decoderErrorKey(MimeTypes.VIDEO_MP43, DecoderPreference.AUTO, VideoDecoderGate.DEFAULT, gmc = true),
+        )
+        assertEquals(
+            "error.decoder_codec_no_ffmpeg",
+            decoderErrorKey(MimeTypes.VIDEO_MP4V, DecoderPreference.FFMPEG, VideoDecoderGate.DEFAULT, gmc = true),
+        )
         assertEquals("error.decoder", decoderErrorKey(null, DecoderPreference.AUTO, VideoDecoderGate.DEFAULT))
         assertEquals(true, ffmpegMaps(MimeTypes.VIDEO_MP4V))
         assertEquals(true, ffmpegMaps(MimeTypes.VIDEO_MP43))

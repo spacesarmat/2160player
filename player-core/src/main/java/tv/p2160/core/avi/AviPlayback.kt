@@ -226,6 +226,7 @@ private class UnpackingTrackOutput(
         }
         Log.i(TAG, "AVI format mime=${adjusted.sampleMimeType} ${adjusted.width}x${adjusted.height}")
         unpacker.setMime(adjusted.sampleMimeType)
+        adjusted.initializationData.forEach { AviProbe.noteMpeg4(it) }
         if (!unpacker.enabled || adjusted.initializationData.isEmpty()) {
             delegate.format(adjusted)
             return
@@ -264,6 +265,7 @@ private class UnpackingTrackOutput(
         val end = all.size - offset
         val start = (end - size).coerceAtLeast(0)
         val sample = if (start < end && end <= all.size) all.copyOfRange(start, end) else ByteArray(0)
+        if (sample.isNotEmpty()) AviProbe.noteMpeg4(sample)
         if (offset > 0 && end < all.size) pending.write(all, end, all.size - end)
         if (sample.isEmpty()) return
         val emitted = unpacker.consume(sample)

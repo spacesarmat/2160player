@@ -44,7 +44,7 @@ data class TorrentFile(val index: Int, val path: String, val size: Long) {
 
     companion object {
         val VIDEO = setOf("mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "mts", "webm", "mpg", "mpeg", "flv", "vob", "3gp", "ogv", "divx", "rmvb", "hevc")
-        val AUDIO = setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "ape", "wv", "dts", "ac3", "mka", "alac")
+        val AUDIO = setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "ape", "wv", "dts", "ac3", "eac3", "ec3", "mka", "alac")
         val SUBTITLE = setOf("srt", "ass", "ssa", "vtt", "ttml", "dfxp")
     }
 }
@@ -324,6 +324,24 @@ class TorrentSession(
         }
     }
 
+    /**
+     * Качать ещё эти файлы вместе с основным (озвучка и субтитры выбранной серии).
+     * Основной файл не подменяется.
+     */
+    fun include(id: String, indices: Collection<Int>) {
+        if (indices.isEmpty()) return
+        val entry = entries[id] ?: return
+        val ti = entry.handle.torrentFile() ?: return
+        synchronized(entry) {
+            for (index in indices) {
+                if (index !in 0 until ti.numFiles() || index == entry.primary || index in entry.selected) continue
+                entry.handle.filePriority(index, Priority.DEFAULT)
+                entry.selected += index
+            }
+            replan(entry)
+        }
+    }
+
     private fun activate(entry: Entry) {
         entry.handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
         entry.handle.unsetFlags(TorrentFlags.AUTO_MANAGED)
@@ -387,8 +405,10 @@ class TorrentSession(
                 entry.handle.filePriority(fileIndex, Priority.DEFAULT)
                 entry.selected += fileIndex
             }
-            // Основной файл - последний открытый видео/аудио (следующая серия плейлиста), не субтитры.
-            if (entry.primary < 0 || TorrentFile(fileIndex, fs0.filePath(fileIndex), 0).isPlayable) entry.primary = fileIndex
+            // Основной файл - видео (следующая серия). Внешняя озвучка основной не становится,
+            // иначе последовательная закачка уйдёт с ролика на дорожку.
+            val opened = TorrentFile(fileIndex, fs0.filePath(fileIndex), 0)
+            if (opened.isVideo || entry.primary < 0) entry.primary = fileIndex
             activate(entry)
         }
         val fs = ti.files()

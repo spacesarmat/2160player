@@ -1,5 +1,6 @@
 package tv.p2160.core.ui
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -7,18 +8,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Dp
@@ -81,6 +89,69 @@ class PanelScrollTest {
     }
 
     @Test
+    fun everySidePanelTakesFocusOnOpen() {
+        val entry = listOf(
+            Panel.AUDIO to "panel.night_mode",
+            Panel.SUBTITLES to "panel.subs_off",
+            Panel.SPEED to "panel.fine",
+            Panel.SLEEP to "panel.sleep_off",
+            Panel.VIDEO to "panel.fit",
+            Panel.CHAPTERS to "panel.mark_intro_start",
+            Panel.INFO to "panel.stats_overlay",
+        )
+        var which by mutableIntStateOf(0)
+        rule.setContent {
+            key(entry[which].first) {
+                PanelScrollHarness(
+                    panel = entry[which].first,
+                    state = PlayerUiState(),
+                    resets = 0,
+                    open = true,
+                    height = 800.dp,
+                )
+            }
+        }
+        for (index in entry.indices) {
+            rule.runOnIdle { which = index }
+            rule.waitForIdle()
+            assertFocusOn(entry[index].second)
+        }
+    }
+
+    @Test
+    fun subtitlesPanelDoesNotLetThePadLeaveToControls() {
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.width(400.dp).height(800.dp)) {
+                    Box(Modifier.focusable().testTag("behind"))
+                    SidePanel(
+                        panel = Panel.SUBTITLES,
+                        state = PlayerUiState(),
+                        settings = Settings(),
+                        resizeMode = ResizeMode.FIT,
+                        actions = idlePanelActions(),
+                        scrollReset = PanelScrollReset(),
+                        open = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        assertFocusOn("panel.subs_off")
+        repeat(6) {
+            rule.onNode(isFocused()).performKeyInput {
+                keyDown(Key.DirectionDown)
+                keyUp(Key.DirectionDown)
+            }
+            rule.waitForIdle()
+        }
+        val focused = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
+        assertTrue(focused.isNotEmpty())
+        assertTrue(focused.none { it.config.getOrNull(SemanticsProperties.TestTag) == "behind" })
+    }
+
+    @Test
     fun speedShowsTheStepperAndNormalPresetOnAShortLandscapeScreen() {
         // 360 dp экрана минус зазор под кнопки (64) и статус (24): панель 272 dp.
         // «Точно» и «Обычная» оба на экране, прокрутка нулевая.
@@ -138,6 +209,20 @@ class PanelScrollTest {
         rule.runOnIdle { open = true }
         rule.waitForIdle()
         assertAtTop(topText, belowText)
+    }
+
+    private fun assertFocusOn(text: String) {
+        val node = rule.onNodeWithText(text).fetchSemanticsNode()
+        var current: SemanticsNode? = node
+        var focused = false
+        while (current != null) {
+            if (current.config.getOrElse(SemanticsProperties.Focused) { false }) {
+                focused = true
+                break
+            }
+            current = current.parent
+        }
+        assertTrue("focus should be on $text", focused)
     }
 
     private fun assertAtTop(topText: String, belowText: String) {

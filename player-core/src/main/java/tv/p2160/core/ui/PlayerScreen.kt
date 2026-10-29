@@ -1024,7 +1024,8 @@ private fun PanelBoundControls(
     content: @Composable (panelOpen: Boolean) -> Unit,
 ) {
     val panelOpen = panelReservesSpace(panelState.value != null)
-    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus) {
+    // Пока панель открыта, стрелки не уходят на кнопки за ней.
+    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus && !panelOpen) {
         content(panelOpen)
     }
 }

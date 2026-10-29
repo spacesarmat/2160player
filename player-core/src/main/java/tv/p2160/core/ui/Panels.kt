@@ -195,9 +195,13 @@ fun SidePanel(
     // и OK попадает в «Перейти ко времени».
     LaunchedEffect(open) {
         if (!open) return@LaunchedEffect
-        withFrameNanos { }
-        if (!chrome.open) return@LaunchedEffect
-        if (!requestPanelFocus(enter)) requestPanelFocus(focus)
+        // Строка субтитров собирается в том же кадре, что и панель. Один кадр, и ещё один,
+        // если реквизит первой строки ещё не прикреплён.
+        repeat(2) {
+            withFrameNanos { }
+            if (!chrome.open) return@LaunchedEffect
+            if (requestPanelFocus(enter) || requestPanelFocus(focus)) return@LaunchedEffect
+        }
     }
     // Выбор строки не должен оставлять фокус нигде: Назад тогда не доходит до панели.
     LaunchedEffect(lostFocus) {
@@ -421,7 +425,7 @@ private fun PanelSlots.populate(
                     val active = state.sleepRemainingMs != null || state.sleepAtEnd
                     item(key = "sleep-off") {
                         PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
-                            modifier = focusPin(!active, focus))
+                            modifier = Modifier.focusRequester(enter).then(focusPin(!active, focus)))
                     }
                     items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }, contentType = { "choice" }) { minutes ->
                         PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
@@ -443,7 +447,7 @@ private fun PanelSlots.populate(
                             leading = Icons.Default.SubtitlesOff,
                             selected = state.textDisabled || state.textTracks.none { it.selected },
                             onClick = actions.onDisableSubtitles,
-                            modifier = Modifier.focusRequester(focus),
+                            modifier = Modifier.focusRequester(enter).focusRequester(focus),
                         )
                     }
                     val primaryTracks = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
@@ -528,7 +532,7 @@ private fun PanelSlots.populate(
                             secondary = tr("panel.stats_overlay_hint"),
                             selected = settings.statsOverlay,
                             onClick = { actions.onStatsOverlay(!settings.statsOverlay) },
-                            modifier = Modifier.focusRequester(focus),
+                            modifier = Modifier.focusRequester(enter).focusRequester(focus),
                             switch = true,
                         )
                     }
@@ -560,7 +564,7 @@ private fun PanelSlots.populate(
                             secondary = formatTime(ch.startMs),
                             selected = current,
                             onClick = { actions.onChapter(ch) },
-                            modifier = focusPin(current, focus),
+                            modifier = (if (i == 0) Modifier.focusRequester(enter) else Modifier).then(focusPin(current, focus)),
                         )
                     }
                     item(key = "marks-title") { Hint(tr("panel.marks")) }
@@ -577,7 +581,8 @@ private fun PanelSlots.populate(
                             tr("panel.mark_intro_start"),
                             secondary = state.marks.introStartMs?.let(::formatTime),
                             selected = false, onClick = actions.onMarkIntroStart, leading = Icons.Default.FirstPage,
-                            modifier = focusPin(state.chapters.isEmpty(), focus),
+                            modifier = (if (state.chapters.isEmpty()) Modifier.focusRequester(enter) else Modifier)
+                                .then(focusPin(state.chapters.isEmpty(), focus)),
                         )
                     }
                     item(key = "m-ie") {
@@ -608,7 +613,8 @@ private fun PanelSlots.populate(
                             text = resizeLabel(mode),
                             selected = resizeMode == mode,
                             onClick = { actions.onResize(mode) },
-                            modifier = focusPin(resizeMode == mode, focus),
+                            modifier = (if (mode == ResizeMode.FIT) Modifier.focusRequester(enter) else Modifier)
+                                .then(focusPin(resizeMode == mode, focus)),
                         )
                     }
                     if (state.videoTracks.isNotEmpty()) {
@@ -809,8 +815,12 @@ private fun focusPin(holds: Boolean, requester: FocusRequester): Modifier {
     return if (pinned) Modifier.focusRequester(requester) else Modifier
 }
 
-private fun requestPanelFocus(requester: FocusRequester): Boolean =
-    runCatching { requester.requestFocus() }.isSuccess
+private fun requestPanelFocus(requester: FocusRequester): Boolean = try {
+    // false: реквизит ещё не на строке или группа фокуса закрыта. Успех вызова это не фокус.
+    requester.requestFocus()
+} catch (_: IllegalStateException) {
+    false
+}
 
 /** До скольких строк панель - обычная колонка, а не LazyColumn. */
 internal const val PANEL_EAGER_ROW_LIMIT = 16

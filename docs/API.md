@@ -201,6 +201,10 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.ARTWORK` | `String` (URI) | Обложка текущего файла (`MediaEntry.artworkUri`). |
 | `tv.p2160.extra.ARTWORKS` | `String[]` | Обложки элементов плейлиста по порядку; пустая строка - нет. |
 | `tv.p2160.extra.LIVE` | `Boolean` | Плейлист - телеканалы (`PlaybackRequest.liveTv`): без продолжения с места и истории, «Эфир» вместо полосы перемотки, стрелки вверх/вниз (и CH+/CH−, цифры) переключают каналы по кругу. |
+| `tv.p2160.extra.AUDIO_TRACKS` | `String[]` или `String` | Внешние аудиофайлы, JSON-массив на каждый пункт плейлиста. Поля и пример - [§3.7](#37-внешние-дорожки). |
+| `tv.p2160.extra.TEXT_TRACKS` | `String[]` или `String` | То же для субтитров. |
+| `tv.p2160.extra.AUDIO_SELECT` | `String` | Звук на стартовом пункте: `id:<id>`, `index:<n>`, `embedded:<n>`. |
+| `tv.p2160.extra.TEXT_SELECT` | `String` | Субтитры на стартовом пункте: то же и `off`. |
 
 Субтитры, MIME из `Intent.type` и отрезки относятся только к **стартовому** элементу плейлиста.
 
@@ -232,10 +236,11 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.TEXT_EXTERNAL` | `Boolean` | Внешний файл или встроенная дорожка. |
 | `tv.p2160.extra.TEXT_EMBEDDED_INDEX` | `Int` | Номер среди встроенных текстовых дорожек. `-1`, если внешние. |
 | `tv.p2160.extra.TEXT_EXTERNAL_INDEX` | `Int` | Номер во внешнем списке субтитров. `-1`, если встроенные. |
-
-`position` и `duration` остаются `Int`, как у MX Player. Новые ключи держат полный `Long`. Разбор только по `end_by` по-прежнему верен.
 | `extra_position` | `Long` (мс) | Позиция (VLC). |
 | `extra_duration` | `Long` (мс) | Длительность (VLC). |
+
+`position` и `duration` остаются `Int`, как у MX Player. Новые ключи держат полный `Long`. Разбор только по `end_by` по-прежнему верен.
+Ключи `AUDIO_*` и `TEXT_*` подробно описаны в [§3.7](#37-внешние-дорожки).
 
 Если плеер закрыт иначе (свайп из «Недавних», системой), вернётся `RESULT_CANCELED` без данных.
 
@@ -327,6 +332,8 @@ adb shell am start -a android.intent.action.VIEW \
 adb shell am start -a android.intent.action.VIEW \
   -n tv.p2160.player/tv.p2160.core.Player2160Activity \
   -d "smb://nas/Movies/Film.iso"
+
+# Внешняя озвучка: пример в §3.7 (команда внутри adb shell, JSON в одинарных кавычках)
 ```
 
 `am start` не умеет передавать массивы `Uri` - `subs`, `subs.enable` и `video_list` доступны только
@@ -386,6 +393,21 @@ HTTP без query пробует список каталога или корот
 шкала времени - это видео. Более длинное аудио обрезается концом ролика: воспроизведение заканчивается вместе с видео, позиция не становится больше длительности. Более короткое не обрывает видео.
 
 В панели звука есть «Загрузить из файла…». Выбранный файл запоминается для этого видео.
+
+**Из adb.** JSON удобнее передавать изнутри `adb shell`: одинарные кавычки сохраняют `"` и пробелы, а запятые
+можно экранировать `\,` (без экранирования `--esa` режет строку, плеер склеивает куски обратно).
+
+```sh
+adb shell
+am start -a android.intent.action.VIEW \
+  -n tv.p2160.player/tv.p2160.core.Player2160Activity \
+  -d file:///sdcard/Movies/Movie.mkv -t video/x-matroska \
+  --esa tv.p2160.extra.AUDIO_TRACKS '[{"uri":"file:///sdcard/Movies/Movie.ru.ac3"\,"language":"rus"\,"name":"LostFilm"\,"id":"lostfilm"}]' \
+  --es tv.p2160.extra.AUDIO_SELECT id:lostfilm
+```
+
+Плейлист из adb: `--esa tv.p2160.extra.PLAYLIST file:///…/e1.mkv,file:///…/e2.mkv`, тогда элемент `i` в `AUDIO_TRACKS`
+(массивы через запятую) относится к пункту `i`.
 
 ```kotlin
 val e1 = Uri.parse("http://127.0.0.1:8090/stream/e1.mkv?link=HASH&index=0")
@@ -458,7 +480,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.16")
+    implementation("tv.p2160:player-core:0.2.17")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) - Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }

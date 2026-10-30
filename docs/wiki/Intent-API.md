@@ -38,6 +38,8 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 | `tv.p2160.extra.CREDITS_START` | мс | титры до конца |
 | `tv.p2160.extra.ARTWORK` / `ARTWORKS` | String / String[] | обложки |
 | `tv.p2160.extra.LIVE` | Boolean | режим телеканалов |
+| `tv.p2160.extra.AUDIO_TRACKS` / `TEXT_TRACKS` | String[] или String | JSON внешних дорожек на пункт плейлиста |
+| `tv.p2160.extra.AUDIO_SELECT` / `TEXT_SELECT` | String | `id:`, `index:`, `embedded:`, у субтитров ещё `off` |
 
 Субтитры, MIME из `Intent.type` и отрезки относятся только к стартовому элементу.
 Нечисловой `position` читается как 0. Неизвестные extras игнорируются.
@@ -57,6 +59,10 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 | `end_by` | String | `user` или `playback_completion` |
 | `tv.p2160.extra.WATCHED` | Boolean | досмотрено до конца. `end_by` остаётся |
 | `tv.p2160.extra.POSITION`, `tv.p2160.extra.DURATION` | Long, мс | полная позиция и длительность. Если досмотрено, позиция равна длительности |
+| `tv.p2160.extra.AUDIO_ID`, `AUDIO_NAME`, `AUDIO_LANGUAGE` | String | выбранный звук |
+| `tv.p2160.extra.AUDIO_EXTERNAL` | Boolean | внешний файл или дорожка внутри видео |
+| `tv.p2160.extra.AUDIO_EMBEDDED_INDEX`, `AUDIO_EXTERNAL_INDEX` | Int | номер среди встроенных или внешних, `-1` у другого вида |
+| `tv.p2160.extra.TEXT_OFF` и `TEXT_*` | Boolean, String, Int | то же для субтитров |
 | `extra_position`, `extra_duration` | Long | как у VLC |
 
 Свайп из «Недавних» и убийство процесса - `RESULT_CANCELED` без extras.

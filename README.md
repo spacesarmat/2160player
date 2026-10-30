@@ -75,7 +75,7 @@ APK берётся из [последнего релиза](https://github.com/s
 ### Просмотр
 
 - Субтитры: внешние SRT, ASS, VTT, TTML, своя кодировка, автопоиск рядом с видео (в том числе `content://`: папка запоминается с первого раза), загрузка из файла сразу на экран, задержка, стиль, двойные субтитры.
-- Внешняя озвучка: файл рядом с видео (`Movie.ru.mka` и другие, папка `Audio` или `RUS Sound`) в панели звука, ручная загрузка и передача дорожек через Intent. `content://` ищет их так же, как субтитры. Файл, который не открылся, и дорожка без декодера на устройстве не останавливают видео: выбор возвращает предыдущую или встроенную, запомненный неподдерживаемый файл не подставляется снова. Звук длиннее ролика обрезается его концом. Главы Matroska читаются из файла и на 32-битном ТВ. Открытие боковой панели переносит фокус пульта внутрь, Назад её закрывает. В разделе «Торренты» озвучка и субтитры берутся из того же торрента, по серии и студии; `Bonus` и `Menu` в плейлист серий не входят. Перемотка и скорость общие со видео.
+- Внешняя озвучка: файл рядом с видео (`Movie.ru.mka` и другие, папка `Audio` или `RUS Sound`) в панели звука, ручная загрузка и передача дорожек через Intent. `content://` ищет их так же, как субтитры. Файл, который не открылся, и дорожка без декодера на устройстве не останавливают видео: выбор возвращает предыдущую или встроенную, запомненный неподдерживаемый файл не подставляется снова. Звук длиннее ролика обрезается его концом. Главы Matroska читаются из файла и на 32-битном ТВ. Открытие боковой панели переносит фокус пульта внутрь, Назад её закрывает. В разделе «Торренты» озвучка и субтитры берутся из того же торрента, по серии и студии; `Bonus` и `Menu` в плейлист серий не входят. Перемотка и скорость общие с видео.
 - Главы и пропуск вступления, пересказа и титров: из глав, из Intent или ручные отметки на весь сериал. Кнопка или автопропуск, карточка «Следующая серия».
 - Вступление между сериями можно найти по звуку.
 - Продолжение с места, с дорожками, скоростью и задержкой субтитров. Досмотренное в следующий раз открывается с начала.
@@ -144,9 +144,9 @@ startActivity(
 ```
 
 - Быстрый старт: [docs/EMBEDDING.md](docs/EMBEDDING.md) (модуль, `includeBuild`, mavenLocal, GitHub Packages).
-- Справочник: [docs/API.md](docs/API.md) (`Player2160`, `PlayerController`, `PlayerScreen`, `PlayerConfig`, Intent).
+- Справочник: [docs/API.md](docs/API.md) (`Player2160`, `PlayerController`, `PlayerScreen`, `PlayerConfig`, Intent, внешние дорожки в Intent - §3.7).
 - Пример хоста: [samples/embed-demo](samples/embed-demo).
-- Координата текущей библиотеки: `tv.p2160:player-core:0.2.16`, `minSdk` 24, `compileSdk` 37.
+- Координата текущей библиотеки: `tv.p2160:player-core:0.2.17`, `minSdk` 24, `compileSdk` 37.
   В приложении-хосте нужны `pickFirsts` для общих `.so` FFmpeg, иначе сборка падает на одинаковых `libavcodec.so`. Пример в [EMBEDDING.md](docs/EMBEDDING.md).
 
 ### Сборка
@@ -302,12 +302,12 @@ MPEG-4 ASP (XviD/DivX with B-frames and GMC), MS-MPEG4, H.263, WMV and VC-1 depe
 `minSdk` 24, `compileSdk` 37, JDK 21. Build the app with `./gradlew :app:assembleDebug`.
 
 ```kotlin
-implementation("tv.p2160:player-core:0.2.16")
+implementation("tv.p2160:player-core:0.2.17")
 ```
 
 The host must pick the first copy of the shared FFmpeg `.so` files (`libavcodec`, `libavutil`, `libswscale`, `libswresample`). Full steps: [docs/EMBEDDING.md](docs/EMBEDDING.md). Reference: [docs/API.md](docs/API.md). Sample host: [samples/embed-demo](samples/embed-demo). Wiki: [docs/wiki/Home.md](docs/wiki/Home.md).
 
-Call `Player2160.play(context, PlaybackRequest.single(uri))`, or start the installed app (`tv.p2160.player`, debug `tv.p2160.player.debug`, activity `tv.p2160.core.Player2160Activity`) with extras compatible with MX Player (`title`, `position`, `headers`, `subs`, `video_list`, `return_result`) plus `tv.p2160.extra.*`. Results come back in both MX Player and VLC shapes, including `tv.p2160.extra.WATCHED` and a Long position.
+Call `Player2160.play(context, PlaybackRequest.single(uri))`, or start the installed app (`tv.p2160.player`, debug `tv.p2160.player.debug`, activity `tv.p2160.core.Player2160Activity`) with extras compatible with MX Player (`title`, `position`, `headers`, `subs`, `video_list`, `return_result`) plus `tv.p2160.extra.*`, including external dubs and subtitles per playlist item (`tv.p2160.extra.AUDIO_TRACKS` / `TEXT_TRACKS` as JSON, start choice via `AUDIO_SELECT` / `TEXT_SELECT`). Results come back in both MX Player and VLC shapes, including `tv.p2160.extra.WATCHED` and a Long position.
 
 `Player2160.config = PlayerConfig(...)` sets the buffer (`PlayerConfig.AUTO` sizes it from device memory, 24-128 MB), network timeouts, and switches for audio intro detection, chapter reading and history. You can watch `Player2160.nowPlaying`, add toolbar buttons with `Player2160.registerAction`, change `PlayerSettings` and read `ResumeStore`.
 

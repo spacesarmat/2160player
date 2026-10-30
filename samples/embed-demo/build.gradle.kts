@@ -37,7 +37,7 @@ kotlin {
 
 dependencies {
     // Внутри этого репозитория - зависимость на модуль. Снаружи:
-    // implementation("tv.p2160:player-core:0.2.16") (см. docs/EMBEDDING.md).
+    // implementation("tv.p2160:player-core:0.2.17") (см. docs/EMBEDDING.md).
     implementation(project(":player-core"))
 
     implementation(libs.androidx.core.ktx)

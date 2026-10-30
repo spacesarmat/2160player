@@ -24,6 +24,8 @@ internal object SubtitleReload {
     class Source(delegate: MediaSource) : WrappingMediaSource(delegate) {
         override fun canUpdateMediaItem(mediaItem: MediaItem): Boolean {
             if (configurations(getMediaItem()) != configurations(mediaItem)) return false
+            // Внешнее аудио тоже не входит в сравнение URI. Иначе «Загрузить из файла…» не создаёт источник.
+            if (ExternalAudioTag.keyOf(getMediaItem()) != ExternalAudioTag.keyOf(mediaItem)) return false
             return super.canUpdateMediaItem(mediaItem)
         }
     }

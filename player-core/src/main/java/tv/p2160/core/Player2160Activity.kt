@@ -6,6 +6,7 @@ import android.app.UiModeManager
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.widget.Toast
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +14,8 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import tv.p2160.core.i18n.I18n
+import tv.p2160.core.picker.DocumentPicker
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,11 +71,22 @@ class Player2160Activity : ComponentActivity() {
     }
     private val launchFolder: (Intent) -> Unit = { pickFolder.launch(it) }
 
-    private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            // Временное право живёт, пока открыта эта Activity. Сохраняем его для следующего запуска.
-            SubtitleSupport.persistReadPermission(this, uri)
-            vm.controller?.addExternalSubtitle(uri)
+    private val pickSubtitle = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        SubtitleSupport.persistReadPermission(this, uri)
+        vm.controller?.addExternalSubtitle(uri)
+    }
+
+    private val pickAudio = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        SubtitleSupport.persistReadPermission(this, uri)
+        vm.controller?.addExternalAudio(uri)
+    }
+
+    private fun launchPick(audio: Boolean) {
+        val launch: (Intent) -> Unit = if (audio) pickAudio::launch else pickSubtitle::launch
+        DocumentPicker.open(this, audio, launch) {
+            Toast.makeText(this, I18n.get(this).current["panel.no_file_picker"], Toast.LENGTH_LONG).show()
         }
     }
 
@@ -94,7 +108,8 @@ class Player2160Activity : ComponentActivity() {
                     controller = controller,
                     settingsStore = PlayerSettings.get(this),
                     onBack = ::finishWithResult,
-                    onPickSubtitle = { pickSubtitle.launch(arrayOf("*/*")) },
+                    onPickSubtitle = { launchPick(audio = false) },
+                    onPickAudio = { launchPick(audio = true) },
                     inPictureInPicture = inPip,
                 )
             }

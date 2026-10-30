@@ -5,6 +5,10 @@ import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +32,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import tv.p2160.core.picker.DocumentPicker
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,12 +51,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -60,6 +70,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.channels.Channel
@@ -108,6 +119,7 @@ class PanelActions(
     val onSelectTrack: (TrackOption) -> Unit,
     val onDisableSubtitles: () -> Unit,
     val onAddSubtitle: () -> Unit,
+    val onAddAudio: () -> Unit = {},
     val onSubtitleDelay: (Long) -> Unit,
     val onSecondarySubtitle: (TrackOption?) -> Unit,
     val onNightMode: (Boolean) -> Unit,
@@ -172,6 +184,8 @@ fun SidePanel(
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
+    // Первая строка, не выбранная ниже сгиба: иначе открытие прокручивает список.
+    val enter = remember { FocusRequester() }
     val reveal = panelRevealIndex(panel, state, settings, resizeMode)
     val listState = remember(panel) { LazyListState(0, 0) }
     val scrollState = remember(panel) { ScrollState(0) }
@@ -181,6 +195,26 @@ fun SidePanel(
     val chrome = remember { PanelChrome(open) }
     revealNow.index = reveal
     chrome.open = open
+    var lostFocus by remember { mutableIntStateOf(0) }
+    // Пульт иначе остаётся на кнопках плеера: панель открыта, но ни одна строка не в фокусе,
+    // и OK попадает в «Перейти ко времени».
+    LaunchedEffect(open) {
+        if (!open) return@LaunchedEffect
+        // Строка субтитров собирается в том же кадре, что и панель. Один кадр, и ещё один,
+        // если реквизит первой строки ещё не прикреплён.
+        repeat(2) {
+            withFrameNanos { }
+            if (!chrome.open) return@LaunchedEffect
+            if (requestPanelFocus(enter) || requestPanelFocus(focus)) return@LaunchedEffect
+        }
+    }
+    // Выбор строки не должен оставлять фокус нигде: Назад тогда не доходит до панели.
+    LaunchedEffect(lostFocus) {
+        if (lostFocus == 0 || !chrome.open) return@LaunchedEffect
+        withFrameNanos { }
+        if (!chrome.open) return@LaunchedEffect
+        if (!requestPanelFocus(enter)) requestPanelFocus(focus)
+    }
     // Сброс только по сигналу простоя, когда панель уже за краем. Открытие его не ждёт.
     LaunchedEffect(scrollReset) {
         scrollReset.collect {
@@ -194,9 +228,11 @@ fun SidePanel(
     Box(
         Modifier
             .focusGroup()
+            .onFocusChanged { state -> if (open && !state.hasFocus) lostFocus++ }
             .focusProperties {
                 canFocus = open
                 onEnter = { if (!open) cancelFocusChange() }
+                onExit = { if (open) cancelFocusChange() }
             }
             .semantics { if (!open) hideFromAccessibility() }
             .then(modifier),
@@ -208,6 +244,7 @@ fun SidePanel(
             resizeMode = resizeMode,
             actions = actions,
             focus = focus,
+            enter = enter,
             listState = listState,
             scrollState = scrollState,
             bring = bring,
@@ -228,6 +265,7 @@ private fun PanelBody(
     resizeMode: ResizeMode,
     actions: PanelActions,
     focus: FocusRequester,
+    enter: FocusRequester,
     listState: LazyListState,
     scrollState: ScrollState,
     bring: BringIntoViewRequester,
@@ -239,7 +277,7 @@ private fun PanelBody(
     val infoReport = remember(panel, state.title, state.durationMs) {
         if (panel == Panel.INFO) actions.report() else null
     }
-    slots.populate(panel, state, settings, resizeMode, actions, focus, infoReport)
+    slots.populate(panel, state, settings, resizeMode, actions, focus, enter, infoReport)
     val lazy = panelUsesLazyList(slots.list.size)
     revealNow.lazy = lazy
     val colors = MaterialTheme.colorScheme
@@ -310,8 +348,10 @@ private fun PanelSlots.populate(
     resizeMode: ResizeMode,
     actions: PanelActions,
     focus: FocusRequester,
+    enter: FocusRequester,
     infoReport: MediaReport?,
 ) {
+            val canPickFile = DocumentPicker.canPick(LocalContext.current)
             when (panel) {
                 Panel.AUDIO -> {
                     item(key = "night") {
@@ -322,6 +362,7 @@ private fun PanelSlots.populate(
                             onClick = { actions.onNightMode(!state.nightMode) },
                             leading = Icons.Default.NightsStay,
                             switch = true,
+                            modifier = Modifier.focusRequester(enter),
                         )
                     }
                     item(key = "night-auto") {
@@ -371,7 +412,16 @@ private fun PanelSlots.populate(
                             secondary = if (!t.supported) tr("panel.unsupported_audio") else null,
                             selected = t.selected,
                             onClick = { actions.onSelectTrack(t) },
-                            modifier = if (t.selected || i == 0 && state.audioTracks.none { it.selected }) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(t.selected || (i == 0 && state.audioTracks.none { it.selected }), focus),
+                        )
+                    }
+                    if (canPickFile) item(key = "add-audio") {
+                        PanelRow(
+                            tr("panel.subs_load"),
+                            selected = false,
+                            onClick = actions.onAddAudio,
+                            leading = Icons.Default.UploadFile,
+                            modifier = focusPin(state.audioTracks.isEmpty(), focus),
                         )
                     }
                 }
@@ -380,14 +430,14 @@ private fun PanelSlots.populate(
                     val active = state.sleepRemainingMs != null || state.sleepAtEnd
                     item(key = "sleep-off") {
                         PanelRow(tr("panel.sleep_off"), selected = !active, onClick = { actions.onSleepTimer(null) },
-                            modifier = if (!active) Modifier.focusRequester(focus) else Modifier)
+                            modifier = Modifier.focusRequester(enter).then(focusPin(!active, focus)))
                     }
                     items(listOf(15, 30, 45, 60, 90, 120), key = { "sleep$it" }, contentType = { "choice" }) { minutes ->
                         PanelRow(tr("panel.sleep_minutes", minutes), selected = false, onClick = { actions.onSleepTimer(minutes) })
                     }
                     item(key = "sleep-end") {
                         PanelRow(tr("panel.sleep_end"), selected = state.sleepAtEnd, onClick = actions.onSleepAtEnd,
-                            modifier = if (state.sleepAtEnd) Modifier.focusRequester(focus) else Modifier)
+                            modifier = focusPin(state.sleepAtEnd, focus))
                     }
                     state.sleepRemainingMs?.let { left ->
                         item(key = "sleep-left") { Hint(tr("panel.sleep_left", formatTime(left))) }
@@ -402,7 +452,7 @@ private fun PanelSlots.populate(
                             leading = Icons.Default.SubtitlesOff,
                             selected = state.textDisabled || state.textTracks.none { it.selected },
                             onClick = actions.onDisableSubtitles,
-                            modifier = Modifier.focusRequester(focus),
+                            modifier = Modifier.focusRequester(enter).focusRequester(focus),
                         )
                     }
                     val primaryTracks = state.textTracks.filter { it.formatId == null || it.formatId != state.secondaryTextId }
@@ -428,7 +478,7 @@ private fun PanelSlots.populate(
                             )
                         }
                     }
-                    item(key = "add") {
+                    if (canPickFile) item(key = "add") {
                         PanelRow(tr("panel.subs_load"), selected = false, onClick = actions.onAddSubtitle, leading = Icons.Default.UploadFile)
                     }
                     item(key = "delay") {
@@ -456,14 +506,16 @@ private fun PanelSlots.populate(
                     // Не Slider: шаг 0.05 и чипы пресетов. У строки нет тени, размытия и ripple
                     // (indication = null). Дорогая первая запись уходит на кадр прогрева, не на открытие.
                     item(key = "fine") {
-                        Stepper(
-                            label = tr("panel.fine"),
-                            value = "${UiFormat.speedFine(state.speed)}×",
-                            onMinus = { actions.onSpeed(state.speed - 0.05f) },
-                            onPlus = { actions.onSpeed(state.speed + 0.05f) },
-                            onReset = { actions.onSpeed(1f) },
-                            compact = true,
-                        )
+                        Box(Modifier.focusRequester(enter).focusable()) {
+                            Stepper(
+                                label = tr("panel.fine"),
+                                value = "${UiFormat.speedFine(state.speed)}×",
+                                onMinus = { actions.onSpeed(state.speed - 0.05f) },
+                                onPlus = { actions.onSpeed(state.speed + 0.05f) },
+                                onReset = { actions.onSpeed(1f) },
+                                compact = true,
+                            )
+                        }
                     }
                     items(SPEED_PRESETS, key = { "s$it" }, contentType = { "choice" }) { s ->
                         val selected = kotlin.math.abs(state.speed - s) < 0.01f
@@ -471,7 +523,7 @@ private fun PanelSlots.populate(
                             text = if (s == 1f) tr("panel.speed_normal") else "${formatSpeed(s)}×",
                             selected = selected,
                             onClick = { actions.onSpeed(s) },
-                            modifier = if (selected) Modifier.focusRequester(focus) else Modifier,
+                            modifier = focusPin(selected, focus),
                             compact = true,
                         )
                     }
@@ -485,7 +537,7 @@ private fun PanelSlots.populate(
                             secondary = tr("panel.stats_overlay_hint"),
                             selected = settings.statsOverlay,
                             onClick = { actions.onStatsOverlay(!settings.statsOverlay) },
-                            modifier = Modifier.focusRequester(focus),
+                            modifier = Modifier.focusRequester(enter).focusRequester(focus),
                             switch = true,
                         )
                     }
@@ -500,8 +552,8 @@ private fun PanelSlots.populate(
                     }
                     report.sections.forEachIndexed { si, section ->
                         item(key = "sec$si") { Hint(section.title) }
-                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (ri, row) ->
-                            InfoRow(row, modifier = Modifier.focusable())
+                        items(section.rows.withIndex().toList(), key = { "r$si-${it.index}" }, contentType = { "info" }) { (_, row) ->
+                            InfoRow(row)
                         }
                     }
                 }
@@ -517,7 +569,7 @@ private fun PanelSlots.populate(
                             secondary = formatTime(ch.startMs),
                             selected = current,
                             onClick = { actions.onChapter(ch) },
-                            modifier = if (current) Modifier.focusRequester(focus) else Modifier,
+                            modifier = (if (i == 0) Modifier.focusRequester(enter) else Modifier).then(focusPin(current, focus)),
                         )
                     }
                     item(key = "marks-title") { Hint(tr("panel.marks")) }
@@ -534,7 +586,8 @@ private fun PanelSlots.populate(
                             tr("panel.mark_intro_start"),
                             secondary = state.marks.introStartMs?.let(::formatTime),
                             selected = false, onClick = actions.onMarkIntroStart, leading = Icons.Default.FirstPage,
-                            modifier = if (state.chapters.isEmpty()) Modifier.focusRequester(focus) else Modifier,
+                            modifier = (if (state.chapters.isEmpty()) Modifier.focusRequester(enter) else Modifier)
+                                .then(focusPin(state.chapters.isEmpty(), focus)),
                         )
                     }
                     item(key = "m-ie") {
@@ -565,7 +618,8 @@ private fun PanelSlots.populate(
                             text = resizeLabel(mode),
                             selected = resizeMode == mode,
                             onClick = { actions.onResize(mode) },
-                            modifier = if (resizeMode == mode) Modifier.focusRequester(focus) else Modifier,
+                            modifier = (if (mode == ResizeMode.FIT) Modifier.focusRequester(enter) else Modifier)
+                                .then(focusPin(resizeMode == mode, focus)),
                         )
                     }
                     if (state.videoTracks.isNotEmpty()) {
@@ -756,6 +810,23 @@ private suspend fun resetPanelScroll(lazy: Boolean, listState: LazyListState, sc
     if (lazy) listState.scrollToItem(0) else scrollState.scrollTo(0)
 }
 
+/**
+ * Реквизит фокуса остаётся на той строке, где был при первом показе.
+ * Иначе выбор дорожки перевешивает его, строка пересобирается и пульт остаётся нигде.
+ */
+@Composable
+private fun focusPin(holds: Boolean, requester: FocusRequester): Modifier {
+    val pinned = remember { holds }
+    return if (pinned) Modifier.focusRequester(requester) else Modifier
+}
+
+private fun requestPanelFocus(requester: FocusRequester): Boolean = try {
+    // false: реквизит ещё не на строке или группа фокуса закрыта. Успех вызова это не фокус.
+    requester.requestFocus()
+} catch (_: IllegalStateException) {
+    false
+}
+
 /** До скольких строк панель - обычная колонка, а не LazyColumn. */
 internal const val PANEL_EAGER_ROW_LIMIT = 16
 
@@ -829,8 +900,20 @@ private fun shiftMinutes(minute: Int, delta: Int): Int = ((minute + delta) % 144
 
 @Composable
 private fun InfoRow(row: ReportRow, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
-    Row(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (focused) colors.primary.copy(alpha = 0.28f) else Color.Transparent)
+            .then(if (focused) Modifier.border(2.dp, colors.primary, RoundedCornerShape(12.dp)) else Modifier)
+            .focusable(interactionSource = interaction)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
         Text(
             row.label,
             color = colors.onSurfaceVariant,

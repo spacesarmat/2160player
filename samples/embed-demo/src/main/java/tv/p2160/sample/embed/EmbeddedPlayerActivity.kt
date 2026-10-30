@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
@@ -32,6 +33,8 @@ import androidx.lifecycle.AndroidViewModel
 import tv.p2160.core.api.PlaybackRequest
 import tv.p2160.core.api.Player2160
 import tv.p2160.core.engine.PlayerController
+import tv.p2160.core.i18n.I18n
+import tv.p2160.core.picker.DocumentPicker
 import tv.p2160.core.subtitle.SubtitleFolders
 import tv.p2160.core.subtitle.SubtitleSupport
 import tv.p2160.core.ui.PlayerScreen
@@ -70,10 +73,22 @@ class EmbeddedPlayerActivity : ComponentActivity() {
     }
     private val launchFolder: (Intent) -> Unit = { pickFolder.launch(it) }
 
-    private val pickSubtitle = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            SubtitleSupport.persistReadPermission(this, uri)
-            vm.controller?.addExternalSubtitle(uri)
+    private val pickSubtitle = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        SubtitleSupport.persistReadPermission(this, uri)
+        vm.controller?.addExternalSubtitle(uri)
+    }
+
+    private val pickAudio = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        SubtitleSupport.persistReadPermission(this, uri)
+        vm.controller?.addExternalAudio(uri)
+    }
+
+    private fun launchPick(audio: Boolean) {
+        val launch: (Intent) -> Unit = if (audio) pickAudio::launch else pickSubtitle::launch
+        DocumentPicker.open(this, audio, launch) {
+            Toast.makeText(this, I18n.get(this).current["panel.no_file_picker"], Toast.LENGTH_LONG).show()
         }
     }
 
@@ -104,7 +119,8 @@ class EmbeddedPlayerActivity : ComponentActivity() {
                             controller = controller,
                             settingsStore = Player2160.settings(this@EmbeddedPlayerActivity),
                             onBack = ::finish,
-                            onPickSubtitle = { pickSubtitle.launch(arrayOf("*/*")) },
+                            onPickSubtitle = { launchPick(audio = false) },
+                            onPickAudio = { launchPick(audio = true) },
                             inPictureInPicture = inPip,
                         )
                     }

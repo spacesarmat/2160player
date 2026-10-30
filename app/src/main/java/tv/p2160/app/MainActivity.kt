@@ -92,11 +92,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         askNotificationsOnce()
         val store = Player2160.resumeStore(this)
+        val picking = intent.getStringExtra(EXTRA_PICK)
 
         setContent {
             val s by settings.state.collectAsStateWithLifecycle()
             val strings by i18n.strings.collectAsStateWithLifecycle()
-            var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+            var screen by rememberSaveable { mutableStateOf(if (picking != null) Screen.LOCAL else Screen.HOME) }
             // Экран настроек снимается с композиции, когда открыта справка. Состояние списка - здесь.
             val settingsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
             // Нажали уведомление «Трансляция камеры» - сразу на её экран.
@@ -115,7 +116,19 @@ class MainActivity : ComponentActivity() {
             // «Назад» на вложенном экране - к родителю; на главном - выход только по второму нажатию,
             // чтобы случайное нажатие на пульте или жест не сворачивали приложение.
             var lastHomeBack by remember { mutableStateOf(0L) }
+            fun returnPick(uri: Uri) {
+                setResult(RESULT_OK, Intent().setData(uri))
+                finish()
+            }
             BackHandler {
+                if (picking != null) {
+                    when (screen) {
+                        Screen.BROWSE, Screen.DLNA -> screen = Screen.NETWORK
+                        Screen.NETWORK -> screen = Screen.LOCAL
+                        else -> finish()
+                    }
+                    return@BackHandler
+                }
                 when (screen) {
                     Screen.HOME -> {
                         val now = android.os.SystemClock.uptimeMillis()
@@ -160,14 +173,19 @@ class MainActivity : ComponentActivity() {
                         Screen.CONTINUE -> ContinueScreen(store = store, onBack = { screen = Screen.HOME }, onPlayEntry = ::playEntry)
                         Screen.NETWORK -> NetworkScreen(
                             servers = servers,
-                            onBack = { screen = Screen.HOME },
+                            onBack = { if (picking != null) screen = Screen.LOCAL else screen = Screen.HOME },
                             onOpen = { serverId = it.id; screen = Screen.BROWSE },
                             onOpenDlna = { dlnaUdn = it.udn; screen = Screen.DLNA },
                         )
                         Screen.LOCAL -> LocalBrowserScreen(
                             store = store,
-                            onBack = { screen = Screen.HOME },
-                            onPlay = { files, index -> playLocal(files, index) },
+                            onBack = { if (picking != null) finish() else screen = Screen.HOME },
+                            onPlay = { files, index ->
+                                if (picking != null && index in files.indices) returnPick(Uri.fromFile(files[index]))
+                                else playLocal(files, index)
+                            },
+                            onPickFile = if (picking == null) null else { file -> returnPick(Uri.fromFile(file)) },
+                            onOpenNetwork = if (picking == null) null else { { screen = Screen.NETWORK } },
                             onPlayDisc = { disc, title -> play(Uri.fromFile(disc), title) },
                             onPlayRequest = { Player2160.play(this, it) },
                         )
@@ -191,7 +209,11 @@ class MainActivity : ComponentActivity() {
                                     server = server,
                                     store = store,
                                     onBack = { screen = Screen.NETWORK },
-                                    onPlay = { files, index -> playSmb(files, index) },
+                                    onPlay = { files, index ->
+                                        if (picking != null && index in files.indices) returnPick(files[index].path.toUri())
+                                        else playSmb(files, index)
+                                    },
+                                    onPickFile = if (picking == null) null else { entry -> returnPick(entry.path.toUri()) },
                                     onPlayDisc = { path -> play(path.toUri(), path.name) },
                                 )
                             }
@@ -260,6 +282,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Extra интента: открыть экран «Трансляция камеры». */
         const val EXTRA_OPEN_CAMERA = "tv.p2160.app.OPEN_CAMERA"
+        /** `audio` или `text`: вернуть выбранный файл в плеер, а не воспроизводить его. */
+        const val EXTRA_PICK = "tv.p2160.app.PICK"
     }
 
     enum class Screen { HOME, SETTINGS, NETWORK, BROWSE, DLNA, IPTV, TORRENTS, LOCAL, FAQ, CONTINUE, CAMERA }

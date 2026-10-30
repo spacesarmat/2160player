@@ -20,6 +20,7 @@
   - [3.4. Результат](#34-результат)
   - [3.5. Примеры (Kotlin, без библиотеки)](#35-примеры-kotlin-без-библиотеки)
   - [3.6. Примеры `adb shell am start`](#36-примеры-adb-shell-am-start)
+  - [3.7. Внешние дорожки](#37-внешние-дорожки)
 - [4. Подключение библиотеки](#4-подключение-библиотеки)
   - [4.1. Транзитивные зависимости](#41-транзитивные-зависимости)
   - [4.2. Манифест](#42-манифест)
@@ -218,6 +219,19 @@ Jetpack Compose и Media3/ExoPlayer. Её можно использовать т
 | `tv.p2160.extra.WATCHED` | `Boolean` | Досмотрено до конца: `STATE_ENDED` или порог `ResumeStore.isFinished` (больше 97 % или хвост короче 30 с при длительности больше 30 с). |
 | `tv.p2160.extra.POSITION` | `Long` (мс) | Последняя позиция. Если `WATCHED`, это длительность. |
 | `tv.p2160.extra.DURATION` | `Long` (мс) | Длительность. |
+| `tv.p2160.extra.AUDIO_ID` | `String` | Стабильный id выбранного звука: `id` из запроса, иначе имя, иначе `embedded:<n>`. |
+| `tv.p2160.extra.AUDIO_NAME` | `String` | Имя дорожки (например `LostFilm`). |
+| `tv.p2160.extra.AUDIO_LANGUAGE` | `String` | Язык, как его передали или как он прочитан из файла. |
+| `tv.p2160.extra.AUDIO_EXTERNAL` | `Boolean` | `true` - внешний файл, `false` - дорожка внутри видео. |
+| `tv.p2160.extra.AUDIO_EMBEDDED_INDEX` | `Int` | Номер среди встроенных аудиодорожек, с нуля. `-1`, если внешняя. |
+| `tv.p2160.extra.AUDIO_EXTERNAL_INDEX` | `Int` | Номер во внешнем списке текущего пункта. `-1`, если встроенная. |
+| `tv.p2160.extra.TEXT_OFF` | `Boolean` | Субтитры выключены. |
+| `tv.p2160.extra.TEXT_ID` | `String` | Id выбранных субтитров. Нет ключа, если субтитры выключены или дорожки не было. |
+| `tv.p2160.extra.TEXT_NAME` | `String` | Имя субтитров. |
+| `tv.p2160.extra.TEXT_LANGUAGE` | `String` | Язык субтитров. |
+| `tv.p2160.extra.TEXT_EXTERNAL` | `Boolean` | Внешний файл или встроенная дорожка. |
+| `tv.p2160.extra.TEXT_EMBEDDED_INDEX` | `Int` | Номер среди встроенных текстовых дорожек. `-1`, если внешние. |
+| `tv.p2160.extra.TEXT_EXTERNAL_INDEX` | `Int` | Номер во внешнем списке субтитров. `-1`, если встроенные. |
 
 `position` и `duration` остаются `Int`, как у MX Player. Новые ключи держат полный `Long`. Разбор только по `end_by` по-прежнему верен.
 | `extra_position` | `Long` (мс) | Позиция (VLC). |
@@ -317,6 +331,103 @@ adb shell am start -a android.intent.action.VIEW \
 
 `am start` не умеет передавать массивы `Uri` - `subs`, `subs.enable` и `video_list` доступны только
 из кода.
+
+### 3.7. Внешние дорожки
+
+Для интегратора, который открывает плеер Intent'ом (OMP, TorrServer и другие). Старые ключи
+(`subs`, `subs.name`, `subs.enable`, `subtitles_location`, `video_list`, `position`, `end_by`)
+не менялись.
+
+**Вход. Массив на каждый пункт плейлиста**
+
+| Ключ | Тип | Значение |
+|---|---|---|
+| `tv.p2160.extra.AUDIO_TRACKS` | `String[]` или одна `String` | JSON-массив внешних аудиофайлов. Элемент `i` массива строк относится к пункту `i` плейлиста (`video_list` / `tv.p2160.extra.PLAYLIST`). Одна строка относится только к стартовому пункту. |
+| `tv.p2160.extra.TEXT_TRACKS` | `String[]` или одна `String` | То же для субтитров. |
+| `tv.p2160.extra.AUDIO_SELECT` | `String` | Что включить на стартовом пункте. |
+| `tv.p2160.extra.TEXT_SELECT` | `String` | Что включить у субтитров на стартовом пункте. |
+
+Объект в JSON:
+
+| Поле | Смысл |
+|---|---|
+| `uri` | Обязателен. `http`, `https`, `file`, `content`, `smb`. |
+| `language` | ISO 639, например `rus` или `ru`. |
+| `name` | Подпись в панели, например `LostFilm`. |
+| `mime` | Необязательный MIME (`audio/eac3`, `audio/x-matroska`, `application/x-subrip`). |
+| `id` | Стабильный идентификатор студии. Если пусто, берётся `name`, затем URI. |
+| `delayMs` | Сдвиг, мс. Больше 0 - дорожка позже картинки. Прибавляется к задержке пользователя. |
+| `select` | `true` - включить эту дорожку, если нет `AUDIO_SELECT` / `TEXT_SELECT`. |
+| `charset` | Только субтитры. Явная кодировка (`windows-1251`). Пусто - автоопределение, включая cp1251. |
+
+`AUDIO_SELECT` и `TEXT_SELECT`:
+
+| Значение | Смысл |
+|---|---|
+| `id:lostfilm` | Внешняя дорожка с этим `id`. |
+| `index:0` | Внешняя дорожка по номеру в JSON, с нуля. |
+| `embedded:1` | Встроенная дорожка номер 1 (порядок в панели, без внешних). |
+| `off` | Только субтитры: выключить. |
+
+Явный select важнее истории этого файла. Внутри плейлиста выбранная студия (id, затем имя, затем язык)
+переносится на следующий пункт, если у него есть совпадение. Встроенный номер переносится как номер,
+затем как язык. `off` гасит субтитры и на следующих пунктах, пока пользователь их не включит.
+
+Рядом с файлом плеер сам ищет `.mka`, `.ac3`, `.eac3`, `.ec3`, `.dts`, `.aac`, `.m4a`, `.mp3`,
+`.flac`, `.opus`, `.ogg`, `.wav` с тем же началом имени (`Movie.ru.mka` к `Movie.mkv`, не `Movie2.mp3`),
+в этой папке и на уровень ниже в `Audio`, `Sound`, `RUS Sound` и похожих. `file://` и SMB читают каталог.
+`content://` использует тот же путь документа и то же сохранённое дерево папки, что и субтитры, и ещё один уровень папки озвучки (`Audio`, `RUS Sound`, в том числе с суффиксом вроде `[Shift]`). Пустой или чужой путь на диске не отменяет дерево, если доступ к папке уже выдан.
+HTTP без query пробует список каталога или короткий набор имён. HTTP с query (типичная ссылка TorrServer)
+соседей не угадывает: передайте дорожки в `AUDIO_TRACKS`.
+
+Файл, который не открылся, или кодек, который не запустился, даёт предупреждение и убирается из склейки. Видео при этом играет со встроенной дорожки. Строка без декодера (в том числе `audio/x-unknown`) в панели помечена как неподдерживаемая: её выбор не останавливает видео и не открывает экран ошибки, играет предыдущая или встроенная дорожка. Запомненный выбор такого файла стирается: следующее открытие без extras его не подставляет. `adb shell am start --esa` режет JSON по запятым; плеер склеивает куски обратно в массивы. Экранирование `\,`, которое оставляет `am`, читается как обычная запятая. Одна строка `--es` по-прежнему относится только к стартовому пункту.
+Режим Авто/FFmpeg и отдача AC3/E-AC3/DTS на ресивер относятся и к внешней дорожке, если формат это позволяет.
+Переключение между встроенной и внешней не начинает ролик с нуля. Перемотка, пауза и скорость общие:
+шкала времени - это видео. Более длинное аудио обрезается концом ролика: воспроизведение заканчивается вместе с видео, позиция не становится больше длительности. Более короткое не обрывает видео.
+
+В панели звука есть «Загрузить из файла…». Выбранный файл запоминается для этого видео.
+
+```kotlin
+val e1 = Uri.parse("http://127.0.0.1:8090/stream/e1.mkv?link=HASH&index=0")
+val e2 = Uri.parse("http://127.0.0.1:8090/stream/e2.mkv?link=HASH&index=1")
+val play = Intent("tv.p2160.action.PLAY")
+    .setDataAndType(e1, "video/*")
+    .setPackage("tv.p2160.player")
+    .putExtra("title", "Серия 1")
+    .putExtra("video_list", arrayOf(e1, e2))
+    .putExtra("video_list.name", arrayOf("Серия 1", "Серия 2"))
+    .putExtra(
+        "tv.p2160.extra.AUDIO_TRACKS",
+        arrayOf(
+            """[{"uri":"http://127.0.0.1:8090/stream/e1.mka","language":"rus","name":"LostFilm","id":"lostfilm","mime":"audio/x-matroska"}]""",
+            """[{"uri":"http://127.0.0.1:8090/stream/e2.mka","language":"rus","name":"LostFilm","id":"lostfilm"}]""",
+        ),
+    )
+    .putExtra(
+        "tv.p2160.extra.TEXT_TRACKS",
+        arrayOf(
+            """[{"uri":"http://127.0.0.1:8090/stream/e1.ru.srt","language":"rus","name":"Русские","id":"rus-subs","charset":"windows-1251"}]""",
+            """[{"uri":"http://127.0.0.1:8090/stream/e2.ru.srt","language":"rus","name":"Русские","id":"rus-subs"}]""",
+        ),
+    )
+    .putExtra("tv.p2160.extra.AUDIO_SELECT", "id:lostfilm")
+    .putExtra("tv.p2160.extra.TEXT_SELECT", "id:rus-subs")
+    .putExtra("return_result", true)
+```
+
+Ответ, кроме прежних `position` / `duration` / `end_by`:
+
+```kotlin
+val audioId = data.getStringExtra("tv.p2160.extra.AUDIO_ID")       // "lostfilm"
+val audioName = data.getStringExtra("tv.p2160.extra.AUDIO_NAME")   // "LostFilm"
+val audioExternal = data.getBooleanExtra("tv.p2160.extra.AUDIO_EXTERNAL", false)
+val textOff = data.getBooleanExtra("tv.p2160.extra.TEXT_OFF", false)
+val textId = data.getStringExtra("tv.p2160.extra.TEXT_ID")
+```
+
+Следующий запуск той же студии: снова `AUDIO_SELECT` = `id:` + сохранённый `AUDIO_ID`.
+Если пользователь выбрал встроенную дорожку, `AUDIO_EXTERNAL` = false и
+`AUDIO_EMBEDDED_INDEX` - номер, который можно передать как `embedded:<n>`.
 
 [↑ К оглавлению](#содержание)
 
@@ -464,6 +575,10 @@ data class MediaEntry(
     val subtitles: List<ExternalSubtitle> = emptyList(),
     val mimeType: String? = null,
     val segments: List<SkipSegment> = emptyList(),
+    val artworkUri: Uri? = null,
+    val audio: List<ExternalAudio> = emptyList(),
+    val audioSelect: String? = null,
+    val textSelect: String? = null,
 )
 ```
 
@@ -475,6 +590,8 @@ data class MediaEntry(
 | `mimeType` | Нужен для адаптивных потоков без расширения: значение, содержащее `mpegurl` → HLS, `dash` → DASH, `vnd.ms-sstr` → SmoothStreaming. Для остального игнорируется. URL с `.m3u8` распознаётся и без него. |
 | `segments` | Известные пропускаемые отрезки (имеют приоритет над найденными по главам). |
 | `artworkUri` | Обложка/постер (`http(s)`, `smb`, `file`, `content`) для «Продолжить просмотр» и истории ([§10.1](#101-обложки-tvp2160coreresumecovers)). Не задана - плеер ищет сам. |
+| `audio` | Внешние аудиофайлы. См. [§3.7](#37-внешние-дорожки). |
+| `audioSelect` / `textSelect` | Стартовый выбор: `id:`, `index:`, `embedded:`, для текста ещё `off`. |
 
 ```kotlin
 data class ExternalSubtitle(
@@ -482,6 +599,20 @@ data class ExternalSubtitle(
     val name: String? = null,
     val language: String? = null,   // ISO 639, например "ru"; по умолчанию - из имени файла (Movie.ru.srt)
     val select: Boolean = false,    // включить сразу после старта
+    val id: String? = null,         // стабильный id для результата и переноса на следующую серию
+    val mimeType: String? = null,
+    val delayMs: Long = 0,          // > 0 - субтитры позже картинки, плюс к задержке пользователя
+    val charset: String? = null,    // пусто - авто, включая windows-1251
+)
+
+data class ExternalAudio(
+    val uri: Uri,
+    val name: String? = null,
+    val language: String? = null,
+    val select: Boolean = false,
+    val id: String? = null,
+    val mimeType: String? = null,
+    val delayMs: Long = 0,
 )
 ```
 
@@ -537,6 +668,18 @@ data class PlaybackResult(
     val positionMs: Long,
     val durationMs: Long,
     val completed: Boolean, // досмотрено до конца (end_by = playback_completion)
+    val audio: SelectedTrack? = null,
+    val text: SelectedTrack? = null,
+    val textOff: Boolean = false,
+)
+
+data class SelectedTrack(
+    val id: String,
+    val name: String?,
+    val language: String?,
+    val external: Boolean,
+    val embeddedIndex: Int = -1,
+    val externalIndex: Int = -1,
 )
 ```
 
@@ -556,7 +699,7 @@ data class PlaybackResult(
 Константы: `ACTION_PLAY`, `EXTRA_TITLE`, `EXTRA_POSITION`, `EXTRA_FROM_START`, `EXTRA_HEADERS`,
 `EXTRA_RETURN_RESULT`, `EXTRA_SUBS`, `EXTRA_SUBS_NAME`, `EXTRA_SUBS_ENABLE`, `EXTRA_VLC_SUBTITLE`,
 `EXTRA_VIDEO_LIST`, `EXTRA_VIDEO_LIST_NAME`, `EXTRA_TITLES`, `EXTRA_PLAYLIST`, `EXTRA_MIME_TYPES`,
-`EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_ARTWORK`, `EXTRA_ARTWORKS`, `EXTRA_LIVE`, `RESULT_ACTION`, `RESULT_POSITION`,
+`EXTRA_SEGMENTS`, `EXTRA_INTRO_START`, `EXTRA_INTRO_END`, `EXTRA_CREDITS_START`, `EXTRA_ARTWORK`, `EXTRA_ARTWORKS`, `EXTRA_LIVE`, `EXTRA_AUDIO_TRACKS`, `EXTRA_TEXT_TRACKS`, `EXTRA_AUDIO_SELECT`, `EXTRA_TEXT_SELECT`, `RESULT_ACTION`, `RESULT_POSITION`,
 `RESULT_DURATION`, `RESULT_END_BY`, `END_BY_USER`, `END_BY_COMPLETION` - значения в таблицах [§3](#3-intent-api-без-библиотеки).
 
 ### 5.4. `Player2160Activity`
@@ -580,6 +723,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onPickSubtitle: () -> Unit,
     inPictureInPicture: Boolean = false,
+    onPickAudio: () -> Unit = {},
 )
 ```
 
@@ -589,6 +733,7 @@ fun PlayerScreen(
 | `settingsStore` | Обычно `Player2160.settings(context)`. Экран читает тему, стиль субтитров, шаг перемотки, режим масштаба и пишет изменения, сделанные пользователем в панелях. |
 | `onBack` | Кнопка «Назад» в панели и системный Back (если открыта боковая панель - сначала закрывается она). Здесь закрывают экран и/или возвращают результат. |
 | `onPickSubtitle` | Пункт «Загрузить из файла…» в панели субтитров. Откройте выбор файла (`OpenDocument`, тип `*/*`, чтобы не спрятать `.srt` с типом `application/octet-stream`) и передайте URI в `controller.addExternalSubtitle(uri)`. Для `content://` контроллер сам вызывает `takePersistableUriPermission`. |
+| `onPickAudio` | То же в панели звука. URI передайте в `controller.addExternalAudio(uri)`. По умолчанию пустое действие. |
 | `inPictureInPicture` | `true` - скрыть все элементы управления (режим PiP). |
 
 Экран занимает всё доступное место (`fillMaxSize`), рисует свою тему (`P2160Theme`) и строки
@@ -681,7 +826,8 @@ class PlayerController(
 | `fun disableSubtitles()` | Выключить субтитры. |
 | `fun setSecondarySubtitle(option: TrackOption?)` | Вторые субтитры (сверху); `null` - выключить. |
 | `fun setSubtitleDelay(ms: Long)` | Задержка субтитров. |
-| `fun addExternalSubtitle(uri: Uri, name: String? = null)` | Подключить SRT/ASS/VTT/TTML (`file`, `content`, `http(s)`, `smb`) к текущему элементу, сразу включить и запомнить для этого файла. `content://` сохраняет право чтения. Источник пересобирается: одно лишь `replaceMediaItem` с тем же URI видео дорожку не добавляет. |
+| `fun addExternalSubtitle(uri: Uri, name: String? = null)` | Подключить SRT/ASS/VTT/TTML (`file`, `content`, `http(s)`, `smb`) к текущему элементу, сразу включить и запомнить для этого файла. `content://` сохраняет право чтения. Источник пересобирается: одно лишь `replaceMediaItem` с тем же URI видео дорожку не добавляет. `charset` в `ExternalSubtitle` задаёт кодировку, иначе автоопределение. |
+| `fun addExternalAudio(uri: Uri, name: String? = null)` | Подключить внешний аудиофайл, сразу включить и запомнить. Позиция видео не сбрасывается. |
 | `fun nextChapter()` / `fun previousChapter()` / `fun seekToChapter(chapter: Chapter)` | Главы. `previousChapter()` в первые 3 с главы переходит к предыдущей. |
 | `fun skip(segment: SkipSegment)` | Пропустить отрезок; титры до конца файла при наличии следующего элемента - переход к нему. |
 | `fun markIntroStart()` / `fun markIntroEnd()` / `fun markCreditsStart()` / `fun clearMarks()` | Ручные отметки по текущей позиции (для сериала - на все серии). |
@@ -989,7 +1135,7 @@ Player2160.settings(context).update {
 | `language` | `String` = `I18n.SYSTEM` (`"system"`) | Сразу |
 | `themeId` | `String` = `"cinema"` | Сразу |
 | `subtitleStyle` | `SubtitleStyle()` | Сразу |
-| `defaultSpeed` | `Float` = `1f` | При старте элемента (если для файла не сохранена своя скорость) |
+| `defaultSpeed` | `Float` = `1f` | При старте элемента, если для файла ещё нет своей скорости. Сохранённая 1x тоже своя скорость, она не подменяется этим значением. |
 | `decoder` | `DecoderPreference` = `AUTO` | Для следующего `PlayerController` |
 | `preferredAudioLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
 | `preferredSubtitleLanguages` | `List<String>` = `["ru"]` | Для следующего `PlayerController` |
@@ -1416,7 +1562,7 @@ Player2160.play(context, PlaybackRequest.single(Uri.fromFile(File("/storage/emul
 ### 15.3. Ограничения и известные особенности
 
 - `nowPlaying` после закрытия плеера не становится `null` (остаётся снимок с `isPlaying = false`).
-- Внешние субтитры из Intent и `Intent.type`, а также отрезки из Intent, относятся только к стартовому элементу. Через `PlaybackRequest` субтитры и отрезки задаются у каждого `MediaEntry`. Автопоиск (`Movie.srt`, `Movie.ru.srt`, но не `Movie2.srt`) идёт, если в запросе у пункта нет своего списка субтитров: для `file://` и `smb://` читается каталог, для `content://` - путь на диске или уже сохранённое дерево SAF. Если каталог прочитать нельзя, `Player2160Activity` один раз открывает выбор папки (на Android 8+ сразу в родительской, с подсказкой; на ТВ это системный экран с пульта). Отказ и чужая папка запоминаются, повторно плеер не спрашивает. Выбранный в плеере файл и `subs` / `subtitles_location` сохраняются в `ResumeStore` и подключаются снова без этих extras. Явный внешний файл важнее сохранённого «субтитры выключены» и привычки сериала. Кодировка приводится к UTF-8 (BOM и UTF-16 тоже), MIME берётся из расширения, а не из `application/octet-stream`.
+- Старые субтитры из Intent (`subs`, `subtitles_location`) и `Intent.type`, а также отрезки, относятся только к стартовому элементу. `tv.p2160.extra.AUDIO_TRACKS` и `TEXT_TRACKS` задаются на каждый пункт. Автопоиск субтитров идёт, если в запросе у пункта нет своего списка: `file://`, `smb://` и `content://` (путь или дерево SAF, один вопрос папки). Автопоиск озвучки идёт и когда список уже передан, дубли по URI не добавляются. HTTP с query соседей не угадывает. Неоткрытый внешний звук или неподдерживаемый кодек не останавливает видео. Подробности - [§3.7](#37-внешние-дорожки).
 - Результат возвращается только при закрытии через «Назад»; позиция в результате MX-формата - `Int`.
 - Свою тему в `PlayerScreen` не добавить: `PlayerThemes.all` - фиксированный список.
 - `decoder`, предпочтительные языки, `autoPlayNext` применяются к следующему `PlayerController`.
@@ -1973,17 +2119,27 @@ lifecycleScope.launch {
 }
 ```
 
-`prepare` выбирает файл (остальные перестают качаться) и возвращает `PlaybackRequest`: все видео
-торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт - с выбранного; субтитры из
-торрента подключаются к видео с тем же базовым именем. Чтение блокируется, пока нужные куски не
-скачаны; приоритеты кусков выставляются по позициям всех открытых потоков (перемотка работает).
+`prepare` выбирает файл (остальные перестают качаться) и возвращает `PlaybackRequest`: видео
+торрента плейлистом в естественном порядке (`S01E2` < `S01E10`), старт - с выбранного. Папки
+`Bonus`, `Extras`, `Sample`, `Trailer`, `Menu`, `OP&ED`, `NCOP`, `NCED`, `OP`, `ED` и `Creditless` в этот плейлист не входят. Папка, в которой лежат только аудиофайлы (`Eladiel/*.mka`), даёт имя студии. Файл из такой папки,
+открытый явно, играется один. Озвучка и субтитры из этого же торрента подключаются внешними
+дорожками: то же начало имени (`Movie.ru.mka`), номер серии (`S01E01`, `1x01`) и папки
+`RUS Sound/<студия>`, `Audio`, `Sound`, `Rus Subs`, `Subs`. Имя с хвостом в квадратных скобках
+тоже подходит (`RUS Subs [Shift]`). Имя студии берётся из папки (`LostFilm`), язык - из имени
+файла или папки. У каждой серии свои файлы, чужая серия не подмешивается. Выбранная студия
+переносится на следующую серию плейлиста так же, как при `tv.p2160.extra.AUDIO_SELECT`. Эти файлы
+начинают качаться вместе с роликом. Дорожка `torrent://` не проверяется заранее: пока кусков нет,
+плеер ждёт, а не снимает её с предупреждением. Чтение блокируется, пока нужные куски не скачаны;
+приоритеты кусков выставляются по позициям всех открытых потоков (перемотка работает). Когда
+плеер закрыл последний поток, закачка останавливается примерно через 15 с (`PLAYBACK_IDLE_MS`),
+если раздачу не включили вручную. Без единого открытия остаётся прежняя пауза через 10 мин.
 
 `class TorrentEngine` (синглтон, `get(context)`):
 
 | Член | Описание |
 |---|---|
 | `companion fun install(context: Context)` | Зарегистрировать схему `torrent://` (вызывать в `Application.onCreate`). |
-| `companion const val SCHEME = "torrent"`, `IDLE_PAUSE_MS` (10 мин) | Торрент без чтения дольше `IDLE_PAUSE_MS` ставится на паузу. |
+| `companion const val SCHEME = "torrent"`, `IDLE_PAUSE_MS` (10 мин), `PLAYBACK_IDLE_MS` (15 с) | Торрент, который плеер так и не открыл, ставится на паузу через `IDLE_PAUSE_MS`. После закрытия последнего потока чтения пауза через `PLAYBACK_IDLE_MS`. Раздача, включённая вручную, сама не останавливается. |
 | `suspend fun addMagnet(text: String): String` | magnet или голый хеш (40 hex / 32 base32) → id. `IllegalArgumentException`, если не magnet. |
 | `suspend fun addTorrentBytes(bytes: ByteArray): String` / `suspend fun addFromUri(uri: Uri): String` | `.torrent` (`IllegalArgumentException`, если не bencode); `addFromUri` понимает `magnet:`, `content://`, `file://`, `http(s)://` (файл до 16 МБ). |
 | `suspend fun awaitFiles(id: String, timeoutMs: Long): List<TorrentFile>?` | Ждать метаданные. |
@@ -2272,7 +2428,7 @@ Basic-авторизация RTSP идёт открытым текстом - з�
 | `tv.p2160.core.api` | `Player2160`, `Player2160.PlayContract` | [§5.2](#52-player2160---фасад) |
 | | `PlayerConfig` | [§15.6](#156-настройка-движка-playerconfig) |
 | | `DeviceProfile` | [§15.7](#157-производительность-буфер-частота-экрана-статистика) |
-| | `PlaybackRequest`, `MediaEntry`, `ExternalSubtitle`, `PlaybackResult` | [§5.1](#51-модель-запроса) |
+| | `PlaybackRequest`, `MediaEntry`, `ExternalSubtitle`, `ExternalAudio`, `SelectedTrack`, `PlaybackResult` | [§5.1](#51-модель-запроса) |
 | | `IntentApi` | [§3](#3-intent-api-без-библиотеки), [§5.3](#53-intentapi---разбор-и-сборка-intentов) |
 | | `NowPlaying`, `PlayerAction`, `PlayerExtensions` | [§7](#7-наблюдение-за-воспроизведением), [§8](#8-свои-кнопки-в-плеере-playeraction) |
 | | `LiveGuide` | [§20.1](#201-режим-эфира) |

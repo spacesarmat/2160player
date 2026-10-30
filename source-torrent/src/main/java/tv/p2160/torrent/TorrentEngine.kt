@@ -14,9 +14,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.libtorrent4j.TorrentInfo
+import tv.p2160.core.api.ExternalAudio
 import tv.p2160.core.api.ExternalSubtitle
 import tv.p2160.core.api.MediaEntry
 import tv.p2160.core.api.PlaybackRequest
+import tv.p2160.core.audio.AudioSupport
 import tv.p2160.core.source.RoutingDataSource
 import tv.p2160.core.subtitle.SubtitleSupport
 import java.io.File
@@ -136,7 +138,11 @@ class TorrentEngine private constructor(context: Context) {
                 session.ids().forEach { id ->
                     val stats = session.stats(id) ?: return@forEach
                     // Неиспользуемые торренты ставим на паузу - не качать фильм целиком «в фоне».
-                    if (!stats.paused && stats.readers == 0 && !session.keepActive(id) && now - session.lastActiveAt(id) > IDLE_PAUSE_MS) session.pause(id)
+                    if (!stats.paused && stats.readers == 0 && !session.keepActive(id)) {
+                        val closedAt = session.readersIdleSince(id)
+                        val idle = if (closedAt > 0L) now - closedAt > PLAYBACK_IDLE_MS else now - session.lastActiveAt(id) > IDLE_PAUSE_MS
+                        if (idle) session.pause(id)
+                    }
                     if (n % 15 == 0 && stats.hasMetadata) store.update(id) { it.copy(bytesDone = stats.wantedDone) }
                 }
                 applyRules()
@@ -331,8 +337,8 @@ class TorrentEngine private constructor(context: Context) {
 
     /**
      * Выбирает файл для просмотра (остальные файлы перестают качаться) и возвращает запрос
-     * для плеера: все видео торрента плейлистом, старт - с выбранного; субтитры из торрента
-     * подключаются к видео с тем же базовым именем.
+     * для плеера: все видео торрента плейлистом, старт - с выбранного. Озвучка и субтитры
+     * той же серии из этого торрента подключаются внешними дорожками.
      */
     suspend fun prepare(id: String, fileIndex: Int): PlaybackRequest = withContext(Dispatchers.IO) {
         if (!ensureActive(id)) throw IOException("unknown torrent $id")
@@ -341,6 +347,8 @@ class TorrentEngine private constructor(context: Context) {
         val chosen = files.firstOrNull { it.index == fileIndex } ?: throw IOException("bad file index")
         cleanup(exceptId = id)
         session.select(id, fileIndex, exclusive = true)
+        val videos = if (chosen.isVideo) TorrentSidecars.mainVideoCount(files) else 1
+        session.include(id, TorrentSidecars.match(chosen, files, videos).map { it.file.index })
         val now = System.currentTimeMillis()
         store.update(id) { it.copy(lastOpenedAt = now, primaryFile = fileIndex, hasData = true) }
         refresh()
@@ -348,19 +356,44 @@ class TorrentEngine private constructor(context: Context) {
     }
 
     private fun buildRequest(id: String, files: List<TorrentFile>, chosen: TorrentFile): PlaybackRequest {
-        val subtitles = files.filter { it.isSubtitle }
-        val playlist = if (chosen.isVideo) files.filter { it.isVideo }.sortedWith(NaturalOrder) else listOf(chosen)
-        val videos = playlist.size
-        val items = playlist.map { f ->
-            val base = f.name.substringBeforeLast('.').lowercase()
-            val subs = subtitles.filter { s -> videos == 1 || SubtitleSupport.matchesStem(base, s.name.lowercase()) }
+        val playlist = if (chosen.isVideo) {
+            TorrentSidecars.episodeFiles(files, chosen).sortedWith(NaturalOrder)
+        } else {
+            listOf(chosen)
+        }
+        val videos = if (chosen.isVideo) TorrentSidecars.mainVideoCount(files) else 1
+        val items = playlist.map { file ->
+            val hits = if (file.isVideo) TorrentSidecars.match(file, files, videos) else emptyList()
             MediaEntry(
-                uri = uriFor(id, f),
-                title = f.name.substringBeforeLast('.'),
-                subtitles = subs.map { s -> ExternalSubtitle(uriFor(id, s), s.name) },
+                uri = uriFor(id, file),
+                title = file.name.substringBeforeLast('.'),
+                subtitles = hits.filter { !it.audio }.map { hit -> subtitleEntry(id, hit) },
+                audio = hits.filter { it.audio }.map { hit -> audioEntry(id, hit) },
             )
         }
         return PlaybackRequest(items, startIndex = playlist.indexOf(chosen).coerceAtLeast(0))
+    }
+
+    private fun audioEntry(id: String, hit: TorrentSidecars.Hit): ExternalAudio {
+        val label = hit.studio ?: hit.file.name.substringBeforeLast('.')
+        return ExternalAudio(
+            uri = uriFor(id, hit.file),
+            name = label,
+            language = hit.language,
+            id = hit.trackId,
+            mimeType = AudioSupport.mimeForName(hit.file.name),
+        )
+    }
+
+    private fun subtitleEntry(id: String, hit: TorrentSidecars.Hit): ExternalSubtitle {
+        val label = hit.studio ?: hit.file.name.substringBeforeLast('.')
+        return ExternalSubtitle(
+            uri = uriFor(id, hit.file),
+            name = label,
+            language = hit.language,
+            id = hit.trackId,
+            mimeType = SubtitleSupport.mimeForName(hit.file.name),
+        )
     }
 
     /** Открывает поток для [TorrentDataSource]. Блокирующий, с потока загрузчика плеера. */
@@ -463,8 +496,10 @@ class TorrentEngine private constructor(context: Context) {
         const val SCHEME = "torrent"
         private const val MAX_TORRENT_BYTES = 16 * 1024 * 1024
         private const val METADATA_TIMEOUT_MS = 120_000L
-        /** Торрент без чтения дольше этого времени ставится на паузу. */
+        /** Торрент без единого открытия плеером дольше этого времени ставится на паузу. */
         const val IDLE_PAUSE_MS = 10 * 60 * 1000L
+        /** После закрытия плеера (последний поток чтения закрыт) закачка останавливается через этот срок. Раздача по кнопке «Продолжить» не трогается. */
+        const val PLAYBACK_IDLE_MS = 15_000L
 
         @Volatile private var instance: TorrentEngine? = null
 

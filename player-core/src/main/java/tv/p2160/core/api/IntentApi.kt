@@ -43,6 +43,37 @@ object IntentApi {
     /** Boolean: плейлист - телеканалы (см. [PlaybackRequest.liveTv]). */
     const val EXTRA_LIVE = "tv.p2160.extra.LIVE"
 
+    /**
+     * Внешнее аудио по пунктам плейлиста. `String[]`: элемент `i` - JSON-массив дорожек пункта `i`.
+     * Одна строка `String` относится только к стартовому пункту.
+     * Поля объекта: `uri`, `language`, `name`, `mime`, `id`, `delayMs`, `select`.
+     */
+    const val EXTRA_AUDIO_TRACKS = "tv.p2160.extra.AUDIO_TRACKS"
+    /** Внешние субтитры в том же формате, плюс поле `charset`. */
+    const val EXTRA_TEXT_TRACKS = "tv.p2160.extra.TEXT_TRACKS"
+    /**
+     * Что включить на стартовом пункте: `id:<id>`, `index:<n>` (внешний список), `embedded:<n>`.
+     * Для субтитров ещё `off`.
+     */
+    const val EXTRA_AUDIO_SELECT = "tv.p2160.extra.AUDIO_SELECT"
+    const val EXTRA_TEXT_SELECT = "tv.p2160.extra.TEXT_SELECT"
+
+    /** Выбранный звук в результате. */
+    const val EXTRA_RESULT_AUDIO_ID = "tv.p2160.extra.AUDIO_ID"
+    const val EXTRA_RESULT_AUDIO_NAME = "tv.p2160.extra.AUDIO_NAME"
+    const val EXTRA_RESULT_AUDIO_LANGUAGE = "tv.p2160.extra.AUDIO_LANGUAGE"
+    const val EXTRA_RESULT_AUDIO_EXTERNAL = "tv.p2160.extra.AUDIO_EXTERNAL"
+    const val EXTRA_RESULT_AUDIO_EMBEDDED_INDEX = "tv.p2160.extra.AUDIO_EMBEDDED_INDEX"
+    const val EXTRA_RESULT_AUDIO_EXTERNAL_INDEX = "tv.p2160.extra.AUDIO_EXTERNAL_INDEX"
+    /** Выбранные субтитры в результате. [EXTRA_RESULT_TEXT_OFF] = true - субтитры выключены. */
+    const val EXTRA_RESULT_TEXT_ID = "tv.p2160.extra.TEXT_ID"
+    const val EXTRA_RESULT_TEXT_NAME = "tv.p2160.extra.TEXT_NAME"
+    const val EXTRA_RESULT_TEXT_LANGUAGE = "tv.p2160.extra.TEXT_LANGUAGE"
+    const val EXTRA_RESULT_TEXT_EXTERNAL = "tv.p2160.extra.TEXT_EXTERNAL"
+    const val EXTRA_RESULT_TEXT_EMBEDDED_INDEX = "tv.p2160.extra.TEXT_EMBEDDED_INDEX"
+    const val EXTRA_RESULT_TEXT_EXTERNAL_INDEX = "tv.p2160.extra.TEXT_EXTERNAL_INDEX"
+    const val EXTRA_RESULT_TEXT_OFF = "tv.p2160.extra.TEXT_OFF"
+
     /** Результат в формате MX Player. */
     const val RESULT_ACTION = "com.mxtech.intent.result.VIEW"
     const val RESULT_POSITION = "position"
@@ -73,17 +104,26 @@ object IntentApi {
         val uris = playlist.ifEmpty { listOf(data) }
         val startIndex = uris.indexOf(data).coerceAtLeast(0)
 
-        val subtitles = parseSubtitles(intent)
+        val legacySubtitles = parseSubtitles(intent)
+        val textPayload = readTrackPayload(intent, EXTRA_TEXT_TRACKS)
+        val audioPayload = readTrackPayload(intent, EXTRA_AUDIO_TRACKS)
+        val audioSelect = intent.getStringExtra(EXTRA_AUDIO_SELECT)?.takeIf { it.isNotBlank() }
+        val textSelect = intent.getStringExtra(EXTRA_TEXT_SELECT)?.takeIf { it.isNotBlank() }
         val items = uris.mapIndexed { i, uri ->
+            val fromJson = textAt(textPayload, i, startIndex, uris.size)
+            val subtitles = if (i == startIndex) mergeSubtitles(fromJson, legacySubtitles) else fromJson
             MediaEntry(
                 uri = uri,
                 title = playlistNames?.getOrNull(i)
                     ?: if (i == startIndex) intent.getStringExtra(EXTRA_TITLE) else null,
-                subtitles = if (i == startIndex) subtitles else emptyList(),
+                subtitles = subtitles,
                 mimeType = mimeTypes?.getOrNull(i) ?: if (i == startIndex) intent.type else null,
                 segments = if (i == startIndex) parseSegments(intent) else emptyList(),
                 artworkUri = (artworks?.getOrNull(i)?.takeIf { it.isNotBlank() }
                     ?: if (i == startIndex) intent.getStringExtra(EXTRA_ARTWORK) else null)?.let(Uri::parse),
+                audio = audioAt(audioPayload, i, startIndex, uris.size),
+                audioSelect = if (i == startIndex) audioSelect else null,
+                textSelect = if (i == startIndex) textSelect else null,
             )
         }
 
@@ -122,6 +162,14 @@ object IntentApi {
             putExtra(EXTRA_SUBS_NAME, current.subtitles.map { it.name.orEmpty() }.toTypedArray())
             putExtra(EXTRA_SUBS_ENABLE, current.subtitles.filter { it.select }.map { it.uri }.toTypedArray())
         }
+        if (request.items.any { it.audio.isNotEmpty() }) {
+            putExtra(EXTRA_AUDIO_TRACKS, request.items.map { ExternalTrackJson.audioJson(it.audio) }.toTypedArray())
+        }
+        if (request.items.any { it.subtitles.isNotEmpty() }) {
+            putExtra(EXTRA_TEXT_TRACKS, request.items.map { ExternalTrackJson.subtitleJson(it.subtitles) }.toTypedArray())
+        }
+        current.audioSelect?.let { putExtra(EXTRA_AUDIO_SELECT, it) }
+        current.textSelect?.let { putExtra(EXTRA_TEXT_SELECT, it) }
         if (current.segments.isNotEmpty()) putExtra(EXTRA_SEGMENTS, SkipSegment.formatList(current.segments))
         current.artworkUri?.let { putExtra(EXTRA_ARTWORK, it.toString()) }
         if (request.items.size > 1 && request.items.any { it.artworkUri != null }) {
@@ -144,6 +192,9 @@ object IntentApi {
         putExtra(EXTRA_RESULT_DURATION, result.durationMs)
         putExtra(VLC_RESULT_POSITION, result.positionMs)
         putExtra(VLC_RESULT_DURATION, result.durationMs)
+        putSelected(this, result.audio, audio = true)
+        putExtra(EXTRA_RESULT_TEXT_OFF, result.textOff)
+        if (!result.textOff) putSelected(this, result.text, audio = false)
     }
 
     fun parseResult(resultCode: Int, intent: Intent?): PlaybackResult? {
@@ -156,6 +207,70 @@ object IntentApi {
             durationMs = duration,
             completed = intent.getBooleanExtra(EXTRA_WATCHED, false) ||
                 intent.getStringExtra(RESULT_END_BY) == END_BY_COMPLETION,
+            audio = readSelected(intent, audio = true),
+            text = readSelected(intent, audio = false),
+            textOff = intent.getBooleanExtra(EXTRA_RESULT_TEXT_OFF, false),
+        )
+    }
+
+    private data class TrackPayload(val perIndex: Boolean, val raw: List<String>)
+
+    private fun readTrackPayload(intent: Intent, key: String): TrackPayload? {
+        intent.getStringArrayExtra(key)?.let { parts ->
+            val arrays = ExternalTrackJson.reassemble(parts.toList()) ?: return TrackPayload(perIndex = true, raw = parts.toList())
+            // Один склеенный JSON (так --esa режет одну строку) относится к стартовому пункту.
+            // Несколько целых массивов: элемент i к пункту i.
+            val perIndex = arrays.size > 1 || parts.all { ExternalTrackJson.isJsonArray(it) }
+            return TrackPayload(perIndex = perIndex, raw = arrays)
+        }
+        intent.getStringExtra(key)?.let { return TrackPayload(perIndex = false, raw = listOf(it)) }
+        return null
+    }
+
+    private fun audioAt(payload: TrackPayload?, index: Int, start: Int, count: Int): List<ExternalAudio> {
+        val raw = rawAt(payload, index, start, count) ?: return emptyList()
+        return ExternalTrackJson.parseAudio(raw)
+    }
+
+    private fun textAt(payload: TrackPayload?, index: Int, start: Int, count: Int): List<ExternalSubtitle> {
+        val raw = rawAt(payload, index, start, count) ?: return emptyList()
+        return ExternalTrackJson.parseSubtitles(raw)
+    }
+
+    private fun rawAt(payload: TrackPayload?, index: Int, start: Int, count: Int): String? {
+        if (payload == null || count <= 0) return null
+        return if (payload.perIndex) payload.raw.getOrNull(index) else payload.raw.firstOrNull()?.takeIf { index == start }
+    }
+
+    /** JSON-список плюс старые `subs` / `subtitles_location`. Одинаковый URI не дублируется. */
+    private fun mergeSubtitles(primary: List<ExternalSubtitle>, legacy: List<ExternalSubtitle>): List<ExternalSubtitle> {
+        if (legacy.isEmpty()) return primary
+        val out = primary.toMutableList()
+        for (sub in legacy) if (out.none { it.uri == sub.uri }) out += sub
+        return out
+    }
+
+    private fun putSelected(intent: Intent, track: SelectedTrack?, audio: Boolean) {
+        if (track == null) return
+        intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_ID else EXTRA_RESULT_TEXT_ID, track.id)
+        track.name?.let { intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_NAME else EXTRA_RESULT_TEXT_NAME, it) }
+        track.language?.let { intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_LANGUAGE else EXTRA_RESULT_TEXT_LANGUAGE, it) }
+        intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_EXTERNAL else EXTRA_RESULT_TEXT_EXTERNAL, track.external)
+        intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_EMBEDDED_INDEX else EXTRA_RESULT_TEXT_EMBEDDED_INDEX, track.embeddedIndex)
+        intent.putExtra(if (audio) EXTRA_RESULT_AUDIO_EXTERNAL_INDEX else EXTRA_RESULT_TEXT_EXTERNAL_INDEX, track.externalIndex)
+    }
+
+    private fun readSelected(intent: Intent, audio: Boolean): SelectedTrack? {
+        val idKey = if (audio) EXTRA_RESULT_AUDIO_ID else EXTRA_RESULT_TEXT_ID
+        if (!intent.hasExtra(idKey)) return null
+        val id = intent.getStringExtra(idKey)?.takeIf { it.isNotBlank() } ?: return null
+        return SelectedTrack(
+            id = id,
+            name = intent.getStringExtra(if (audio) EXTRA_RESULT_AUDIO_NAME else EXTRA_RESULT_TEXT_NAME)?.takeIf { it.isNotBlank() },
+            language = intent.getStringExtra(if (audio) EXTRA_RESULT_AUDIO_LANGUAGE else EXTRA_RESULT_TEXT_LANGUAGE)?.takeIf { it.isNotBlank() },
+            external = intent.getBooleanExtra(if (audio) EXTRA_RESULT_AUDIO_EXTERNAL else EXTRA_RESULT_TEXT_EXTERNAL, false),
+            embeddedIndex = intent.getIntExtra(if (audio) EXTRA_RESULT_AUDIO_EMBEDDED_INDEX else EXTRA_RESULT_TEXT_EMBEDDED_INDEX, -1),
+            externalIndex = intent.getIntExtra(if (audio) EXTRA_RESULT_AUDIO_EXTERNAL_INDEX else EXTRA_RESULT_TEXT_EXTERNAL_INDEX, -1),
         )
     }
 

@@ -253,6 +253,10 @@ fun LocalBrowserScreen(
     onPlay: (files: List<File>, index: Int) -> Unit,
     onPlayDisc: (disc: File, title: String) -> Unit,
     onPlayRequest: (PlaybackRequest) -> Unit,
+    /** Выбор одного файла (звук или субтитры) вместо воспроизведения. */
+    onPickFile: ((File) -> Unit)? = null,
+    /** Кнопка «Сеть» в режиме выбора файла. */
+    onOpenNetwork: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val strings = LocalStrings.current
@@ -325,12 +329,15 @@ fun LocalBrowserScreen(
     val rootLabel = currentRoot?.name ?: tr("local.internal")
 
     Column(Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             FocusCard(onClick = ::goUp, modifier = Modifier.size(48.dp), background = Color.Transparent) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 val path = dirPath
                 Text(
                     when {
@@ -344,6 +351,9 @@ fun LocalBrowserScreen(
                     path ?: tr("local.subtitle"),
                     style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (onOpenNetwork != null) {
+                TextButton(onClick = onOpenNetwork) { Text(tr("app.network")) }
             }
         }
 
@@ -489,11 +499,14 @@ fun LocalBrowserScreen(
                                             LocalKind.PLAYLIST -> playPlaylist(file)
                                             // Субтитры подхватываются плеером сами - открываем видео, к которому они относятся.
                                             LocalKind.SUBTITLE -> {
-                                                val video = playable.firstOrNull { localKind(it) == LocalKind.VIDEO && file.name.startsWith(it.nameWithoutExtension) }
-                                                if (video != null) onPlay(playable, playable.indexOf(video))
-                                                else Toast.makeText(context, strings["local.subtitle_no_video"], Toast.LENGTH_SHORT).show()
+                                                if (onPickFile != null) onPickFile(file)
+                                                else {
+                                                    val video = playable.firstOrNull { localKind(it) == LocalKind.VIDEO && file.name.startsWith(it.nameWithoutExtension) }
+                                                    if (video != null) onPlay(playable, playable.indexOf(video))
+                                                    else Toast.makeText(context, strings["local.subtitle_no_video"], Toast.LENGTH_SHORT).show()
+                                                }
                                             }
-                                            else -> onPlay(playable, playable.indexOf(file))
+                                            else -> if (onPickFile != null) onPickFile(file) else onPlay(playable, playable.indexOf(file))
                                         }
                                     },
                                 )

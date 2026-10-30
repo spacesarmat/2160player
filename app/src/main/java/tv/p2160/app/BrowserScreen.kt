@@ -70,6 +70,11 @@ const val ISO_EXTENSION = "iso"
 
 enum class EntryKind { FOLDER, VIDEO, AUDIO, DISC, OTHER }
 
+private fun subtitleExtension(name: String): Boolean {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return ext in setOf("srt", "ass", "ssa", "vtt", "ttml", "sub")
+}
+
 fun SmbEntry.kind(): EntryKind {
     if (isDirectory) return if (name.equals("BDMV", true)) EntryKind.DISC else EntryKind.FOLDER
     return when (name.substringAfterLast('.', "").lowercase()) {
@@ -91,6 +96,8 @@ fun BrowserScreen(
     onBack: () -> Unit,
     onPlay: (files: List<SmbEntry>, index: Int) -> Unit,
     onPlayDisc: (SmbPath) -> Unit,
+    /** Выбор одного файла для плеера, включая субтитры. null - обычное воспроизведение. */
+    onPickFile: ((SmbEntry) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val root = remember(server) { SmbPath(server.host, server.share, server.path) }
@@ -109,7 +116,10 @@ fun BrowserScreen(
         withContext(Dispatchers.IO) {
             runCatching { SmbConnections.list(context, dir, server) }
         }.onSuccess { list ->
-            entries = list.filter { it.kind() != EntryKind.OTHER }
+            entries = list.filter { entry ->
+                val kind = entry.kind()
+                kind != EntryKind.OTHER || (onPickFile != null && subtitleExtension(entry.name))
+            }
         }.onFailure { error = it.message ?: it.javaClass.simpleName }
     }
 
@@ -191,7 +201,7 @@ fun BrowserScreen(
                                 when (kind) {
                                     EntryKind.FOLDER -> dir = entry.path
                                     EntryKind.DISC -> onPlayDisc(if (entry.isDirectory) dir else entry.path)
-                                    else -> onPlay(playable, playable.indexOf(entry))
+                                    else -> if (onPickFile != null) onPickFile(entry) else onPlay(playable, playable.indexOf(entry))
                                 }
                             },
                         )

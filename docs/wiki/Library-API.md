@@ -28,11 +28,15 @@
 - `startPositionMs = null` - продолжить с истории, если `autoResume` и `PlayerConfig.restoreFromHistory`.
 - `0` - с начала. `liveTv = true` - без истории и без перемотки, каналы по кругу.
 
-`MediaEntry(uri, title, subtitles, mimeType, segments, artworkUri)`.
+`MediaEntry(uri, title, subtitles, mimeType, segments, artworkUri, audio, audioSelect, textSelect)`.
 
-`ExternalSubtitle(uri, name, language, select)`.
+`ExternalSubtitle(uri, name, language, select, id, mimeType, delayMs, charset)`.
 
-`PlaybackResult(uri, positionMs, durationMs, completed)`.
+`ExternalAudio(uri, name, language, select, id, mimeType, delayMs)`.
+
+`PlaybackResult(uri, positionMs, durationMs, completed, audio, text, textOff)`.
+
+`SelectedTrack(id, name, language, external, embeddedIndex, externalIndex)`.
 
 `PlaybackRequest` с пустым `items` до плеера не доходит: `IntentApi.parse` без `data` возвращает `null`.
 
@@ -46,13 +50,14 @@
 | `seekTo` / `seekBy` | позиция в `[0, duration]` |
 | `next` / `previous` | в эфире - канал по кругу; иначе следующий файл или в начало, если прошло > 5 с |
 | `switchChannel(delta)` | только `liveTv` и если элементов ≥ 2 |
-| `setSpeed(speed)` | 0,25…4. Это скорость, которая пишется в историю |
+| `setSpeed(speed)` | 0,25…4, включая 1x. Это скорость, которая сразу пишется в историю этого файла |
 | `select` / `disableSubtitles` / `autoVideo` | дорожки; ручной выбор запоминается, если `smartTracks` |
 | `setNightMode` / `setAudioDelay` / `setSubtitleDelay` | сразу и в настройки (задержка звука - глобально, ±2000 мс) |
 | `setSleepTimer(minutes)` | `null` или `≤ 0` - выкл. Иначе затихание 8 с и пауза |
 | `setSleepAtEndOfItem` / `cancelSleepTimer` | пауза в конце текущего файла |
 | `skip(segment)` | если длительность ещё неизвестна - ничего не делает и не помечает отрезок пропущенным |
 | `addExternalSubtitle` | пересобирает источник (тот же URI видео сам по себе дорожку не добавляет), позицию сохраняет, файл запоминает. Рядом с `content://` папка спрашивается не чаще одного раза |
+| `addExternalAudio` | то же для внешнего аудиофайла: дорожка включается, позиция не сбрасывается |
 | `release()` | сохранить прогресс, снять слушатели, отпустить плеер. Повторный вызов не предусмотрен |
 
 `state: StateFlow<PlayerUiState>` - положение, дорожки, ошибка (`error` - уже локализованная строка),
@@ -65,7 +70,7 @@
 ## `PlayerScreen`
 
 ```kotlin
-PlayerScreen(controller, settingsStore, onBack, onPickSubtitle, inPictureInPicture = false)
+PlayerScreen(controller, settingsStore, onBack, onPickSubtitle, inPictureInPicture = false, onPickAudio = {})
 ```
 
 Сама читает `settings.keepScreenOn` и состояние плеера. Хост отвечает за жизненный цикл контроллера

@@ -33,7 +33,7 @@ val launcher = registerForActivityResult(ActivityResultContracts.StartActivityFo
 launcher.launch(intent)
 ```
 
-Все ключи и форматы - [API.md §3](API.md#3-intent-api-без-библиотеки). Дальше - путь с библиотекой.
+Все ключи и форматы - [API.md §3](API.md#3-intent-api-без-библиотеки). Внешние дорожки на каждый пункт плейлиста и выбранная студия в результате - [API.md §3.7](API.md#37-внешние-дорожки). Дальше - путь с библиотекой.
 
 ---
 

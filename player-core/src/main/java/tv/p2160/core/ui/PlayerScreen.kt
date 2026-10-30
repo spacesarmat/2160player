@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
@@ -79,6 +80,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -136,6 +138,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onPickSubtitle: () -> Unit,
     inPictureInPicture: Boolean = false,
+    onPickAudio: () -> Unit = {},
 ) {
     // Позиция, буфер и остаток таймера сна тикают сами по себе. Боковая панель читает снимок без них.
     // У derivedStateOf без политики любое новое значение - изменение, поэтому сравнение по полям
@@ -169,12 +172,14 @@ fun PlayerScreen(
     // PanelActions нестабилен, а strong skipping сравнивает такие параметры по ссылке.
     // Один экземпляр на сеанс; меняющиеся лямбды - через rememberUpdatedState.
     val pickSubtitle = rememberUpdatedState(onPickSubtitle)
+    val pickAudio = rememberUpdatedState(onPickAudio)
     val resizeAction = rememberUpdatedState<(ResizeMode) -> Unit> { changeResize(it) }
     val panelActions = remember(controller, settingsStore) {
         PanelActions(
             onSelectTrack = controller::select,
             onDisableSubtitles = controller::disableSubtitles,
             onAddSubtitle = { panelState.value = null; pickSubtitle.value() },
+            onAddAudio = { panelState.value = null; pickAudio.value() },
             onSubtitleDelay = controller::setSubtitleDelay,
             onSecondarySubtitle = controller::setSecondarySubtitle,
             onNightMode = controller::setNightMode,
@@ -230,6 +235,21 @@ fun PlayerScreen(
 
     fun poke() { interaction++ }
     fun show() { controlsVisible.value = true; poke() }
+
+    // Назад на пульте при открытой панели часто съедается фокусом и до BackHandler не доходит.
+    // Перехват на окне закрывает любую боковую панель первым нажатием и не оставляет фокус нигде.
+    ClosePanelOnBack(
+        panelOpen = { panelState.value != null },
+        blockingOverlay = {
+            state.error != null || state.endDim || state.endCountdownSec != null ||
+                state.resumePromptMs != null || state.showEndScreen || goToDialog ||
+                upNextArmed || inPictureInPicture
+        },
+        onClose = {
+            panelState.value = null
+            show()
+        },
+    )
 
     // Автоскрытие и фокус. Панель читается здесь, не в PlayerScreen.
     ControlsAutoHide(
@@ -338,7 +358,10 @@ fun PlayerScreen(
                 upNextArmed = false
                 runCatching { rootFocus.requestFocus() }
             }
-            panelState.value != null -> panelState.value = null
+            panelState.value != null -> {
+                panelState.value = null
+                show()
+            }
             else -> onBack()
         }
     }
@@ -468,6 +491,17 @@ fun PlayerScreen(
                         Key.MediaPrevious -> { if (state.playlistSize > 1) controller.previous() else controller.previousChapter(); return@onPreviewKeyEvent true }
                         Key.ChannelUp -> if (state.liveTv) { zap(1); return@onPreviewKeyEvent true }
                         Key.ChannelDown -> if (state.liveTv) { zap(-1); return@onPreviewKeyEvent true }
+                    }
+                    if (backClosesOpenPanel(
+                            panelOpen = panelState.value != null,
+                            blockingOverlay = inPictureInPicture || goToDialog,
+                        ) && (e.key == Key.Back || e.key == Key.Escape)
+                    ) {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            panelState.value = null
+                            show()
+                        }
+                        return@onPreviewKeyEvent true
                     }
                     if (panelState.value != null || inPictureInPicture || goToDialog) return@onPreviewKeyEvent false
                     // Цифры: одна - проценты, несколько - время.
@@ -910,6 +944,49 @@ private fun Modifier.consumeTouches(): Modifier = pointerInput(Unit) {
     detectTapGestures(onPress = { tryAwaitRelease() })
 }
 
+/**
+ * Назад закрывает боковую панель, пока поверх неё нет другого слоя
+ * (ошибка, вопрос «Продолжить», конец, отсчёт, переход по времени, карточка «Далее», PiP).
+ */
+internal fun backClosesOpenPanel(panelOpen: Boolean, blockingOverlay: Boolean): Boolean =
+    panelOpen && !blockingOverlay
+
+/**
+ * Назад перехватывается до фокуса Compose. Иначе после OK на строке пульт прыгает
+ * между панелью и пустым фокусом, а панель не закрывается.
+ * [panelOpen] читается в момент клавиши, не в композиции: чтение панели пересобирает весь плеер.
+ */
+@Composable
+private fun ClosePanelOnBack(
+    panelOpen: () -> Boolean,
+    blockingOverlay: () -> Boolean,
+    onClose: () -> Unit,
+) {
+    val openNow = rememberUpdatedState(panelOpen)
+    val blockedNow = rememberUpdatedState(blockingOverlay)
+    val closeNow = rememberUpdatedState(onClose)
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = view.context.findActivity()?.window ?: return@DisposableEffect onDispose {}
+        val previous = window.callback
+        val wrapper = object : android.view.Window.Callback by previous {
+            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                val back = event.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                    event.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE
+                if (back && backClosesOpenPanel(openNow.value(), blockedNow.value())) {
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) closeNow.value()
+                    return true
+                }
+                return previous.dispatchKeyEvent(event)
+            }
+        }
+        window.callback = wrapper
+        onDispose {
+            if (window.callback === wrapper) window.callback = previous
+        }
+    }
+}
+
 /** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
 @Composable
 private fun ControlsAutoHide(
@@ -947,7 +1024,8 @@ private fun PanelBoundControls(
     content: @Composable (panelOpen: Boolean) -> Unit,
 ) {
     val panelOpen = panelReservesSpace(panelState.value != null)
-    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus) {
+    // Пока панель открыта, стрелки не уходят на кнопки за ней.
+    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus && !panelOpen) {
         content(panelOpen)
     }
 }

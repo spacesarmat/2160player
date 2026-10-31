@@ -1,5 +1,7 @@
 package tv.p2160.core.engine
 
+import androidx.media3.common.Player
+import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.EndAction
 
 /** Старое «автоматически следующий» без нового ключа настроек. */
@@ -75,6 +77,59 @@ internal fun resumeOfferMs(
 /** «Остаться на кадре» и отменённый отсчёт нельзя держать на OLED бесконечно. */
 internal fun endShouldDim(holdingEnd: Boolean, live: Boolean, heldForMs: Long): Boolean =
     holdingEnd && !live && heldForMs >= END_DIM_MS
+
+/**
+ * Конец файла настоящий, только если длительность известна и позиция в допуске [ResumeStore.isFinished].
+ * Обрыв медленного потока (1:20 из 24:01) сюда не входит. Конец ролика, у которого внешний звук длиннее
+ * видео, входит: склейка обрезает звук длительностью видео, и позиция доходит до неё.
+ */
+internal fun verifiedNaturalEnd(positionMs: Long, durationMs: Long): Boolean =
+    ResumeStore.isFinished(positionMs, durationMs)
+
+/**
+ * Позиция в результате. Длительность подставляется после проверенного конца
+ * или по прежнему порогу «почти досмотрел». Ранний обрыв позицию не подменяет.
+ */
+internal data class PlaybackReport(val positionMs: Long, val durationMs: Long, val completed: Boolean)
+
+internal fun playbackReport(positionMs: Long, durationMs: Long, verifiedEnd: Boolean): PlaybackReport {
+    val duration = durationMs.coerceAtLeast(0)
+    val position = positionMs.coerceAtLeast(0)
+    if (verifiedEnd) return PlaybackReport(duration, duration, completed = true)
+    val watched = ResumeStore.isFinished(position, duration)
+    return PlaybackReport(if (watched) duration else position, duration, completed = watched)
+}
+
+/** Сколько раз повторять источник, если плеер сообщил конец далеко от длительности. Дальше - обычная ошибка. */
+internal const val PREMATURE_END_RETRIES = 3
+
+internal fun prematureEndExhausted(attempts: Int): Boolean = attempts >= PREMATURE_END_RETRIES
+
+/**
+ * Заставка при паузе копится только на паузе пользователя: `playWhenReady == false` и [Player.STATE_READY].
+ * Буферизация (`playWhenReady` ещё true, состояние BUFFERING) и конец файла сюда не входят.
+ */
+internal fun countsAsUserPause(playWhenReady: Boolean, playbackState: Int): Boolean =
+    !playWhenReady && playbackState == Player.STATE_READY
+
+/** Пора ли затемнять кадр заставкой паузы. Буферизация, конец и выключенная настройка - нет. */
+internal fun pauseSaverShouldDim(
+    playWhenReady: Boolean,
+    playbackState: Int,
+    oledSaver: Boolean,
+    heldForMs: Long,
+    blocked: Boolean,
+): Boolean {
+    if (!oledSaver || blocked || !countsAsUserPause(playWhenReady, playbackState)) return false
+    return endShouldDim(holdingEnd = true, live = false, heldForMs = heldForMs)
+}
+
+/**
+ * Кнопки видны, а фокус не на них (ни на чём или на корне экрана).
+ * OK в этом случае - пауза, а не «+10 с» и не следующая глава.
+ */
+internal fun playPauseWhenUnfocused(controlsVisible: Boolean, rootFocused: Boolean, windowHasFocus: Boolean): Boolean =
+    controlsVisible && (rootFocused || !windowHasFocus)
 
 internal const val END_COUNTDOWN_SEC = 5
 internal const val END_IDLE_CLOSE_MS = 12_000L

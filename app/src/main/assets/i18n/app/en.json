@@ -67,7 +67,7 @@
   "settings.end_stay": "Stay on frame",
   "settings.end_repeat": "Repeat",
   "settings.oled_saver": "Screensaver while paused",
-  "settings.oled_saver_hint": "After 3 minutes paused, the picture goes dark. Any key brings it back",
+  "settings.oled_saver_hint": "After 3 minutes on pause, dims the picture and shows Pause. Buffering does not count",
   "browse.watched": "Watched",
   "settings.audio_lang": "Preferred audio languages",
   "settings.langs_hint": "Language codes separated by commas, e.g. ru, en",

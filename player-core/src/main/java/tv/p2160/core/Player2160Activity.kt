@@ -10,6 +10,7 @@ import android.widget.Toast
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -187,9 +188,17 @@ class Player2160Activity : ComponentActivity() {
     private fun finishWithResult() {
         val controller = vm.controller
         val request = vm.request
-        if (controller != null && (request?.returnResult == true || callingActivity != null)) {
+        val playback = controller?.result()
+        if (playback != null) {
+            val endBy = if (playback.completed) IntentApi.END_BY_COMPLETION else IntentApi.END_BY_USER
+            Log.i(
+                "Player2160",
+                "finishWithResult end_by=$endBy position=${playback.positionMs} duration=${playback.durationMs}",
+            )
+        }
+        if (controller != null && playback != null && (request?.returnResult == true || callingActivity != null)) {
             controller.saveProgress()
-            setResult(RESULT_OK, IntentApi.buildResult(controller.result()))
+            setResult(RESULT_OK, IntentApi.buildResult(playback))
         }
         finish()
     }

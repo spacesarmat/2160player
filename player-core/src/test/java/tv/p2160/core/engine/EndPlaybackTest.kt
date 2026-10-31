@@ -1,5 +1,6 @@
 package tv.p2160.core.engine
 
+import androidx.media3.common.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -81,5 +82,88 @@ class EndPlaybackTest {
         assertTrue(endShouldDim(holdingEnd = true, live = false, heldForMs = END_DIM_MS))
         assertFalse(endShouldDim(holdingEnd = true, live = true, heldForMs = END_DIM_MS))
         assertFalse(endShouldDim(holdingEnd = false, live = false, heldForMs = END_DIM_MS))
+    }
+
+    @Test
+    fun naturalEndNeedsAKnownDurationInsideTheFinishTolerance() {
+        val episode = 24 * 60_000L + 1_000L
+        assertFalse(verifiedNaturalEnd(80_000L, episode))
+        assertFalse(verifiedNaturalEnd(80_000L, 0L))
+        assertFalse(verifiedNaturalEnd(80_000L, -1L))
+        assertFalse(verifiedNaturalEnd(0L, episode))
+        assertTrue(verifiedNaturalEnd(episode, episode))
+        assertTrue(verifiedNaturalEnd(episode - 20_000L, episode))
+        assertFalse(verifiedNaturalEnd(episode / 2, episode))
+        // Короткое видео и более длинный внешний звук: конец - это длительность видео.
+        assertTrue(verifiedNaturalEnd(5_000L, 5_000L))
+        assertTrue(verifiedNaturalEnd(20_000L, 20_000L))
+    }
+
+    @Test
+    fun earlyStreamEndDoesNotPromoteTheResultPosition() {
+        val episode = 24 * 60_000L + 1_000L
+        val early = playbackReport(80_000L, episode, verifiedEnd = false)
+        assertEquals(80_000L, early.positionMs)
+        assertEquals(episode, early.durationMs)
+        assertFalse(early.completed)
+        val done = playbackReport(episode - 1_000L, episode, verifiedEnd = true)
+        assertEquals(episode, done.positionMs)
+        assertTrue(done.completed)
+        val near = playbackReport(episode - 10_000L, episode, verifiedEnd = false)
+        assertEquals(episode, near.positionMs)
+        assertTrue(near.completed)
+        assertFalse(prematureEndExhausted(0))
+        assertFalse(prematureEndExhausted(PREMATURE_END_RETRIES - 1))
+        assertTrue(prematureEndExhausted(PREMATURE_END_RETRIES))
+    }
+
+    @Test
+    fun pauseSaverCountsARealPauseAndNotBuffering() {
+        assertFalse(countsAsUserPause(playWhenReady = true, playbackState = Player.STATE_BUFFERING))
+        assertFalse(countsAsUserPause(playWhenReady = true, playbackState = Player.STATE_READY))
+        assertFalse(countsAsUserPause(playWhenReady = false, playbackState = Player.STATE_BUFFERING))
+        assertFalse(countsAsUserPause(playWhenReady = false, playbackState = Player.STATE_ENDED))
+        assertFalse(countsAsUserPause(playWhenReady = false, playbackState = Player.STATE_IDLE))
+        assertTrue(countsAsUserPause(playWhenReady = false, playbackState = Player.STATE_READY))
+        assertFalse(
+            pauseSaverShouldDim(
+                playWhenReady = true,
+                playbackState = Player.STATE_BUFFERING,
+                oledSaver = true,
+                heldForMs = END_DIM_MS,
+                blocked = false,
+            ),
+        )
+        assertFalse(
+            pauseSaverShouldDim(
+                playWhenReady = false,
+                playbackState = Player.STATE_READY,
+                oledSaver = true,
+                heldForMs = END_DIM_MS - 1,
+                blocked = false,
+            ),
+        )
+        assertFalse(
+            pauseSaverShouldDim(
+                playWhenReady = false,
+                playbackState = Player.STATE_READY,
+                oledSaver = false,
+                heldForMs = END_DIM_MS,
+                blocked = false,
+            ),
+        )
+        assertTrue(
+            pauseSaverShouldDim(
+                playWhenReady = false,
+                playbackState = Player.STATE_READY,
+                oledSaver = true,
+                heldForMs = END_DIM_MS,
+                blocked = false,
+            ),
+        )
+        assertTrue(playPauseWhenUnfocused(controlsVisible = true, rootFocused = false, windowHasFocus = false))
+        assertTrue(playPauseWhenUnfocused(controlsVisible = true, rootFocused = true, windowHasFocus = true))
+        assertFalse(playPauseWhenUnfocused(controlsVisible = true, rootFocused = false, windowHasFocus = true))
+        assertFalse(playPauseWhenUnfocused(controlsVisible = false, rootFocused = false, windowHasFocus = false))
     }
 }

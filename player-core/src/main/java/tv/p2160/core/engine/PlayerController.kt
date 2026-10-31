@@ -203,6 +203,8 @@ class PlayerController(
     private var sawVideoFrame = false
     /** Позиция, на которой кадры ещё шли. Часы после обрыва данных уходят дальше. */
     private var lastGoodPositionMs = -1L
+    /** Позиция для результата и истории, пока на экране ошибка обрыва. -1 - брать часы плеера. */
+    private var pinnedPositionMs = -1L
     private var restoringText = false
     /** После перемотки кадры не считаются зависанием. */
     private var seekQuietUntil = 0L
@@ -496,6 +498,8 @@ class PlayerController(
             cancelIntro()
             introAttempts = IntroStart.MAX_ATTEMPTS
             // Ошибка контейнера или декодера не должна открывать следующий пункт плейлиста.
+            // Пауза сразу: иначе под диалогом часы продолжают идти.
+            player.pause()
             holdFailedItem = player.currentMediaItemIndex
             _state.update { it.copy(error = describe(error)) }
         }
@@ -560,6 +564,7 @@ class PlayerController(
         resetPrematureEnd()
         sawVideoFrame = false
         lastGoodPositionMs = -1L
+        pinnedPositionMs = -1L
         detectedFrameRate = -1f
         frameRateProbe.reset()
         audioDiscontinuityCount = 0
@@ -1372,15 +1377,19 @@ class PlayerController(
     fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
 
     fun retry() {
+        val resumeAt = pinnedPositionMs
         introItem = -1
         introAttempts = 0
         stallRecoveries = 0
         stallStopped = false
         holdFailedItem = -1
+        pinnedPositionMs = -1L
         resetPrematureEnd()
         resetWatchdogClock()
         _state.update { it.copy(error = null) }
+        val index = player.currentMediaItemIndex
         player.prepare()
+        if (resumeAt >= 0) player.seekTo(index, resumeAt)
         player.play()
     }
 
@@ -1522,11 +1531,18 @@ class PlayerController(
     private fun recoverPrematureEnd(position: Long) {
         if (stallStopped) return
         if (prematureEndExhausted(prematureEndRetries)) {
+            val hold = stallErrorPositionMs(position, lastGoodPositionMs)
             prematureEndRecovering = false
             completed = false
             naturalEndHandled = false
+            stallStopped = true
+            pinnedPositionMs = hold
             holdFailedItem = player.currentMediaItemIndex
+            // Под диалогом часы больше не идут и не затирают последнюю позицию с кадрами.
+            player.pause()
+            player.seekTo(player.currentMediaItemIndex, hold)
             _state.update { it.copy(error = i18n.current["error.premature_end"]) }
+            saveProgress()
             return
         }
         prematureEndRetries++
@@ -1644,7 +1660,7 @@ class PlayerController(
         val rawDuration = player.duration
         val duration = if (rawDuration == C.TIME_UNSET) 0L else rawDuration.coerceAtLeast(0)
         // completed ставится только после проверенного конца. Иначе позиция не подменяется длительностью.
-        val report = playbackReport(player.currentPosition, duration, verifiedEnd = completed)
+        val report = playbackReport(playbackPosition(), duration, verifiedEnd = completed)
         val selected = selectedTracks()
         return PlaybackResult(
             uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
@@ -1661,9 +1677,13 @@ class PlayerController(
         val duration = player.duration
         // Длительность неизвестна (поток ещё не открылся) - иначе в истории окажется «0:00».
         if (duration == C.TIME_UNSET || duration <= 0) return
-        val position = if (completed) duration else player.currentPosition
+        val position = if (completed) duration else playbackPosition()
         saveFor(player.currentMediaItemIndex, position, duration)
     }
+
+    /** После обрыва это последняя позиция с кадрами, а не ушедшие вперёд часы. */
+    private fun playbackPosition(): Long =
+        if (pinnedPositionMs >= 0) pinnedPositionMs else player.currentPosition.coerceAtLeast(0)
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
         if (!config.saveHistory || request.liveTv) return
@@ -2471,6 +2491,7 @@ class PlayerController(
         val name = declared.compression.ifBlank { declared.handler }.ifBlank { "AVI" }
         Log.i(PLAYER_LOG_TAG, "AVI declares video $name but no video track was exposed")
         val message = i18n.current.format("error.avi_video_missing", name)
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
@@ -2488,6 +2509,7 @@ class PlayerController(
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
         ) ?: return
         val message = i18n.current.format(videoErrorKey(mime), codecLabel(mime))
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
@@ -2557,7 +2579,11 @@ class PlayerController(
         val midFile = stallIsMidPlayback(sawVideoFrame, player.currentPosition, player.bufferedPosition)
         if (midFile) {
             val position = stallReopenPositionMs(lastGoodPositionMs, player.currentPosition)
-            Log.i(PLAYER_LOG_TAG, "mid-file stall reopen position=$position lastGood=$lastGoodPositionMs buffered=${player.bufferedPosition}")
+            val action = stallRecoveryAction(prematureEndRetries)
+            Log.i(
+                PLAYER_LOG_TAG,
+                "mid-file stall $action position=$position lastGood=$lastGoodPositionMs buffered=${player.bufferedPosition}",
+            )
             resetWatchdogClock()
             recoverPrematureEnd(position)
             return
@@ -2643,6 +2669,7 @@ class PlayerController(
         val mime = player.videoFormat?.sampleMimeType ?: player.audioFormat?.sampleMimeType
         Log.i(PLAYER_LOG_TAG, "playback stalled audio=${decoders.audio} video=${decoders.video} mime=$mime")
         val message = i18n.current.format("error.stalled", codecLabel(mime))
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()

@@ -161,6 +161,17 @@ internal fun stallIsMidPlayback(sawFrame: Boolean, positionMs: Long, bufferedPos
 internal fun stallReopenPositionMs(lastGoodMs: Long, currentMs: Long): Long =
     if (lastGoodMs >= 0) lastGoodMs else currentMs.coerceAtLeast(0)
 
+/**
+ * Позиция в результате и в истории, когда попытки обрыва кончились.
+ * Часы к этому моменту уже ушли дальше последнего кадра.
+ */
+internal fun stallErrorPositionMs(clockMs: Long, lastGoodMs: Long): Long =
+    if (lastGoodMs >= 0) lastGoodMs else clockMs.coerceAtLeast(0)
+
+/** Строка лога сторожа: повтор или конец попыток. Повтор в лог не пишется, если его не будет. */
+internal fun stallRecoveryAction(attempts: Int): String =
+    if (prematureEndExhausted(attempts)) "exhausted" else "reopen"
+
 internal const val END_COUNTDOWN_SEC = 5
 internal const val END_IDLE_CLOSE_MS = 12_000L
 internal const val END_DIM_MS = 3 * 60_000L

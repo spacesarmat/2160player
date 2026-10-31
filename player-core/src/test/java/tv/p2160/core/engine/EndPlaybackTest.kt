@@ -189,6 +189,19 @@ class EndPlaybackTest {
     }
 
     @Test
+    fun stallErrorKeepsTheLastRenderedPosition() {
+        val episode = 24 * 60_000L + 1_000L
+        assertEquals(48_424L, stallErrorPositionMs(120_096L, 48_424L))
+        assertEquals(48_074L, stallErrorPositionMs(103_002L, 48_074L))
+        assertEquals(120_096L, stallErrorPositionMs(120_096L, -1L))
+        val report = playbackReport(stallErrorPositionMs(120_096L, 48_424L), episode, verifiedEnd = false)
+        assertEquals(48_424L, report.positionMs)
+        assertFalse(report.completed)
+        assertEquals("reopen", stallRecoveryAction(PREMATURE_END_RETRIES - 1))
+        assertEquals("exhausted", stallRecoveryAction(PREMATURE_END_RETRIES))
+    }
+
+    @Test
     fun stallAfterFramesOrPastTheBufferReopens() {
         assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 0, bufferedPositionMs = 0))
         assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 8_000, bufferedPositionMs = 20_000))

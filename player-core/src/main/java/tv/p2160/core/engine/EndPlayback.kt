@@ -103,7 +103,23 @@ internal fun playbackReport(positionMs: Long, durationMs: Long, verifiedEnd: Boo
 /** Сколько раз повторять источник, если плеер сообщил конец далеко от длительности. Дальше - обычная ошибка. */
 internal const val PREMATURE_END_RETRIES = 3
 
+/** На сколько кадры должны уйти дальше точки обрыва, чтобы счётчик повторов начался заново. Часы не считаются. */
+internal const val STALL_RECOVERY_PROGRESS_MS = 10_000L
+
 internal fun prematureEndExhausted(attempts: Int): Boolean = attempts >= PREMATURE_END_RETRIES
+
+/**
+ * Повтор удался, только если последняя позиция с кадрами ушла на [STALL_RECOVERY_PROGRESS_MS]
+ * дальше точки обрыва. Идущие часы при замершей картинке сюда не входят.
+ */
+internal fun prematureRetryRecovered(retryFromMs: Long, lastGoodMs: Long): Boolean {
+    if (retryFromMs < 0 || lastGoodMs < 0) return false
+    return lastGoodMs >= retryFromMs + STALL_RECOVERY_PROGRESS_MS
+}
+
+/** Счётчик перед следующим решением. Кадры дальше обрыва обнуляют его, часы без кадров - нет. */
+internal fun stallAttemptAfterProgress(attempts: Int, retryFromMs: Long, lastGoodMs: Long): Int =
+    if (attempts > 0 && prematureRetryRecovered(retryFromMs, lastGoodMs)) 0 else attempts
 
 /**
  * Заставка при паузе копится только на паузе пользователя: `playWhenReady == false` и [Player.STATE_READY].

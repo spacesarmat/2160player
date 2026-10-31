@@ -1441,7 +1441,7 @@ class PlayerController(
     private var endHoldSince = 0L
     /** Пункт, на котором показана ошибка. Автопереход к следующему отменяется. */
     private var holdFailedItem = -1
-    /** Повторы, если конец пришёл далеко от длительности. Сбрасываются, когда воспроизведение ушло вперёд. */
+    /** Повторы обрыва. Сбрасываются, когда кадры ушли на 10 с дальше точки обрыва, не когда идут часы. */
     private var prematureEndRetries = 0
     private var prematureRetryPosition = -1L
     private var prematureEndRecovering = false
@@ -1463,6 +1463,7 @@ class PlayerController(
      * Иначе это обрыв потока: повтор с текущей позиции, без «досмотрено», без автоперехода и без закрытия.
      */
     private fun onNaturalEnd(reason: String) {
+        if (stallStopped) return
         if (prematureEndRecovering) {
             prematureEndAgain = true
             return
@@ -1519,6 +1520,7 @@ class PlayerController(
      * После [PREMATURE_END_RETRIES] попыток - обычный диалог ошибки. Досмотренным файл не помечается.
      */
     private fun recoverPrematureEnd(position: Long) {
+        if (stallStopped) return
         if (prematureEndExhausted(prematureEndRetries)) {
             prematureEndRecovering = false
             completed = false
@@ -1544,7 +1546,7 @@ class PlayerController(
                     (prematureEndAgain || player.playbackState == Player.STATE_ENDED)
                 prematureEndAgain = false
                 prematureEndRecovering = false
-                if (isActive && stuck && _state.value.error == null && !naturalEndHandled &&
+                if (isActive && !stallStopped && stuck && _state.value.error == null && !naturalEndHandled &&
                     player.currentMediaItemIndex == index
                 ) {
                     onNaturalEnd(if (player.playbackState == Player.STATE_ENDED) "state_ended" else "end_of_media_item")
@@ -1553,11 +1555,20 @@ class PlayerController(
         }
     }
 
-    /** Удачный повтор: позиция ушла вперёд от места обрыва, счётчик попыток снова полный. */
-    private fun notePrematureRecovery(position: Long) {
+    /**
+     * Удачный повтор: кадры ушли на 10 с дальше точки обрыва.
+     * Часы при замершей картинке счётчик не обнуляют, иначе обрыв на одном месте крутится без ошибки.
+     */
+    private fun notePrematureRecovery() {
         val from = prematureRetryPosition
         if (prematureEndRetries == 0 || from < 0) return
-        if (player.isPlaying && position >= from + 10_000L) resetPrematureEnd()
+        if (stallAttemptAfterProgress(prematureEndRetries, from, lastGoodPositionMs) == 0) resetPrematureEnd()
+    }
+
+    /** Закрытие: сторож и отложенный повтор больше не открывают источник. */
+    fun stopWatchdog() {
+        stallStopped = true
+        resetPrematureEnd()
     }
 
     private fun isLivePlayback(): Boolean {
@@ -1696,6 +1707,7 @@ class PlayerController(
         saveProgress()
         publishNowPlaying()
         PlayerExtensions.publish(PlayerExtensions.nowPlaying.value?.copy(isPlaying = false))
+        stopWatchdog()
         progressJob?.cancel()
         analyzeJob?.cancel()
         introJob?.cancel()
@@ -1806,7 +1818,7 @@ class PlayerController(
         val video = p.videoSize
         val rawPosition = p.currentPosition.coerceAtLeast(0)
         val position = if (duration > 0 && rawPosition > duration) duration else rawPosition
-        notePrematureRecovery(rawPosition)
+        notePrematureRecovery()
         if (duration > 0 && rawPosition >= duration) finishAtVideoEnd()
         val builtSegments = if (duration > 0) currentSegments(duration) else emptyList()
         val skipMode = settings.current.skipMode

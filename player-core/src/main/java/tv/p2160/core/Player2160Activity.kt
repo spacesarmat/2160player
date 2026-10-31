@@ -187,6 +187,7 @@ class Player2160Activity : ComponentActivity() {
 
     private fun finishWithResult() {
         val controller = vm.controller
+        controller?.stopWatchdog()
         val request = vm.request
         val playback = controller?.result()
         if (playback != null) {

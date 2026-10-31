@@ -168,6 +168,27 @@ class EndPlaybackTest {
     }
 
     @Test
+    fun clockWithoutFramesDoesNotResetStallRetries() {
+        val breakAt = 48_424L
+        assertFalse(prematureRetryRecovered(breakAt, breakAt))
+        assertFalse(prematureRetryRecovered(48_074L, 48_074L))
+        assertEquals(1, stallAttemptAfterProgress(1, breakAt, breakAt))
+        assertEquals(2, stallAttemptAfterProgress(2, 48_074L, 48_074L))
+        var attempts = 0
+        var reopens = 0
+        repeat(12) {
+            attempts = stallAttemptAfterProgress(attempts, breakAt, breakAt)
+            if (prematureEndExhausted(attempts)) return@repeat
+            reopens++
+            attempts++
+        }
+        assertEquals(PREMATURE_END_RETRIES, reopens)
+        assertTrue(prematureEndExhausted(attempts))
+        assertEquals(0, stallAttemptAfterProgress(2, breakAt, breakAt + STALL_RECOVERY_PROGRESS_MS))
+        assertEquals(2, stallAttemptAfterProgress(2, breakAt, breakAt + STALL_RECOVERY_PROGRESS_MS - 1))
+    }
+
+    @Test
     fun stallAfterFramesOrPastTheBufferReopens() {
         assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 0, bufferedPositionMs = 0))
         assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 8_000, bufferedPositionMs = 20_000))

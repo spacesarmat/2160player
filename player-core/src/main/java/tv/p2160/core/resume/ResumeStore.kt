@@ -386,16 +386,19 @@ class ResumeStore private constructor(context: Context) :
         }
 
         /**
-         * Фильм досмотрен, если пройдено больше 97 % или (у ролика длиннее 30 с) осталось меньше 30 с.
-         * Порог в 30 с не применяется к коротким роликам: иначе они считались бы досмотренными с первой секунды
-         * и не попадали бы в «Продолжить просмотр».
+         * Фильм досмотрен, если пройдено больше 97 % или (у ролика от 10 минут) осталось меньше 30 с.
+         * Хвост в 30 с не применяется к более коротким роликам: иначе пауза на 18 с из 40 с
+         * считалась бы концом, а совсем короткие - досмотренными с первой секунды.
          */
         fun isFinished(positionMs: Long, durationMs: Long): Boolean {
             if (durationMs <= 0 || positionMs <= 0) return false
             val remaining = durationMs - positionMs
-            val nearEndByTime = durationMs > 30_000L && remaining < 30_000L
+            val nearEndByTime = durationMs >= FINISH_TAIL_MIN_DURATION_MS && remaining < FINISH_TAIL_MS
             val nearEndByRatio = positionMs > durationMs * 0.97
             return nearEndByTime || nearEndByRatio
         }
+
+        private const val FINISH_TAIL_MS = 30_000L
+        private const val FINISH_TAIL_MIN_DURATION_MS = 10 * 60_000L
     }
 }

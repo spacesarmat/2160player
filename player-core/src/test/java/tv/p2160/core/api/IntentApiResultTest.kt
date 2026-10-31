@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +26,17 @@ class IntentApiResultTest {
         val parsed = IntentApi.parseResult(Activity.RESULT_OK, intent)
         assertEquals(1_394_000L, parsed?.positionMs)
         assertTrue(parsed?.completed == true)
+        assertNull(intent.data)
+        assertNull(parsed?.uri)
+    }
+
+    @Test
+    fun httpResultKeepsTheDataUri() {
+        val uri = Uri.parse("http://192.168.1.191:8090/stream/episode.mkv")
+        val intent = IntentApi.buildResult(PlaybackResult(uri, 18_400, 40_000, false))
+        assertEquals(uri, intent.data)
+        assertEquals(IntentApi.END_BY_USER, intent.getStringExtra(IntentApi.RESULT_END_BY))
+        assertFalse(intent.getBooleanExtra(IntentApi.EXTRA_WATCHED, true))
     }
 
     @Test

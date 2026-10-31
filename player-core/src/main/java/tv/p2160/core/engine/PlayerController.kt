@@ -199,6 +199,11 @@ class PlayerController(
     private var watchdogArmedAt = 0L
     private var watchdogBaseFrames = -1
     private var watchdogBaseInput = -1
+    /** Был хотя бы один кадр текущего пункта. Обрыв после этого - не «воспроизведение не началось». */
+    private var sawVideoFrame = false
+    /** Позиция, на которой кадры ещё шли. Часы после обрыва данных уходят дальше. */
+    private var lastGoodPositionMs = -1L
+    private var restoringText = false
     /** После перемотки кадры не считаются зависанием. */
     private var seekQuietUntil = 0L
     private var videoCounters: DecoderCounters? = null
@@ -252,6 +257,11 @@ class PlayerController(
     /** Предпочтение, которое переносится на следующую серию этого запуска. */
     private var sessionAudio: CarryHint? = null
     private var sessionText: CarryHint? = null
+    /**
+     * Явный или внешний текст. Смена звука не должна его снимать:
+     * селектор иначе подбирает субтитры под новый язык озвучки.
+     */
+    private var heldText: CarryHint? = null
     private var pendingAudioHint: CarryHint? = null
     private var pendingTextHint: CarryHint? = null
     private var itemsOpened = 0
@@ -320,6 +330,9 @@ class PlayerController(
         }
 
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            sawVideoFrame = true
+            val position = player.currentPosition
+            if (position >= 0) lastGoodPositionMs = position
             Log.i(PLAYER_LOG_TAG, "first video frame audio=${decoders.audio} video=${decoders.video}")
         }
 
@@ -373,6 +386,7 @@ class PlayerController(
 
         override fun onTracksChanged(tracks: Tracks) {
             applyPendingSelections(tracks)
+            restoreHeldText(tracks)
             noteUnsupportedExternal(tracks)
             if (recordChoiceOnTracks) {
                 recordChoiceOnTracks = false
@@ -544,6 +558,8 @@ class PlayerController(
         naturalEndHandled = false
         endHoldSince = 0L
         resetPrematureEnd()
+        sawVideoFrame = false
+        lastGoodPositionMs = -1L
         detectedFrameRate = -1f
         frameRateProbe.reset()
         audioDiscontinuityCount = 0
@@ -594,6 +610,7 @@ class PlayerController(
         if (pendingTextHint == null) {
             subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
         }
+        heldText = heldTextFor(index, pendingTextHint)
 
         val offer = if (opening) {
             resumeOfferMs(
@@ -1035,6 +1052,7 @@ class PlayerController(
             return true
         }
         if (option.type != C.TRACK_TYPE_TEXT) return true
+        if (user || option.external) heldText = hintForText(option)
         val index = player.currentMediaItemIndex
         val key = keyAt(index) ?: return true
         val uri = externalUriFor(option)
@@ -1062,6 +1080,7 @@ class PlayerController(
     fun disableSubtitles() = disableText(user = true)
 
     private fun disableText(user: Boolean) {
+        heldText = null
         if (user) recordChoiceOnTracks = true
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
@@ -1952,6 +1971,36 @@ class PlayerController(
         return list.firstOrNull { it.select }?.let { CarryHint(externalId = it.stableId(), name = it.name, language = it.language) }
     }
 
+    /** Текст, который смена звука не имеет права снять: явный выбор или внешний файл с select. */
+    private fun heldTextFor(index: Int, hint: CarryHint?): CarryHint? {
+        if (hint?.off == true) return null
+        if (hint != null) return hint
+        val sub = subtitles.getOrNull(index)?.firstOrNull { it.select } ?: return null
+        return CarryHint(externalId = sub.stableId(), name = sub.name, language = sub.language)
+    }
+
+    /**
+     * Селектор после смены звука может снять внешние субтитры (они больше не совпадают с языком озвучки).
+     * Возвращаем удержанный выбор, если он ещё есть в списке и пользователь его не выключил.
+     */
+    private fun restoreHeldText(tracks: Tracks) {
+        if (restoringText) return
+        val held = heldText ?: return
+        if (held.off) return
+        if (player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) return
+        val index = player.currentMediaItemIndex
+        val options = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current)
+        val picked = TrackCarry.pick(held, textCarry(options, index)) ?: return
+        val option = options.getOrNull(picked) ?: return
+        if (option.selected) return
+        restoringText = true
+        try {
+            selectTrack(option, user = false)
+        } finally {
+            restoringText = false
+        }
+    }
+
     private fun explicitTextHint(index: Int): CarryHint? {
         val item = request.items.getOrNull(index) ?: return null
         val list = subtitles.getOrNull(index).orEmpty()
@@ -2457,7 +2506,7 @@ class PlayerController(
      * Если вход декодера не растёт, это экстрактор: звуковой декодер не переключаем.
      */
     private fun maybeRecoverStall() {
-        if (stallStopped || _state.value.error != null || videoRetryPending) return
+        if (stallStopped || _state.value.error != null || videoRetryPending || prematureEndRecovering) return
         if (request.liveTv) return
         val now = SystemClock.elapsedRealtime()
         if (!player.isPlaying || player.playbackState != Player.STATE_READY || now < seekQuietUntil) {
@@ -2479,6 +2528,8 @@ class PlayerController(
             watchdogBaseFrames = frames
             watchdogBaseInput = input
             watchdogArmedAt = now
+            sawVideoFrame = true
+            lastGoodPositionMs = player.currentPosition.coerceAtLeast(0)
             return
         }
         if (pastVideoEnd()) {
@@ -2491,6 +2542,14 @@ class PlayerController(
             "state=${player.playbackState} pos=${player.currentPosition} audio=${decoders.audio} video=${decoders.video}"
         val inputAdvanced = watchdogBaseInput >= 0 && input > watchdogBaseInput
         Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms $snap inputAdvanced=$inputAdvanced")
+        val midFile = stallIsMidPlayback(sawVideoFrame, player.currentPosition, player.bufferedPosition)
+        if (midFile) {
+            val position = stallReopenPositionMs(lastGoodPositionMs, player.currentPosition)
+            Log.i(PLAYER_LOG_TAG, "mid-file stall reopen position=$position lastGood=$lastGoodPositionMs buffered=${player.bufferedPosition}")
+            resetWatchdogClock()
+            recoverPrematureEnd(position)
+            return
+        }
         if (!inputAdvanced) {
             Log.i(PLAYER_LOG_TAG, "video input stalled, decoder switch skipped")
             if (dropStalledExternalAudio()) return

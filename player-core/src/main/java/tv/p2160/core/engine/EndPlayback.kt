@@ -131,6 +131,20 @@ internal fun pauseSaverShouldDim(
 internal fun playPauseWhenUnfocused(controlsVisible: Boolean, rootFocused: Boolean, windowHasFocus: Boolean): Boolean =
     controlsVisible && (rootFocused || !windowHasFocus)
 
+/**
+ * Сторож кадров: воспроизведение уже шло, а не «так и не началось».
+ * Кадр уже был, либо часы ушли дальше загруженного куска, а кадров нет.
+ */
+internal fun stallIsMidPlayback(sawFrame: Boolean, positionMs: Long, bufferedPositionMs: Long): Boolean {
+    if (sawFrame) return true
+    if (positionMs <= 0) return false
+    return bufferedPositionMs >= 0 && positionMs > bufferedPositionMs
+}
+
+/** Куда возвращаться после обрыва: последняя позиция, где ещё шли кадры. */
+internal fun stallReopenPositionMs(lastGoodMs: Long, currentMs: Long): Long =
+    if (lastGoodMs >= 0) lastGoodMs else currentMs.coerceAtLeast(0)
+
 internal const val END_COUNTDOWN_SEC = 5
 internal const val END_IDLE_CLOSE_MS = 12_000L
 internal const val END_DIM_MS = 3 * 60_000L

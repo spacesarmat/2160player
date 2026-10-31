@@ -183,7 +183,9 @@ object IntentApi {
     }
 
     fun buildResult(result: PlaybackResult): Intent = Intent(RESULT_ACTION).apply {
-        data = result.uri
+        // file:// в data роняет закрытие: FileUriExposedException при setResult на API 24+.
+        val uri = result.uri
+        if (uri != null && !uri.scheme.equals("file", ignoreCase = true)) data = uri
         putExtra(RESULT_POSITION, result.positionMs.toInt())
         putExtra(RESULT_DURATION, result.durationMs.toInt())
         putExtra(RESULT_END_BY, if (result.completed) END_BY_COMPLETION else END_BY_USER)

@@ -54,3 +54,13 @@ object TrackCarry {
         return null
     }
 }
+
+/**
+ * Явный или внешний текст нужно выбрать снова: смена звука его сняла.
+ * Выключенные субтитры и уже совпадающий выбор не трогаем.
+ */
+internal fun shouldRestoreHeldText(held: CarryHint?, textDisabled: Boolean, selected: CarryTrack?): Boolean {
+    if (textDisabled || held == null || held.off) return false
+    if (selected == null) return true
+    return TrackCarry.pick(held, listOf(selected)) != 0
+}

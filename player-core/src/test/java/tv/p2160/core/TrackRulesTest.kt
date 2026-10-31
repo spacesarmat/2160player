@@ -1,11 +1,16 @@
 package tv.p2160.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import tv.p2160.core.engine.CarryHint
+import tv.p2160.core.engine.CarryTrack
 import tv.p2160.core.engine.TrackCandidate
 import tv.p2160.core.engine.TrackChoice
 import tv.p2160.core.engine.TrackRules
+import tv.p2160.core.engine.shouldRestoreHeldText
 
 class TrackRulesTest {
 
@@ -53,6 +58,24 @@ class TrackRulesTest {
         // Без подсказки: не комментарий, больше каналов.
         assertEquals(2, TrackRules.pickAudio(TrackChoice("en", null, null), movie)?.index)
         assertNull(TrackRules.pickAudio(TrackChoice("ja", null, null), movie))
+    }
+
+    @Test
+    fun explicitSubtitleSurvivesAnAudioChange() {
+        val held = CarryHint(externalId = "cr", name = "Crunchyroll", language = "ru")
+        val selected = CarryTrack(externalId = "cr", name = "Crunchyroll", language = "ru", external = true)
+        assertFalse(shouldRestoreHeldText(held, textDisabled = false, selected = selected))
+        assertTrue(shouldRestoreHeldText(held, textDisabled = false, selected = null))
+        assertTrue(
+            shouldRestoreHeldText(
+                held,
+                textDisabled = false,
+                selected = CarryTrack(language = "ja", embeddedIndex = 0),
+            ),
+        )
+        assertFalse(shouldRestoreHeldText(held, textDisabled = true, selected = null))
+        assertFalse(shouldRestoreHeldText(CarryHint(off = true), textDisabled = false, selected = null))
+        assertFalse(shouldRestoreHeldText(null, textDisabled = false, selected = null))
     }
 
     @Test

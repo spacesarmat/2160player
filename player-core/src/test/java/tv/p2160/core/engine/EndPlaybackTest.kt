@@ -166,4 +166,14 @@ class EndPlaybackTest {
         assertFalse(playPauseWhenUnfocused(controlsVisible = true, rootFocused = false, windowHasFocus = true))
         assertFalse(playPauseWhenUnfocused(controlsVisible = false, rootFocused = false, windowHasFocus = false))
     }
+
+    @Test
+    fun stallAfterFramesOrPastTheBufferReopens() {
+        assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 0, bufferedPositionMs = 0))
+        assertFalse(stallIsMidPlayback(sawFrame = false, positionMs = 8_000, bufferedPositionMs = 20_000))
+        assertTrue(stallIsMidPlayback(sawFrame = true, positionMs = 56_000, bufferedPositionMs = 48_000))
+        assertTrue(stallIsMidPlayback(sawFrame = false, positionMs = 56_000, bufferedPositionMs = 48_000))
+        assertEquals(48_000L, stallReopenPositionMs(48_000, 56_000))
+        assertEquals(56_000L, stallReopenPositionMs(-1, 56_000))
+    }
 }

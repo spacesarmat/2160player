@@ -54,11 +54,11 @@ VLC: `subtitles_location` (путь или URI; без `://` считается 
 
 | Extra | Тип | Смысл |
 |---|---|---|
-| `data` | Uri | на каком элементе остановились |
+| `data` | Uri | на каком элементе остановились. `file://` не передаётся, чтобы закрытие не падало |
 | `position`, `duration` | Int, мс | как у MX Player |
 | `end_by` | String | `user` или `playback_completion` |
 | `tv.p2160.extra.WATCHED` | Boolean | досмотрено до конца. `end_by` остаётся |
-| `tv.p2160.extra.POSITION`, `tv.p2160.extra.DURATION` | Long, мс | полная позиция и длительность. Если досмотрено, позиция равна длительности |
+| `tv.p2160.extra.POSITION`, `tv.p2160.extra.DURATION` | Long, мс | полная позиция и длительность. Если досмотрено, позиция равна длительности. Ранний конец потока далеко от длительности не досмотр: позиция остаётся той, на которой остановились. Хвост 30 с считается досмотром только у ролика от 10 минут |
 | `tv.p2160.extra.AUDIO_ID`, `AUDIO_NAME`, `AUDIO_LANGUAGE` | String | выбранный звук |
 | `tv.p2160.extra.AUDIO_EXTERNAL` | Boolean | внешний файл или дорожка внутри видео |
 | `tv.p2160.extra.AUDIO_EMBEDDED_INDEX`, `AUDIO_EXTERNAL_INDEX` | Int | номер среди встроенных или внешних, `-1` у другого вида |

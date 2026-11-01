@@ -1,5 +1,7 @@
 package tv.p2160.core.engine
 
+import androidx.media3.common.Player
+import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.EndAction
 
 /** Старое «автоматически следующий» без нового ключа настроек. */
@@ -75,6 +77,100 @@ internal fun resumeOfferMs(
 /** «Остаться на кадре» и отменённый отсчёт нельзя держать на OLED бесконечно. */
 internal fun endShouldDim(holdingEnd: Boolean, live: Boolean, heldForMs: Long): Boolean =
     holdingEnd && !live && heldForMs >= END_DIM_MS
+
+/**
+ * Конец файла настоящий, только если длительность известна и позиция в допуске [ResumeStore.isFinished].
+ * Обрыв медленного потока (1:20 из 24:01) сюда не входит. Конец ролика, у которого внешний звук длиннее
+ * видео, входит: склейка обрезает звук длительностью видео, и позиция доходит до неё.
+ */
+internal fun verifiedNaturalEnd(positionMs: Long, durationMs: Long): Boolean =
+    ResumeStore.isFinished(positionMs, durationMs)
+
+/**
+ * Позиция в результате. Длительность подставляется после проверенного конца
+ * или по прежнему порогу «почти досмотрел». Ранний обрыв позицию не подменяет.
+ */
+internal data class PlaybackReport(val positionMs: Long, val durationMs: Long, val completed: Boolean)
+
+internal fun playbackReport(positionMs: Long, durationMs: Long, verifiedEnd: Boolean): PlaybackReport {
+    val duration = durationMs.coerceAtLeast(0)
+    val position = positionMs.coerceAtLeast(0)
+    if (verifiedEnd) return PlaybackReport(duration, duration, completed = true)
+    val watched = ResumeStore.isFinished(position, duration)
+    return PlaybackReport(if (watched) duration else position, duration, completed = watched)
+}
+
+/** Сколько раз повторять источник, если плеер сообщил конец далеко от длительности. Дальше - обычная ошибка. */
+internal const val PREMATURE_END_RETRIES = 3
+
+/** На сколько кадры должны уйти дальше точки обрыва, чтобы счётчик повторов начался заново. Часы не считаются. */
+internal const val STALL_RECOVERY_PROGRESS_MS = 10_000L
+
+internal fun prematureEndExhausted(attempts: Int): Boolean = attempts >= PREMATURE_END_RETRIES
+
+/**
+ * Повтор удался, только если последняя позиция с кадрами ушла на [STALL_RECOVERY_PROGRESS_MS]
+ * дальше точки обрыва. Идущие часы при замершей картинке сюда не входят.
+ */
+internal fun prematureRetryRecovered(retryFromMs: Long, lastGoodMs: Long): Boolean {
+    if (retryFromMs < 0 || lastGoodMs < 0) return false
+    return lastGoodMs >= retryFromMs + STALL_RECOVERY_PROGRESS_MS
+}
+
+/** Счётчик перед следующим решением. Кадры дальше обрыва обнуляют его, часы без кадров - нет. */
+internal fun stallAttemptAfterProgress(attempts: Int, retryFromMs: Long, lastGoodMs: Long): Int =
+    if (attempts > 0 && prematureRetryRecovered(retryFromMs, lastGoodMs)) 0 else attempts
+
+/**
+ * Заставка при паузе копится только на паузе пользователя: `playWhenReady == false` и [Player.STATE_READY].
+ * Буферизация (`playWhenReady` ещё true, состояние BUFFERING) и конец файла сюда не входят.
+ */
+internal fun countsAsUserPause(playWhenReady: Boolean, playbackState: Int): Boolean =
+    !playWhenReady && playbackState == Player.STATE_READY
+
+/** Пора ли затемнять кадр заставкой паузы. Буферизация, конец и выключенная настройка - нет. */
+internal fun pauseSaverShouldDim(
+    playWhenReady: Boolean,
+    playbackState: Int,
+    oledSaver: Boolean,
+    heldForMs: Long,
+    blocked: Boolean,
+): Boolean {
+    if (!oledSaver || blocked || !countsAsUserPause(playWhenReady, playbackState)) return false
+    return endShouldDim(holdingEnd = true, live = false, heldForMs = heldForMs)
+}
+
+/**
+ * Кнопки видны, а фокус не на них (ни на чём или на корне экрана).
+ * OK в этом случае - пауза, а не «+10 с» и не следующая глава.
+ */
+internal fun playPauseWhenUnfocused(controlsVisible: Boolean, rootFocused: Boolean, windowHasFocus: Boolean): Boolean =
+    controlsVisible && (rootFocused || !windowHasFocus)
+
+/**
+ * Сторож кадров: воспроизведение уже шло, а не «так и не началось».
+ * Кадр уже был, либо часы ушли дальше загруженного куска, а кадров нет.
+ */
+internal fun stallIsMidPlayback(sawFrame: Boolean, positionMs: Long, bufferedPositionMs: Long): Boolean {
+    if (sawFrame) return true
+    if (positionMs <= 0) return false
+    return bufferedPositionMs >= 0 && positionMs > bufferedPositionMs
+}
+
+/** Куда возвращаться после обрыва: последняя позиция, где ещё шли кадры. */
+internal fun stallReopenPositionMs(lastGoodMs: Long, currentMs: Long): Long =
+    if (lastGoodMs >= 0) lastGoodMs else currentMs.coerceAtLeast(0)
+
+/**
+ * Позиция в результате и в истории, когда попытки обрыва кончились.
+ * Часы к этому моменту уже ушли дальше последнего кадра.
+ */
+internal fun stallErrorPositionMs(clockMs: Long, lastGoodMs: Long): Long =
+    if (lastGoodMs >= 0) lastGoodMs else clockMs.coerceAtLeast(0)
+
+/** Строка лога сторожа: повтор или конец попыток. Повтор в лог не пишется, если его не будет. */
+internal fun stallRecoveryAction(attempts: Int): String =
+    if (prematureEndExhausted(attempts)) "exhausted" else "reopen"
 
 internal const val END_COUNTDOWN_SEC = 5
 internal const val END_IDLE_CLOSE_MS = 12_000L

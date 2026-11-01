@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -66,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -99,6 +99,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import tv.p2160.core.engine.END_IDLE_CLOSE_MS
 import tv.p2160.core.engine.PLAYLIST_DONE_MS
+import tv.p2160.core.engine.playPauseWhenUnfocused
 import tv.p2160.core.engine.PlayerController
 import tv.p2160.core.engine.deferUpNextWhileResumeToast
 import tv.p2160.core.engine.showUpNext
@@ -224,6 +225,8 @@ fun PlayerScreen(
     var zapVisible by remember { mutableStateOf(false) }
     val playFocus = remember { FocusRequester() }
     val errorFocus = remember { FocusRequester() }
+    // Не State: смена фокуса не должна пересобирать весь экран. Читается в момент клавиши.
+    val focusHold = remember { FocusHold() }
     // Когда панель скрыта, фокус держит сам экран - иначе пульт «теряется» и кнопки не работают.
     val rootFocus = remember { FocusRequester() }
     val closeFocus = remember { FocusRequester() }
@@ -241,7 +244,7 @@ fun PlayerScreen(
     ClosePanelOnBack(
         panelOpen = { panelState.value != null },
         blockingOverlay = {
-            state.error != null || state.endDim || state.endCountdownSec != null ||
+            state.error != null || state.endDim || state.pauseDim || state.endCountdownSec != null ||
                 state.resumePromptMs != null || state.showEndScreen || goToDialog ||
                 upNextArmed || inPictureInPicture
         },
@@ -251,6 +254,8 @@ fun PlayerScreen(
         },
     )
 
+    val controlsFocusable = state.error == null && !state.showEndScreen && state.endCountdownSec == null &&
+        state.resumePromptMs == null && !state.playlistFinished && !state.endDim && !state.pauseDim
     // Автоскрытие и фокус. Панель читается здесь, не в PlayerScreen.
     ControlsAutoHide(
         panelState = panelState,
@@ -260,6 +265,9 @@ fun PlayerScreen(
         onHide = { controlsVisible.value = false },
         playFocus = playFocus,
         rootFocus = rootFocus,
+        isBuffering = state.isBuffering,
+        canFocusControls = controlsFocusable,
+        focusHold = focusHold,
     )
     LaunchedEffect(flashTick) { if (flashTotal != 0L) { delay(900); flashTotal = 0 } }
     LaunchedEffect(state.error) {
@@ -346,9 +354,11 @@ fun PlayerScreen(
     }
 
     BackHandler {
+        val wakingPause = state.pauseDim
+        if (wakingPause) controller.dismissPauseDim()
         when {
             state.error != null -> onBack()
-            state.endDim -> controller.dismissEndDim()
+            !wakingPause && state.endDim -> controller.dismissEndDim()
             state.endCountdownSec != null -> controller.cancelEndCountdown()
             state.resumePromptMs != null -> {
                 controller.continueFromPrompt()
@@ -428,7 +438,20 @@ fun PlayerScreen(
                 .background(Color.Black)
                 .focusRequester(rootFocus)
                 .focusable()
+                .onFocusChanged {
+                    focusHold.rootFocused = it.isFocused
+                    focusHold.windowHasFocus = it.hasFocus
+                }
                 .onPreviewKeyEvent { e ->
+                    if (state.pauseDim) {
+                        val back = e.key == Key.Back || e.key == Key.Escape
+                        if (!back && e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) {
+                            controller.dismissPauseDim()
+                        }
+                        // Назад будит и идёт дальше своим обычным путём. Остальные клавиши только будят.
+                        if (back) return@onPreviewKeyEvent false
+                        return@onPreviewKeyEvent true
+                    }
                     if (state.endDim) {
                         if (e.key == Key.Back || e.key == Key.Escape) return@onPreviewKeyEvent false
                         controller.dismissEndDim()
@@ -518,7 +541,17 @@ fun PlayerScreen(
                         upNextArmed = true
                         return@onPreviewKeyEvent true
                     }
-                    if (controlsVisible.value) { poke(); return@onPreviewKeyEvent false }
+                    if (controlsVisible.value) {
+                        poke()
+                        if (e.type == KeyEventType.KeyDown &&
+                            (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter) &&
+                            playPauseWhenUnfocused(true, focusHold.rootFocused, focusHold.windowHasFocus)
+                        ) {
+                            controller.playPause()
+                            return@onPreviewKeyEvent true
+                        }
+                        return@onPreviewKeyEvent false
+                    }
                     // Удержание стрелки ускоряет перемотку; обрабатываем каждый 3-й повтор, чтобы не улетать.
                     val repeat = e.nativeKeyEvent.repeatCount
                     val step = stepMs * when {
@@ -632,8 +665,8 @@ fun PlayerScreen(
             PanelBoundControls(
                 panelState = panelState,
                 visible = controlsVisible,
-                allowFocus = state.error == null && !state.showEndScreen && state.endCountdownSec == null &&
-                    state.resumePromptMs == null && !state.playlistFinished && !state.endDim,
+                allowFocus = controlsFocusable,
+                focusHold = focusHold,
             ) { panelOpen ->
                 Controls(
                     controller = controller,
@@ -934,6 +967,32 @@ fun PlayerScreen(
                         ),
                 )
             }
+            if (state.pauseDim) {
+                Box(
+                    Modifier.matchParentSize().zIndex(4f).background(Color.Black.copy(alpha = 0.72f))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = controller::dismissPauseDim,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(tr("player.pause"), color = Color.White, style = MaterialTheme.typography.headlineMedium)
+                        if (state.title.isNotBlank()) {
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                state.title,
+                                color = Color.White.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 32.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
     }
@@ -987,6 +1046,17 @@ private fun ClosePanelOnBack(
     }
 }
 
+/**
+ * Фокус пульта без пересборки экрана.
+ * [rootFocused] - фокус на самом корне, [windowHasFocus] - на корне или потомке,
+ * [controlsHaveFocus] - внутри кнопок.
+ */
+internal class FocusHold {
+    var rootFocused: Boolean = false
+    var windowHasFocus: Boolean = false
+    var controlsHaveFocus: Boolean = false
+}
+
 /** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
 @Composable
 private fun ControlsAutoHide(
@@ -997,6 +1067,9 @@ private fun ControlsAutoHide(
     onHide: () -> Unit,
     playFocus: FocusRequester,
     rootFocus: FocusRequester,
+    isBuffering: Boolean,
+    canFocusControls: Boolean,
+    focusHold: FocusHold,
 ) {
     val panel = panelState.value
     val shown = controlsVisible.value
@@ -1006,10 +1079,30 @@ private fun ControlsAutoHide(
             onHide()
         }
     }
-    LaunchedEffect(shown, panel) {
-        if (shown && panel == null) runCatching { playFocus.requestFocus() }
+    LaunchedEffect(shown, panel, canFocusControls) {
+        if (!canFocusControls) return@LaunchedEffect
+        if (shown && panel == null) requestPlayFocusAfterFrame(playFocus)
         else if (!shown && panel == null) runCatching { rootFocus.requestFocus() }
     }
+    // Спиннер больше не отдельная кнопка, но если фокус всё же ушёл из ряда - вернуть его на паузу.
+    LaunchedEffect(isBuffering, canFocusControls) {
+        if (!canFocusControls || !shown || panel != null || focusHold.controlsHaveFocus) return@LaunchedEffect
+        requestPlayFocusAfterFrame(playFocus)
+    }
+}
+
+/** После закрытия панели узел фокуса готов не в том же кадре. Неудачный запрос повторяем ещё раз. */
+private suspend fun requestPlayFocusAfterFrame(playFocus: FocusRequester) {
+    withFrameNanos { }
+    if (requestFocusOrFalse(playFocus)) return
+    withFrameNanos { }
+    requestFocusOrFalse(playFocus)
+}
+
+private fun requestFocusOrFalse(requester: FocusRequester): Boolean = try {
+    requester.requestFocus()
+} catch (_: IllegalStateException) {
+    false
 }
 
 /**
@@ -1021,11 +1114,17 @@ private fun PanelBoundControls(
     panelState: State<Panel?>,
     visible: State<Boolean>,
     allowFocus: Boolean = true,
+    focusHold: FocusHold? = null,
     content: @Composable (panelOpen: Boolean) -> Unit,
 ) {
     val panelOpen = panelReservesSpace(panelState.value != null)
     // Пока панель открыта, стрелки не уходят на кнопки за ней.
-    ControlsFade(visible = visible.value, panelOpen = panelOpen, allowFocus = allowFocus && !panelOpen) {
+    ControlsFade(
+        visible = visible.value,
+        panelOpen = panelOpen,
+        allowFocus = allowFocus && !panelOpen,
+        focusHold = focusHold,
+    ) {
         content(panelOpen)
     }
 }
@@ -1360,27 +1459,19 @@ private fun Controls(
                 if (state.playlistSize > 1) ControlButton(Icons.Default.SkipPrevious, tr("player.previous"), onPrevious, modifier = toToolbar, accent = theme.accent)
                 if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowLeft, tr("player.chapter_previous"), onPreviousChapter, modifier = toToolbar, accent = theme.accent)
                 ControlButton(Icons.Default.Replay10, tr("player.seek_back", (stepMs / 1000).toInt()), { onSeekBy(-stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
-                if (state.isBuffering && state.error == null) {
-                    Box(
-                        Modifier.size(76.dp).focusRequester(playFocus).then(toToolbar).focusable(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(Modifier.size(56.dp), color = theme.accent, strokeWidth = 4.dp)
-                    }
-                } else {
-                    ControlButton(
-                        icon = when {
-                            state.ended -> Icons.Default.Replay
-                            state.isPlaying -> Icons.Default.Pause
-                            else -> Icons.Default.PlayArrow
-                        },
-                        contentDescription = if (state.isPlaying) tr("player.pause") else tr("player.play"),
-                        onClick = onPlayPause,
-                        size = 76.dp,
-                        accent = theme.accent,
-                        modifier = Modifier.focusRequester(playFocus).then(toToolbar),
-                    )
-                }
+                ControlButton(
+                    icon = when {
+                        state.ended -> Icons.Default.Replay
+                        state.isPlaying -> Icons.Default.Pause
+                        else -> Icons.Default.PlayArrow
+                    },
+                    contentDescription = if (state.isPlaying) tr("player.pause") else tr("player.play"),
+                    onClick = onPlayPause,
+                    size = 76.dp,
+                    accent = theme.accent,
+                    busy = state.isBuffering && state.error == null,
+                    modifier = Modifier.focusRequester(playFocus).then(toToolbar),
+                )
                 ControlButton(Icons.Default.Forward10, tr("player.seek_forward", (stepMs / 1000).toInt()), { onSeekBy(stepMs) }, modifier = toToolbar, size = 56.dp, accent = theme.accent)
                 if (hasChapters) ControlButton(Icons.Default.KeyboardDoubleArrowRight, tr("player.chapter_next"), onNextChapter, modifier = toToolbar, accent = theme.accent)
                 if (state.playlistSize > 1) ControlButton(Icons.Default.SkipNext, tr("player.next"), onNext, enabled = state.hasNext, modifier = toToolbar, accent = theme.accent)
@@ -1417,7 +1508,13 @@ internal const val CONTROLS_HIDE_MS = 150
  * Фокус и TalkBack - снаружи слоя, чтобы скрытие не перезаписывало его содержимое.
  */
 @Composable
-internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, allowFocus: Boolean = true, content: @Composable () -> Unit) {
+internal fun ControlsFade(
+    visible: Boolean,
+    panelOpen: Boolean,
+    allowFocus: Boolean = true,
+    focusHold: FocusHold? = null,
+    content: @Composable () -> Unit,
+) {
     val opacity = remember { Animatable(if (visible) 1f else 0f) }
     // Не читается в композиции: смена двигает только параметры слоя.
     val shown = remember { mutableStateOf(visible) }
@@ -1444,9 +1541,11 @@ internal fun ControlsFade(visible: Boolean, panelOpen: Boolean, allowFocus: Bool
         }
     }
     // Свойства, не состав и не содержимое слоя: тот же focusGroup, другое значение при скрытии.
+    val tracked = focusHold
     val chrome = remember(visible, allowFocus) {
         Modifier
             .focusGroup()
+            .onFocusChanged { tracked?.controlsHaveFocus = it.hasFocus }
             .focusProperties {
                 canFocus = visible && allowFocus
                 onEnter = { if (!visible || !allowFocus) cancelFocusChange() }

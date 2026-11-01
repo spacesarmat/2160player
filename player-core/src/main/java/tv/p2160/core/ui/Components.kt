@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -104,6 +105,8 @@ fun ControlButton(
     enabled: Boolean = true,
     /** Панель скорости: кнопки меньше 48 dp, чтобы «Точно» и 1× влезли в альбомный экран. */
     compact: Boolean = false,
+    /** Индикатор буферизации внутри той же кнопки: узел фокуса не подменяется. */
+    busy: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -125,16 +128,24 @@ fun ControlButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = when {
-                !enabled -> tint.copy(alpha = 0.35f)
-                focused -> MaterialTheme.colorScheme.onPrimary
-                else -> tint
-            },
-            modifier = Modifier.size(target * 0.58f),
-        )
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(target * 0.72f),
+                color = if (focused) MaterialTheme.colorScheme.onPrimary else accent,
+                strokeWidth = 4.dp,
+            )
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = when {
+                    !enabled -> tint.copy(alpha = 0.35f)
+                    focused -> MaterialTheme.colorScheme.onPrimary
+                    else -> tint
+                },
+                modifier = Modifier.size(target * 0.58f),
+            )
+        }
     }
 }
 

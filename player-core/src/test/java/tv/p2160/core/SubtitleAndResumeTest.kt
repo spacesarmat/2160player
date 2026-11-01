@@ -95,9 +95,14 @@ class SubtitleAndResumeTest {
         assertFalse(ResumeStore.isFinished(0, 20_000))
         assertFalse(ResumeStore.isFinished(5_000, 20_000))
         assertTrue(ResumeStore.isFinished(19_500, 20_000))
-        // Длиннее 30 с: остаток меньше 30 с - досмотрено, даже если это ещё не 97 %.
+        // Короче 10 минут: хвост 30 с не считается концом. 18.4 с из 40 с - пауза, не досмотр.
         assertFalse(ResumeStore.isFinished(0, 40_000))
-        assertTrue(ResumeStore.isFinished(15_000, 40_000))
+        assertFalse(ResumeStore.isFinished(15_000, 40_000))
+        assertFalse(ResumeStore.isFinished(18_400, 40_000))
+        assertTrue(ResumeStore.isFinished(39_000, 40_000))
+        val tenMin = 10 * 60_000L
+        assertTrue(ResumeStore.isFinished(tenMin - 20_000, tenMin))
+        assertFalse(ResumeStore.isFinished(5 * 60_000L - 20_000, 5 * 60_000L))
     }
 
     @Test

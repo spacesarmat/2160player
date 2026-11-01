@@ -132,6 +132,8 @@ data class PlayerUiState(
     val showEndScreen: Boolean = false,
     /** Кадр погашен после долгого стояния на конце. Любая клавиша возвращает картинку. */
     val endDim: Boolean = false,
+    /** Заставка паузы: кадр затемнён, на экране «Пауза» и название. Буферизация сюда не входит. */
+    val pauseDim: Boolean = false,
     /** Плеер просит активность закрыться. */
     val requestClose: Boolean = false,
     /** Последний файл плейлиста: короткая надпись и возврат в папку. */
@@ -197,6 +199,13 @@ class PlayerController(
     private var watchdogArmedAt = 0L
     private var watchdogBaseFrames = -1
     private var watchdogBaseInput = -1
+    /** Был хотя бы один кадр текущего пункта. Обрыв после этого - не «воспроизведение не началось». */
+    private var sawVideoFrame = false
+    /** Позиция, на которой кадры ещё шли. Часы после обрыва данных уходят дальше. */
+    private var lastGoodPositionMs = -1L
+    /** Позиция для результата и истории, пока на экране ошибка обрыва. -1 - брать часы плеера. */
+    private var pinnedPositionMs = -1L
+    private var restoringText = false
     /** После перемотки кадры не считаются зависанием. */
     private var seekQuietUntil = 0L
     private var videoCounters: DecoderCounters? = null
@@ -250,6 +259,11 @@ class PlayerController(
     /** Предпочтение, которое переносится на следующую серию этого запуска. */
     private var sessionAudio: CarryHint? = null
     private var sessionText: CarryHint? = null
+    /**
+     * Явный или внешний текст. Смена звука не должна его снимать:
+     * селектор иначе подбирает субтитры под новый язык озвучки.
+     */
+    private var heldText: CarryHint? = null
     private var pendingAudioHint: CarryHint? = null
     private var pendingTextHint: CarryHint? = null
     private var itemsOpened = 0
@@ -318,6 +332,9 @@ class PlayerController(
         }
 
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            sawVideoFrame = true
+            val position = player.currentPosition
+            if (position >= 0) lastGoodPositionMs = position
             Log.i(PLAYER_LOG_TAG, "first video frame audio=${decoders.audio} video=${decoders.video}")
         }
 
@@ -371,6 +388,7 @@ class PlayerController(
 
         override fun onTracksChanged(tracks: Tracks) {
             applyPendingSelections(tracks)
+            restoreHeldText(tracks)
             noteUnsupportedExternal(tracks)
             if (recordChoiceOnTracks) {
                 recordChoiceOnTracks = false
@@ -410,7 +428,7 @@ class PlayerController(
             }
             if (playbackState == Player.STATE_ENDED) {
                 if (holdFailedItem >= 0 && _state.value.error != null) return
-                onNaturalEnd()
+                onNaturalEnd("state_ended")
             }
         }
 
@@ -421,7 +439,7 @@ class PlayerController(
             // Сон «в конце серии» обрабатывается внутри onNaturalEnd.
             if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
                 if (holdFailedItem >= 0 && _state.value.error != null) return
-                onNaturalEnd()
+                onNaturalEnd("end_of_media_item")
             }
         }
 
@@ -480,6 +498,8 @@ class PlayerController(
             cancelIntro()
             introAttempts = IntroStart.MAX_ATTEMPTS
             // Ошибка контейнера или декодера не должна открывать следующий пункт плейлиста.
+            // Пауза сразу: иначе под диалогом часы продолжают идти.
+            player.pause()
             holdFailedItem = player.currentMediaItemIndex
             _state.update { it.copy(error = describe(error)) }
         }
@@ -541,6 +561,10 @@ class PlayerController(
         completed = false
         naturalEndHandled = false
         endHoldSince = 0L
+        resetPrematureEnd()
+        sawVideoFrame = false
+        lastGoodPositionMs = -1L
+        pinnedPositionMs = -1L
         detectedFrameRate = -1f
         frameRateProbe.reset()
         audioDiscontinuityCount = 0
@@ -591,6 +615,7 @@ class PlayerController(
         if (pendingTextHint == null) {
             subtitles.getOrNull(index)?.firstOrNull { it.select }?.let { pendingExternalSelect = externalId(index, it) }
         }
+        heldText = heldTextFor(index, pendingTextHint)
 
         val offer = if (opening) {
             resumeOfferMs(
@@ -615,6 +640,7 @@ class PlayerController(
                 showEndScreen = false,
                 playlistFinished = false,
                 endDim = false,
+                pauseDim = false,
                 requestClose = false,
                 subtitleDelayMs = userTextDelay,
             )
@@ -1031,6 +1057,7 @@ class PlayerController(
             return true
         }
         if (option.type != C.TRACK_TYPE_TEXT) return true
+        if (user || option.external) heldText = hintForText(option)
         val index = player.currentMediaItemIndex
         val key = keyAt(index) ?: return true
         val uri = externalUriFor(option)
@@ -1058,6 +1085,7 @@ class PlayerController(
     fun disableSubtitles() = disableText(user = true)
 
     private fun disableText(user: Boolean) {
+        heldText = null
         if (user) recordChoiceOnTracks = true
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
@@ -1349,14 +1377,19 @@ class PlayerController(
     fun dismissWarnings() = _state.update { it.copy(warnings = emptyList()) }
 
     fun retry() {
+        val resumeAt = pinnedPositionMs
         introItem = -1
         introAttempts = 0
         stallRecoveries = 0
         stallStopped = false
         holdFailedItem = -1
+        pinnedPositionMs = -1L
+        resetPrematureEnd()
         resetWatchdogClock()
         _state.update { it.copy(error = null) }
+        val index = player.currentMediaItemIndex
         player.prepare()
+        if (resumeAt >= 0) player.seekTo(index, resumeAt)
         player.play()
     }
 
@@ -1390,7 +1423,8 @@ class PlayerController(
         naturalEndHandled = false
         completed = false
         endHoldSince = 0L
-        _state.update { it.copy(showEndScreen = false, endCountdownSec = null, endDim = false) }
+        resetPrematureEnd()
+        _state.update { it.copy(showEndScreen = false, endCountdownSec = null, endDim = false, pauseDim = false) }
         player.seekTo(0)
         player.play()
     }
@@ -1406,19 +1440,67 @@ class PlayerController(
         _state.update { it.copy(endDim = false) }
     }
 
+    /** Любая клавиша снимает заставку. Следующие три минуты паузы считаются заново. */
+    fun dismissPauseDim() {
+        pausedSince = SystemClock.elapsedRealtime()
+        _state.update { it.copy(pauseDim = false) }
+    }
+
     private var naturalEndHandled = false
     private var endHoldSince = 0L
     /** Пункт, на котором показана ошибка. Автопереход к следующему отменяется. */
     private var holdFailedItem = -1
+    /** Повторы обрыва. Сбрасываются, когда кадры ушли на 10 с дальше точки обрыва, не когда идут часы. */
+    private var prematureEndRetries = 0
+    private var prematureRetryPosition = -1L
+    private var prematureEndRecovering = false
+    private var prematureEndAgain = false
+    private var prematureJob: Job? = null
 
-    private fun onNaturalEnd() {
+    private fun resetPrematureEnd() {
+        prematureJob?.cancel()
+        prematureJob = null
+        prematureEndRecovering = false
+        prematureEndAgain = false
+        prematureEndRetries = 0
+        prematureRetryPosition = -1L
+    }
+
+    /**
+     * @param reason `state_ended`, `end_of_media_item` или `position` (позиция дошла до длительности видео).
+     * Настоящий конец - длительность известна и позиция в допуске [ResumeStore.isFinished].
+     * Иначе это обрыв потока: повтор с текущей позиции, без «досмотрено», без автоперехода и без закрытия.
+     */
+    private fun onNaturalEnd(reason: String) {
+        if (stallStopped) return
+        if (prematureEndRecovering) {
+            prematureEndAgain = true
+            return
+        }
         if (naturalEndHandled) return
+        val duration = player.duration
+        val position = player.currentPosition.coerceAtLeast(0)
+        val known = duration != C.TIME_UNSET && duration > 0
+        val live = isLivePlayback()
+        val verified = live || (known && verifiedNaturalEnd(position, duration))
+        val action = when {
+            verified -> "accept"
+            prematureEndExhausted(prematureEndRetries) -> "error"
+            else -> "retry"
+        }
+        Log.i(
+            PLAYER_LOG_TAG,
+            "onNaturalEnd reason=$reason position=$position duration=$duration verified=$verified action=$action",
+        )
+        if (!verified) {
+            recoverPrematureEnd(position)
+            return
+        }
         naturalEndHandled = true
         if (_state.value.sleepAtEnd) {
             cancelSleepTimer()
             return
         }
-        val live = isLivePlayback()
         if (!live) {
             completed = true
             saveProgress()
@@ -1442,6 +1524,69 @@ class PlayerController(
         }
     }
 
+    /**
+     * Плеер сообщил конец, а позиция далеко от длительности. Готовим источник заново с этой позиции.
+     * После [PREMATURE_END_RETRIES] попыток - обычный диалог ошибки. Досмотренным файл не помечается.
+     */
+    private fun recoverPrematureEnd(position: Long) {
+        if (stallStopped) return
+        if (prematureEndExhausted(prematureEndRetries)) {
+            val hold = stallErrorPositionMs(position, lastGoodPositionMs)
+            prematureEndRecovering = false
+            completed = false
+            naturalEndHandled = false
+            stallStopped = true
+            pinnedPositionMs = hold
+            holdFailedItem = player.currentMediaItemIndex
+            // Под диалогом часы больше не идут и не затирают последнюю позицию с кадрами.
+            player.pause()
+            player.seekTo(player.currentMediaItemIndex, hold)
+            _state.update { it.copy(error = i18n.current["error.premature_end"]) }
+            saveProgress()
+            return
+        }
+        prematureEndRetries++
+        prematureRetryPosition = position
+        prematureEndRecovering = true
+        val index = player.currentMediaItemIndex
+        prematureJob?.cancel()
+        prematureJob = scope.launch {
+            try {
+                if (player.currentMediaItemIndex != index) return@launch
+                player.seekTo(index, position.coerceAtLeast(0))
+                player.prepare()
+                player.playWhenReady = true
+                delay(400)
+            } finally {
+                val stuck = !player.isPlaying &&
+                    (prematureEndAgain || player.playbackState == Player.STATE_ENDED)
+                prematureEndAgain = false
+                prematureEndRecovering = false
+                if (isActive && !stallStopped && stuck && _state.value.error == null && !naturalEndHandled &&
+                    player.currentMediaItemIndex == index
+                ) {
+                    onNaturalEnd(if (player.playbackState == Player.STATE_ENDED) "state_ended" else "end_of_media_item")
+                }
+            }
+        }
+    }
+
+    /**
+     * Удачный повтор: кадры ушли на 10 с дальше точки обрыва.
+     * Часы при замершей картинке счётчик не обнуляют, иначе обрыв на одном месте крутится без ошибки.
+     */
+    private fun notePrematureRecovery() {
+        val from = prematureRetryPosition
+        if (prematureEndRetries == 0 || from < 0) return
+        if (stallAttemptAfterProgress(prematureEndRetries, from, lastGoodPositionMs) == 0) resetPrematureEnd()
+    }
+
+    /** Закрытие: сторож и отложенный повтор больше не открывают источник. */
+    fun stopWatchdog() {
+        stallStopped = true
+        resetPrematureEnd()
+    }
+
     private fun isLivePlayback(): Boolean {
         if (request.liveTv || player.isCurrentMediaItemLive || _state.value.isLive) return true
         val uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri
@@ -1455,24 +1600,27 @@ class PlayerController(
         val ui = _state.value
         val blocked = live || ui.error != null || ui.showEndScreen || ui.endCountdownSec != null ||
             ui.playlistFinished || ui.resumePromptMs != null
-        if (player.isPlaying || blocked) {
+        val userPause = countsAsUserPause(player.playWhenReady, player.playbackState)
+        // Буферизация тоже даёт !isPlaying. Заставку паузы она не копитит и не включает.
+        if (player.isPlaying || blocked || (endHoldSince == 0L && !userPause)) {
             if (player.isPlaying) {
                 endHoldSince = 0L
                 pausedSince = 0L
+            } else if (!userPause) {
+                pausedSince = 0L
             }
             if (ui.endDim && (player.isPlaying || blocked)) _state.update { it.copy(endDim = false) }
+            if (ui.pauseDim && (player.isPlaying || blocked || !userPause)) _state.update { it.copy(pauseDim = false) }
             return
         }
         val now = SystemClock.elapsedRealtime()
         if (endHoldSince == 0L) {
-            if (!settings.current.oledSaver) {
-                pausedSince = 0L
-                if (ui.endDim) _state.update { it.copy(endDim = false) }
-                return
-            }
             if (pausedSince == 0L) pausedSince = now
-            if (endShouldDim(true, false, now - pausedSince) && !ui.endDim) {
-                _state.update { it.copy(endDim = true) }
+            val held = now - pausedSince
+            if (pauseSaverShouldDim(player.playWhenReady, player.playbackState, settings.current.oledSaver, held, blocked)) {
+                if (!ui.pauseDim) _state.update { it.copy(pauseDim = true) }
+            } else if (ui.pauseDim) {
+                _state.update { it.copy(pauseDim = false) }
             }
             return
         }
@@ -1509,15 +1657,16 @@ class PlayerController(
     // endregion
 
     fun result(): PlaybackResult {
-        val duration = player.duration.coerceAtLeast(0)
-        val position = if (completed) duration else player.currentPosition.coerceAtLeast(0)
-        val watched = completed || ResumeStore.isFinished(position, duration)
+        val rawDuration = player.duration
+        val duration = if (rawDuration == C.TIME_UNSET) 0L else rawDuration.coerceAtLeast(0)
+        // completed ставится только после проверенного конца. Иначе позиция не подменяется длительностью.
+        val report = playbackReport(playbackPosition(), duration, verifiedEnd = completed)
         val selected = selectedTracks()
         return PlaybackResult(
             uri = request.items.getOrNull(player.currentMediaItemIndex)?.uri,
-            positionMs = if (watched) duration else position,
-            durationMs = duration,
-            completed = watched,
+            positionMs = report.positionMs,
+            durationMs = report.durationMs,
+            completed = report.completed,
             audio = selected.first,
             text = selected.second,
             textOff = selected.third,
@@ -1528,9 +1677,13 @@ class PlayerController(
         val duration = player.duration
         // Длительность неизвестна (поток ещё не открылся) - иначе в истории окажется «0:00».
         if (duration == C.TIME_UNSET || duration <= 0) return
-        val position = if (completed) duration else player.currentPosition
+        val position = if (completed) duration else playbackPosition()
         saveFor(player.currentMediaItemIndex, position, duration)
     }
+
+    /** После обрыва это последняя позиция с кадрами, а не ушедшие вперёд часы. */
+    private fun playbackPosition(): Long =
+        if (pinnedPositionMs >= 0) pinnedPositionMs else player.currentPosition.coerceAtLeast(0)
 
     private fun saveFor(index: Int, positionMs: Long, durationMs: Long) {
         if (!config.saveHistory || request.liveTv) return
@@ -1574,6 +1727,7 @@ class PlayerController(
         saveProgress()
         publishNowPlaying()
         PlayerExtensions.publish(PlayerExtensions.nowPlaying.value?.copy(isPlaying = false))
+        stopWatchdog()
         progressJob?.cancel()
         analyzeJob?.cancel()
         introJob?.cancel()
@@ -1684,6 +1838,7 @@ class PlayerController(
         val video = p.videoSize
         val rawPosition = p.currentPosition.coerceAtLeast(0)
         val position = if (duration > 0 && rawPosition > duration) duration else rawPosition
+        notePrematureRecovery()
         if (duration > 0 && rawPosition >= duration) finishAtVideoEnd()
         val builtSegments = if (duration > 0) currentSegments(duration) else emptyList()
         val skipMode = settings.current.skipMode
@@ -1846,6 +2001,36 @@ class PlayerController(
         val list = audios.getOrNull(index).orEmpty()
         TrackSelect.parse(item.audioSelect)?.let { return hintFromSelect(it, list.map { ref -> ref.stableId() to (ref.name to ref.language) }) }
         return list.firstOrNull { it.select }?.let { CarryHint(externalId = it.stableId(), name = it.name, language = it.language) }
+    }
+
+    /** Текст, который смена звука не имеет права снять: явный выбор или внешний файл с select. */
+    private fun heldTextFor(index: Int, hint: CarryHint?): CarryHint? {
+        if (hint?.off == true) return null
+        if (hint != null) return hint
+        val sub = subtitles.getOrNull(index)?.firstOrNull { it.select } ?: return null
+        return CarryHint(externalId = sub.stableId(), name = sub.name, language = sub.language)
+    }
+
+    /**
+     * Селектор после смены звука может снять внешние субтитры (они больше не совпадают с языком озвучки).
+     * Возвращаем удержанный выбор, если он ещё есть в списке и пользователь его не выключил.
+     */
+    private fun restoreHeldText(tracks: Tracks) {
+        if (restoringText) return
+        val held = heldText ?: return
+        if (held.off) return
+        if (player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)) return
+        val index = player.currentMediaItemIndex
+        val options = TrackLabels.collect(tracks, C.TRACK_TYPE_TEXT, i18n.current)
+        val picked = TrackCarry.pick(held, textCarry(options, index)) ?: return
+        val option = options.getOrNull(picked) ?: return
+        if (option.selected) return
+        restoringText = true
+        try {
+            selectTrack(option, user = false)
+        } finally {
+            restoringText = false
+        }
     }
 
     private fun explicitTextHint(index: Int): CarryHint? {
@@ -2104,7 +2289,7 @@ class PlayerController(
         if (player.currentPosition < duration) return
         if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) return
         player.playWhenReady = false
-        onNaturalEnd()
+        onNaturalEnd("position")
     }
 
     private fun dropStalledExternalAudio(): Boolean {
@@ -2306,6 +2491,7 @@ class PlayerController(
         val name = declared.compression.ifBlank { declared.handler }.ifBlank { "AVI" }
         Log.i(PLAYER_LOG_TAG, "AVI declares video $name but no video track was exposed")
         val message = i18n.current.format("error.avi_video_missing", name)
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
@@ -2323,6 +2509,7 @@ class PlayerController(
             player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO),
         ) ?: return
         val message = i18n.current.format(videoErrorKey(mime), codecLabel(mime))
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()
@@ -2353,7 +2540,7 @@ class PlayerController(
      * Если вход декодера не растёт, это экстрактор: звуковой декодер не переключаем.
      */
     private fun maybeRecoverStall() {
-        if (stallStopped || _state.value.error != null || videoRetryPending) return
+        if (stallStopped || _state.value.error != null || videoRetryPending || prematureEndRecovering) return
         if (request.liveTv) return
         val now = SystemClock.elapsedRealtime()
         if (!player.isPlaying || player.playbackState != Player.STATE_READY || now < seekQuietUntil) {
@@ -2375,6 +2562,8 @@ class PlayerController(
             watchdogBaseFrames = frames
             watchdogBaseInput = input
             watchdogArmedAt = now
+            sawVideoFrame = true
+            lastGoodPositionMs = player.currentPosition.coerceAtLeast(0)
             return
         }
         if (pastVideoEnd()) {
@@ -2387,6 +2576,18 @@ class PlayerController(
             "state=${player.playbackState} pos=${player.currentPosition} audio=${decoders.audio} video=${decoders.video}"
         val inputAdvanced = watchdogBaseInput >= 0 && input > watchdogBaseInput
         Log.i(PLAYER_LOG_TAG, "no new video frames for ${FIRST_FRAME_TIMEOUT_MS}ms $snap inputAdvanced=$inputAdvanced")
+        val midFile = stallIsMidPlayback(sawVideoFrame, player.currentPosition, player.bufferedPosition)
+        if (midFile) {
+            val position = stallReopenPositionMs(lastGoodPositionMs, player.currentPosition)
+            val action = stallRecoveryAction(prematureEndRetries)
+            Log.i(
+                PLAYER_LOG_TAG,
+                "mid-file stall $action position=$position lastGood=$lastGoodPositionMs buffered=${player.bufferedPosition}",
+            )
+            resetWatchdogClock()
+            recoverPrematureEnd(position)
+            return
+        }
         if (!inputAdvanced) {
             Log.i(PLAYER_LOG_TAG, "video input stalled, decoder switch skipped")
             if (dropStalledExternalAudio()) return
@@ -2468,6 +2669,7 @@ class PlayerController(
         val mime = player.videoFormat?.sampleMimeType ?: player.audioFormat?.sampleMimeType
         Log.i(PLAYER_LOG_TAG, "playback stalled audio=${decoders.audio} video=${decoders.video} mime=$mime")
         val message = i18n.current.format("error.stalled", codecLabel(mime))
+        player.pause()
         _state.update { it.copy(error = message) }
         scope.launch(Dispatchers.Main) {
             if (_state.value.error == message && player.playbackState != Player.STATE_IDLE) player.stop()

@@ -90,7 +90,7 @@ APK берётся из [последнего релиза](https://github.com/s
 
 ### Телефон и ТВ
 
-- Жесты на телефоне, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, картинка в картинке. Индикатор буферизации рисуется внутри центральной кнопки, фокус с неё не сходит. Если кнопки видны, а фокуса нет, OK ставит паузу.
+- Жесты на телефоне, D-pad и пульт, цифровой ввод времени, превью кадров при перемотке, картинка в картинке. Индикатор буферизации рисуется внутри центральной кнопки. Пока идёт буферизация, фокус пульта остаётся там, куда его поставили, и кнопки «Аудио» и «Субтитры» доступны без паузы. Если кнопки видны, а фокуса нет, OK ставит паузу.
 - Свой обзор файлов для Android TV и приставок без системного выбора: внутренняя память, USB, карты памяти, папки Blu-ray и ISO, плейлист папки для «Следующей серии».
 - Просмотр можно передать на другой 2160 Player в той же сети Wi-Fi с той же позиции. На исходном устройстве ставится пауза.
 - Новое устройство в сети подтверждается один раз: кнопка «Разрешить» или код (на сутки или свой, от 6 цифр). На ТВ по умолчанию «Отклонить», код показан для сверки.
@@ -284,7 +284,7 @@ Back, the resume prompt and the up-next card: [Playback](docs/wiki/Playback.md).
 
 ### Phone, TV and camera
 
-Touch gestures, D-pad, numeric time entry, seek thumbnails, picture-in-picture and background audio. Hand-off to another 2160 Player on the same Wi-Fi keeps the position and pauses the source. A new device on the LAN is allowed once, from a notification or a code (a daily code, or your own from 6 digits). On TV the default answer is Reject, and the code is shown so you can check it.
+Touch gestures, D-pad, numeric time entry, seek thumbnails, picture-in-picture and background audio. While buffering, D-pad focus stays on the selected control, so audio and subtitle panels open without pausing. Hand-off to another 2160 Player on the same Wi-Fi keeps the position and pauses the source. A new device on the LAN is allowed once, from a notification or a code (a daily code, or your own from 6 digits). On TV the default answer is Reject, and the code is shown so you can check it.
 
 The phone can publish its camera (rear, wide, tele, front) or its screen, with the mic and/or device audio. Targets are RTSP on the phone (OBS, VLC, another 2160 Player), SRT to OBS, NDI (OBS with DistroAV, vMix) and RTMP to YouTube or Twitch. Modes go up to 4K and 60 fps when the camera and encoder allow it. Orientation follows how you hold the phone. Torch, tap to focus and zoom are on the stream screen.
 

@@ -128,22 +128,23 @@ fun ControlButton(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Иконка остаётся в дереве и при спиннере: смена ребёнка на буферизации
+        // не должна пересобирать фокусируемый узел.
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = when {
+                busy || !enabled -> tint.copy(alpha = if (busy) 0f else 0.35f)
+                focused -> MaterialTheme.colorScheme.onPrimary
+                else -> tint
+            },
+            modifier = Modifier.size(target * 0.58f),
+        )
         if (busy) {
             CircularProgressIndicator(
                 modifier = Modifier.size(target * 0.72f),
                 color = if (focused) MaterialTheme.colorScheme.onPrimary else accent,
                 strokeWidth = 4.dp,
-            )
-        } else {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = when {
-                    !enabled -> tint.copy(alpha = 0.35f)
-                    focused -> MaterialTheme.colorScheme.onPrimary
-                    else -> tint
-                },
-                modifier = Modifier.size(target * 0.58f),
             )
         }
     }

@@ -265,7 +265,6 @@ fun PlayerScreen(
         onHide = { controlsVisible.value = false },
         playFocus = playFocus,
         rootFocus = rootFocus,
-        isBuffering = state.isBuffering,
         canFocusControls = controlsFocusable,
         focusHold = focusHold,
     )
@@ -1057,6 +1056,26 @@ internal class FocusHold {
     var controlsHaveFocus: Boolean = false
 }
 
+/**
+ * Фокус пульта на кнопки.
+ * Буферизация его не двигает: иначе каждый переход buffering/ready возвращал выделение
+ * на центральную кнопку, и до «Аудио» или «Субтитры» было не дойти.
+ * Запрос на центр только когда кнопки только что показаны или панель только что закрылась,
+ * и фокус ещё не внутри кнопок.
+ */
+internal fun shouldMoveFocusToPlay(
+    controlsVisible: Boolean,
+    panelOpen: Boolean,
+    canFocusControls: Boolean,
+    controlsHaveFocus: Boolean,
+    controlsJustShown: Boolean,
+    panelJustClosed: Boolean,
+): Boolean {
+    if (!canFocusControls || !controlsVisible || panelOpen) return false
+    if (controlsHaveFocus) return false
+    return controlsJustShown || panelJustClosed
+}
+
 /** Автоскрытие и фокус пульта. Панель читается здесь, не в [PlayerScreen]. */
 @Composable
 private fun ControlsAutoHide(
@@ -1067,12 +1086,13 @@ private fun ControlsAutoHide(
     onHide: () -> Unit,
     playFocus: FocusRequester,
     rootFocus: FocusRequester,
-    isBuffering: Boolean,
     canFocusControls: Boolean,
     focusHold: FocusHold,
 ) {
     val panel = panelState.value
     val shown = controlsVisible.value
+    // Не State: запись не пересобирает экран. Нужна, чтобы повтор эффекта не считался первым показом.
+    val shownBefore = remember { FocusEpoch() }
     LaunchedEffect(shown, interaction, isPlaying, panel) {
         if (shown && isPlaying && panel == null) {
             delay(4_000)
@@ -1080,15 +1100,33 @@ private fun ControlsAutoHide(
         }
     }
     LaunchedEffect(shown, panel, canFocusControls) {
+        val justShown = shown && !shownBefore.shown
+        val panelJustClosed = shownBefore.panel != null && panel == null
+        shownBefore.shown = shown
+        shownBefore.panel = panel
         if (!canFocusControls) return@LaunchedEffect
-        if (shown && panel == null) requestPlayFocusAfterFrame(playFocus)
-        else if (!shown && panel == null) runCatching { rootFocus.requestFocus() }
+        if (!shown && panel == null) {
+            runCatching { rootFocus.requestFocus() }
+            return@LaunchedEffect
+        }
+        if (shouldMoveFocusToPlay(
+                controlsVisible = shown,
+                panelOpen = panel != null,
+                canFocusControls = canFocusControls,
+                controlsHaveFocus = focusHold.controlsHaveFocus,
+                controlsJustShown = justShown,
+                panelJustClosed = panelJustClosed,
+            )
+        ) {
+            requestPlayFocusAfterFrame(playFocus)
+        }
     }
-    // Спиннер больше не отдельная кнопка, но если фокус всё же ушёл из ряда - вернуть его на паузу.
-    LaunchedEffect(isBuffering, canFocusControls) {
-        if (!canFocusControls || !shown || panel != null || focusHold.controlsHaveFocus) return@LaunchedEffect
-        requestPlayFocusAfterFrame(playFocus)
-    }
+}
+
+/** Предыдущие видимость и панель для решения, двигать ли фокус. */
+private class FocusEpoch {
+    var shown: Boolean = false
+    var panel: Panel? = null
 }
 
 /** После закрытия панели узел фокуса готов не в том же кадре. Неудачный запрос повторяем ещё раз. */

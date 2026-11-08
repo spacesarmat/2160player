@@ -22,6 +22,8 @@ import java.io.ByteArrayOutputStream
 /**
  * AVI: распаковка packed B-кадров MPEG-4 и подмена fourcc DIV3/DIV4 на MP43.
  * Media3 знает MP43 (video/mp43) и не знает DIV3, хотя это тот же MS-MPEG4.
+ * WMV/VC-1: fourcc WMV1/WMV2/WMV3/WVC1 меняется на MJPG-заглушку, настоящий MIME
+ * и хвост BITMAPINFOHEADER возвращаются на место в [UnpackingTrackOutput.format].
  */
 @OptIn(UnstableApi::class)
 internal object AviPlayback {
@@ -169,13 +171,15 @@ private class AviFourccInput(private val delegate: ExtractorInput) : ExtractorIn
         }
         AviHeader.tryFixHdrl(target, offset, length)?.let { facts ->
             AviProbe.facts = facts
+            AviProbe.wmvTracks.clear()
+            facts.videos.mapNotNull { it.wmv }.forEach(AviProbe.wmvTracks::addLast)
             val video = facts.videos.firstOrNull()
             Log.i(
                 TAG,
                 "AVI hdrl video handler=${video?.handler} compression=${video?.compression} " +
                     "${video?.width}x${video?.height} scale=${video?.scale} rate=${video?.rate} " +
                     "length=${video?.length} sampleSize=${video?.sampleSize} start=${video?.start} " +
-                    "strfBeforeStrh=${video?.strfBeforeStrh} divx3=${facts.divx3} " +
+                    "strfBeforeStrh=${video?.strfBeforeStrh} divx3=${facts.divx3} wmv=${video?.wmv?.fourcc} " +
                     "avihFrames=${facts.avihFrames} durationUs=${facts.durationUs}",
             )
             return
@@ -216,7 +220,7 @@ private class UnpackingTrackOutput(
     private val pending = ByteArrayOutputStream()
 
     override fun format(format: Format) {
-        val adjusted = if (
+        var adjusted = if (
             AviProbe.divx3 &&
             (format.sampleMimeType == MimeTypes.VIDEO_MP43 || format.sampleMimeType == MimeTypes.VIDEO_MP42)
         ) {
@@ -227,6 +231,16 @@ private class UnpackingTrackOutput(
         Log.i(TAG, "AVI format mime=${adjusted.sampleMimeType} ${adjusted.width}x${adjusted.height}")
         unpacker.setMime(adjusted.sampleMimeType)
         adjusted.initializationData.forEach { AviProbe.noteMpeg4(it) }
+        // MJPG здесь - заглушка WMV/VC-1: возвращаем настоящий MIME и extradata.
+        AviProbe.claimWmv(adjusted.sampleMimeType)?.let { wmv ->
+            val builder = adjusted.buildUpon()
+                .setSampleMimeType(wmv.mime)
+                .setWidth(wmv.width)
+                .setHeight(wmv.height)
+            if (wmv.initializationData.isNotEmpty()) builder.setInitializationData(listOf(wmv.initializationData))
+            adjusted = builder.build()
+            Log.i(TAG, "AVI wmv fourcc=${wmv.fourcc} mime=${wmv.mime} init=${wmv.initializationData.size}")
+        }
         if (!unpacker.enabled || adjusted.initializationData.isEmpty()) {
             delegate.format(adjusted)
             return

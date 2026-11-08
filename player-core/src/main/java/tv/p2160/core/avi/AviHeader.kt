@@ -21,6 +21,8 @@ internal data class AviVideoFact(
     val sampleSize: Int,
     val start: Int,
     val strfBeforeStrh: Boolean,
+    /** WMV/VC-1: fourcc в strf подменён на MJPG, настоящий MIME и extradata - здесь. */
+    val wmv: WmvVideo? = null,
 )
 
 internal data class AviFacts(
@@ -57,6 +59,17 @@ internal object AviProbe {
     @Volatile
     var audioIndex: AviAudioIndex? = null
 
+    /** WMV/VC-1 дорожки в порядке strl; format() забирает свою по очереди. */
+    val wmvTracks = ArrayDeque<WmvVideo>()
+
+    /** Следующая WMV-дорожка, если формат пришёл с MIME заглушки MJPG. Иначе - null и очередь не трогаем. */
+    fun claimWmv(sampleMimeType: String?): WmvVideo? {
+        val first = wmvTracks.firstOrNull() ?: return null
+        if (sampleMimeType != androidx.media3.common.MimeTypes.VIDEO_MJPEG) return null
+        wmvTracks.removeFirst()
+        return first
+    }
+
     /** В MPEG-4 есть GMC: декодер устройства может быть, но этот поток он не берёт. */
     @Volatile
     var mpeg4Gmc: Boolean = false
@@ -70,6 +83,7 @@ internal object AviProbe {
         audioIndex = null
         mpeg4Gmc = false
         mpeg4VolSeen = false
+        wmvTracks.clear()
     }
 
     fun noteMpeg4(data: ByteArray) {
@@ -290,8 +304,15 @@ internal object AviHeader {
         }
         var compression = format?.compression.orEmpty()
         var divx3 = compression in DIVX3 || header?.handler in DIVX3
+        var wmv: WmvVideo? = null
         val known = compression in MEDIA3_VIDEO
-        if (!known) {
+        if (AviWmv.mimeFor(compression) != null && format != null) {
+            // Media3 выбрасывает WMV-fourcc. Ставим MJPG-заглушку, настоящий MIME и
+            // хвост BITMAPINFOHEADER (sequence header) уходят в факт дорожки.
+            wmv = AviWmv.fromStrf(compression, format.width, format.height, format.bodySize, data, format.compressionAt - 16)
+            writeFourcc(data, format.compressionAt, AviWmv.PLACEHOLDER_FOURCC)
+            compression = AviWmv.PLACEHOLDER_FOURCC
+        } else if (!known) {
             val replacement = when {
                 divx3 -> "MP43"
                 header?.handler in MEDIA3_VIDEO -> header?.handler?.let { canonical(it) }
@@ -320,6 +341,7 @@ internal object AviHeader {
             sampleSize = header?.sampleSize ?: 0,
             start = header?.start ?: 0,
             strfBeforeStrh = swapped,
+            wmv = wmv,
         )
         return fact to divx3
     }
@@ -344,7 +366,14 @@ internal object AviHeader {
         val sampleSize: Int,
     )
 
-    private data class Strf(val width: Int, val height: Int, val compression: String, val compressionAt: Int)
+    private data class Strf(
+        val width: Int,
+        val height: Int,
+        val compression: String,
+        val compressionAt: Int,
+        /** Размер тела чанка strf: BITMAPINFOHEADER (40) + хвост с extradata. */
+        val bodySize: Int,
+    )
 
     private fun readStrh(data: ByteArray, chunk: Int): Strh? {
         val size = le32(data, chunk + 4)
@@ -404,7 +433,7 @@ internal object AviHeader {
         val size = le32(data, chunk + 4)
         if (size < 20) return null
         val body = chunk + 8
-        return Strf(le32(data, body + 4), le32(data, body + 8), fourcc(data, body + 16), body + 16)
+        return Strf(le32(data, body + 4), le32(data, body + 8), fourcc(data, body + 16), body + 16, size)
     }
 
     private fun swap(data: ByteArray, first: Piece, second: Piece) {

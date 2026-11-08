@@ -20,8 +20,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build, test, lint
-        run: ./gradlew assembleDebug testDebugUnitTest lintDebug --stacktrace
+      - name: Build and test
+        # lint в отдельной джобе: здесь он только задерживал бы артефакты.
+        run: ./gradlew assembleDebug testDebugUnitTest --stacktrace
       - name: Release shrink keeps FFmpeg decoder fields
         run: |
           ./gradlew :app:minifyReleaseWithR8 --stacktrace
@@ -40,3 +41,16 @@ jobs:
           name: player-core
           path: player-core/build/outputs/aar/*.aar
           retention-days: 14
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Lint
+        run: ./gradlew lintDebug --stacktrace

@@ -281,8 +281,10 @@ class ExternalAudioTest {
             File(sound, "Movie.ac3").writeText("b")
             val uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload%2FMovie.mp4")
             val found = AudioSupport.findSidecars(context, uri, emptyMap())
-            assertEquals(setOf("Movie.ru.mka", "Movie.ac3"), found.map { it.uri.lastPathSegment }.toSet())
-            assertEquals("rus", found.first { it.uri.lastPathSegment == "Movie.ac3" }.language)
+            // Имя из Uri.path, а не lastPathSegment: на Windows путь с \, и сегмент один весь путь.
+            val names = found.map { File(it.uri.path!!).name }
+            assertEquals(setOf("Movie.ru.mka", "Movie.ac3"), names.toSet())
+            assertEquals("rus", found.first { File(it.uri.path!!).name == "Movie.ac3" }.language)
             assertTrue(AudioSupport.isAudioFolder("RUS Sound [Shift]"))
             assertFalse(ContentSidecars.search(context, uri).hits.any { it.name.endsWith(".mka") || it.name.endsWith(".ac3") })
         } finally {

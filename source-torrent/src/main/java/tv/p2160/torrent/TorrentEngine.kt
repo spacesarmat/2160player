@@ -253,6 +253,7 @@ class TorrentEngine private constructor(context: Context) {
         // Метаданные могли уже быть (повторное добавление) - сохраним список файлов.
         session.files(id)?.let { files -> store.update(id) { it.copy(files = files, totalSize = files.sumOf(TorrentFile::size)) } }
         refresh()
+        tv.p2160.core.diagnostics.ActionLog.event("torrent", "add magnet id=$id")
         id
     }
 
@@ -347,6 +348,7 @@ class TorrentEngine private constructor(context: Context) {
         val chosen = files.firstOrNull { it.index == fileIndex } ?: throw IOException("bad file index")
         cleanup(exceptId = id)
         session.select(id, fileIndex, exclusive = true)
+        tv.p2160.core.diagnostics.ActionLog.event("torrent", "prepare id=$id file=$fileIndex (${chosen.path})")
         val videos = if (chosen.isVideo) TorrentSidecars.mainVideoCount(files) else 1
         session.include(id, TorrentSidecars.match(chosen, files, videos).map { it.file.index })
         val now = System.currentTimeMillis()
@@ -398,9 +400,15 @@ class TorrentEngine private constructor(context: Context) {
 
     /** Открывает поток для [TorrentDataSource]. Блокирующий, с потока загрузчика плеера. */
     internal fun openStream(id: String, fileIndex: Int): TorrentSession.FileStream {
-        if (needsMobileConsent()) throw IOException("torrents are set to Wi-Fi only (mobile data)")
+        if (needsMobileConsent()) {
+            tv.p2160.core.diagnostics.ActionLog.event("torrent", "openStream blocked: Wi-Fi only (mobile data)")
+            throw IOException("torrents are set to Wi-Fi only (mobile data)")
+        }
         if (!ensureActive(id)) throw IOException("unknown torrent $id")
-        if (!session.awaitMetadata(id, METADATA_TIMEOUT_MS)) throw IOException("no metadata for $id")
+        if (!session.awaitMetadata(id, METADATA_TIMEOUT_MS)) {
+            tv.p2160.core.diagnostics.ActionLog.event("torrent", "openStream timeout: no metadata id=$id")
+            throw IOException("no metadata for $id")
+        }
         val now = System.currentTimeMillis()
         store.update(id) { it.copy(lastOpenedAt = now, hasData = true) }
         return session.openStream(id, fileIndex)

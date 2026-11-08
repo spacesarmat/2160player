@@ -384,6 +384,24 @@ fun SettingsScreen(
                 }
             }
 
+            item { SectionTitle(tr("settings.section_diagnostics")) }
+            item {
+                val context = LocalContext.current
+                var diagnostics by remember { mutableStateOf(tv.p2160.core.diagnostics.ActionLog.enabled(context)) }
+                ToggleRow(tr("settings.diagnostics"), tr("settings.diagnostics_hint"), diagnostics) { v ->
+                    diagnostics = v
+                    tv.p2160.core.diagnostics.ActionLog.setEnabled(context, v)
+                }
+            }
+            item {
+                val context = LocalContext.current
+                SettingRow(tr("settings.diagnostics_share"), onClick = {
+                    val intent = tv.p2160.core.diagnostics.ActionLog.shareIntent(context)
+                    if (intent != null) runCatching { context.startActivity(intent) }
+                    else android.widget.Toast.makeText(context, strings["settings.diagnostics_share_none"], android.widget.Toast.LENGTH_SHORT).show()
+                })
+            }
+
             item { SectionTitle(tr("settings.section_updates")) }
             item {
                 val context = LocalContext.current

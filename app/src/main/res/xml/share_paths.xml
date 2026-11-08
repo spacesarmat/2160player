@@ -4,4 +4,6 @@
     <cache-path name="share" path="share/" />
     <!-- Полный (общий ARM) пакет текущей версии, если установлен APK под одну архитектуру. -->
     <files-path name="share-apk" path="share-apk/" />
+    <!-- Тестовый режим: журнал действий для отправки разработчику. -->
+    <files-path name="diagnostics" path="diagnostics/" />
 </paths>

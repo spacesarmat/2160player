@@ -16,6 +16,24 @@ import tv.p2160.core.picker.DocumentPicker
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Тестовый режим: журнал действий (если включён в настройках).
+        tv.p2160.core.diagnostics.ActionLog.init(this)
+        // Куда пользователь ходит: создание/показ/закрытие экранов.
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: android.app.Activity, state: android.os.Bundle?) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "create ${activity.javaClass.simpleName}")
+            override fun onActivityStarted(activity: android.app.Activity) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "start ${activity.javaClass.simpleName}")
+            override fun onActivityResumed(activity: android.app.Activity) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "resume ${activity.javaClass.simpleName}")
+            override fun onActivityPaused(activity: android.app.Activity) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "pause ${activity.javaClass.simpleName}")
+            override fun onActivityStopped(activity: android.app.Activity) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "stop ${activity.javaClass.simpleName}")
+            override fun onActivityDestroyed(activity: android.app.Activity) =
+                tv.p2160.core.diagnostics.ActionLog.event("ui", "destroy ${activity.javaClass.simpleName}")
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, state: android.os.Bundle) = Unit
+        })
         // Пароли SMB и ключ RTMP - в Keystore до того, как их прочитают экраны.
         tv.p2160.core.secret.FieldSecrets.migrate(this)
         // Настройки передачи читают HandoffAuth до старта сервера (onStart приходит позже первого кадра).

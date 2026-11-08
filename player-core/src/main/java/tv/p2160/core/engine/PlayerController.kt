@@ -435,6 +435,10 @@ class PlayerController(
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Пауза и стоп не должны досчитывать таймаут «нет кадра».
             if (!playWhenReady) resetWatchdogClock()
+            tv.p2160.core.diagnostics.ActionLog.event(
+                "player",
+                if (playWhenReady) "play item=${player.currentMediaItemIndex} pos=${player.currentPosition}" else "pause item=${player.currentMediaItemIndex} pos=${player.currentPosition}",
+            )
             // pauseAtEndOfMediaItems: не последний файл не даёт STATE_ENDED, только эту причину.
             // Сон «в конце серии» обрабатывается внутри onNaturalEnd.
             if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
@@ -501,6 +505,7 @@ class PlayerController(
             // Пауза сразу: иначе под диалогом часы продолжают идти.
             player.pause()
             holdFailedItem = player.currentMediaItemIndex
+            tv.p2160.core.diagnostics.ActionLog.event("player", "error ${describe(error)} (${error.errorCodeName})")
             _state.update { it.copy(error = describe(error)) }
         }
 
@@ -555,6 +560,10 @@ class PlayerController(
 
     /** Восстанавливает позицию, скорость и дорожки для текущего элемента плейлиста. */
     private fun onItemStarted(index: Int, explicitStart: Long?, opening: Boolean = false) {
+        tv.p2160.core.diagnostics.ActionLog.event(
+            "player",
+            "open item=$index uri=${player.currentMediaItem?.localConfiguration?.uri} start=$explicitStart",
+        )
         cancelIntro()
         introItem = -1
         introAttempts = 0
@@ -973,7 +982,9 @@ class PlayerController(
     fun seekTo(positionMs: Long) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
         armSeekQuiet()
-        player.seekTo(positionMs.coerceIn(0, duration))
+        val target = positionMs.coerceIn(0, duration)
+        tv.p2160.core.diagnostics.ActionLog.event("player", "seek -> $target")
+        player.seekTo(target)
         refresh()
     }
 

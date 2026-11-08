@@ -84,6 +84,11 @@ fun FocusCard(
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, label = "cardScale")
     val shape = RoundedCornerShape(16.dp)
+    // Тестовый режим: любой тап по карточке - в журнал действий.
+    val logClick = {
+        tv.p2160.core.diagnostics.ActionLog.event("ui", "tap ${contentDescription ?: "card"}")
+        onClick()
+    }
     val stateText = when {
         checked == true -> tr("a11y.on")
         checked == false -> tr("a11y.off")
@@ -99,19 +104,19 @@ fun FocusCard(
             interactionSource = interaction,
             indication = null,
             role = Role.Switch,
-            onValueChange = { onClick() },
+            onValueChange = { logClick() },
         )
         radioOn != null -> Modifier.selectable(
             selected = radioOn,
             interactionSource = interaction,
             indication = null,
             role = Role.RadioButton,
-            onClick = onClick,
+            onClick = logClick,
         )
         else -> Modifier.combinedClickable(
             interactionSource = interaction,
             indication = null,
-            onClick = onClick,
+            onClick = logClick,
             onLongClick = onLongClick,
         )
     }

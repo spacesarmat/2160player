@@ -147,7 +147,7 @@ startActivity(
 - Быстрый старт: [docs/EMBEDDING.md](docs/EMBEDDING.md) (модуль, `includeBuild`, mavenLocal, GitHub Packages).
 - Справочник: [docs/API.md](docs/API.md) (`Player2160`, `PlayerController`, `PlayerScreen`, `PlayerConfig`, Intent, внешние дорожки в Intent - §3.7).
 - Пример хоста: [samples/embed-demo](samples/embed-demo).
-- Координата текущей библиотеки: `tv.p2160:player-core:0.2.23`, `minSdk` 24, `compileSdk` 37.
+- Координата текущей библиотеки: `tv.p2160:player-core:0.2.24`, `minSdk` 24, `compileSdk` 37.
   В приложении-хосте нужны `pickFirsts` для общих `.so` FFmpeg, иначе сборка падает на одинаковых `libavcodec.so`. Пример в [EMBEDDING.md](docs/EMBEDDING.md).
 
 ### Сборка
@@ -303,7 +303,7 @@ MPEG-4 ASP (XviD/DivX with B-frames and GMC), MS-MPEG4, H.263, WMV and VC-1 depe
 `minSdk` 24, `compileSdk` 37, JDK 21. Build the app with `./gradlew :app:assembleDebug`.
 
 ```kotlin
-implementation("tv.p2160:player-core:0.2.23")
+implementation("tv.p2160:player-core:0.2.24")
 ```
 
 The host must pick the first copy of the shared FFmpeg `.so` files (`libavcodec`, `libavutil`, `libswscale`, `libswresample`). Full steps: [docs/EMBEDDING.md](docs/EMBEDDING.md). Reference: [docs/API.md](docs/API.md). Sample host: [samples/embed-demo](samples/embed-demo). Wiki: [docs/wiki/Home.md](docs/wiki/Home.md).

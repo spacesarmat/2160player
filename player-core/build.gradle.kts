@@ -59,16 +59,16 @@ val patchNextlib = tasks.register("patchNextlib") {
     val nextlibVersion = libs.versions.nextlib.get()
     val outDir = layout.buildDirectory.dir("patched-nextlib")
     val scriptFile = layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py")
-    // Резолв на этапе конфигурации: в doLast остаются только File, иначе
-    // configuration cache не сможет сохранить задачу.
-    val aarFile: File = configurations.detachedConfiguration(
+    // Configuration разрешается лениво при чтении входов задачи, в том числе в composite build.
+    val aar = configurations.detachedConfiguration(
         dependencies.create("io.github.anilbeesetti:nextlib-media3ext:$nextlibVersion"),
-    ).apply { isTransitive = false }.resolve().single { it.extension == "aar" }
+    ).apply { isTransitive = false }
     inputs.property("nextlib", nextlibVersion)
     inputs.file(scriptFile)
-    inputs.file(aarFile)
+    inputs.files(aar)
     outputs.dir(outDir)
     doLast {
+        val aarFile = inputs.files.single { it.extension == "aar" }
         val out = outDir.get().asFile
         out.mkdirs()
         val cmd = listOf("python3", scriptFile.asFile.absolutePath, aarFile.absolutePath, out.absolutePath)

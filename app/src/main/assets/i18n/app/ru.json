@@ -142,6 +142,7 @@
   "settings.smart_reset": "Забыть привычки выбора дорожек",
   "settings.smart_reset_done": "Привычки выбора дорожек сброшены",
   "settings.section_diagnostics": "Диагностика",
+  "settings.section_torrents": "Торренты",
   "settings.diagnostics": "Тестовый режим (журнал действий)",
   "settings.diagnostics_hint": "Записывает действия программы и пользователя в файл для разработчика. Немного замедляет приложение.",
   "settings.diagnostics_share": "Поделиться журналом",

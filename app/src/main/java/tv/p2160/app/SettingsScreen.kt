@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -571,27 +572,33 @@ private fun SettingRow(
     val colors = MaterialTheme.colorScheme
     // Единый стиль строки: заголовок слева, значение справа в одну строку,
     // подсказка - строкой ниже на всю ширину. Отступы общие для всех строк настроек.
+    // Значение ограничено долей ширины: длинные списки (несколько языков) не должны
+    // вытеснять заголовок (замечание ревью PR #36).
     FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), mergeDescendants = true, contentDescription = title) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(icon, null, tint = colors.primary)
                 Spacer(Modifier.size(16.dp))
             }
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                    )
-                    if (value != null) {
-                        Spacer(Modifier.size(16.dp))
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f)) {
+                val valueMaxWidth = maxWidth * 0.45f
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            value, color = colors.primary, style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                         )
+                        if (value != null) {
+                            Spacer(Modifier.size(16.dp))
+                            Text(
+                                value, color = colors.primary, style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = valueMaxWidth),
+                            )
+                        }
                     }
+                    if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-                if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

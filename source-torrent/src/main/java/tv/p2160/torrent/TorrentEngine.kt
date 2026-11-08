@@ -53,7 +53,16 @@ class TorrentEngine private constructor(context: Context) {
     private val appContext = context.applicationContext
     val settings = TorrentSettings(appContext)
     private val store = TorrentStore(File(appContext.filesDir, "torrents"))
-    private val dataRoot: File = File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "torrent-data")
+    /**
+     * Данные торрентов - во внутренней памяти, не на /sdcard. FUSE MediaProvider
+     * (поддержка /storage/emulated) падает на части сборок Android: известный
+     * race node-inl.h «Check failed» в pf_open при массовом открытии файлов,
+     * после чего vold шлёт SIGINT приложениям с открытыми дескрипторами тома.
+     * Внутренняя память (/data/user/0) этим стеком не проходит.
+     */
+    private val dataRoot: File = File(appContext.filesDir, "torrent-data")
+    /** Прежнее расположение на эмулированном хранилище; непустые данные переезжают в dataDir(). */
+    private val legacyDataRoot: File? = appContext.getExternalFilesDir(null)?.let { File(it, "torrent-data") }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val monitor = DeviceMonitor(appContext)
     /** Сеть (с оплатой трафика или нет) и зарядка - от них зависят правила раздачи. */
@@ -498,7 +507,19 @@ class TorrentEngine private constructor(context: Context) {
         refresh()
     }
 
-    private fun dataDir(id: String) = File(dataRoot, id)
+    private fun dataDir(id: String): File {
+        val dir = File(dataRoot, id)
+        // Одноразовый переезд данных со старого FUSE-тома внутрь приложения.
+        val legacy = legacyDataRoot?.let { File(it, id) }
+        if (legacy != null && legacy.isDirectory && !dir.exists()) {
+            dir.parentFile?.mkdirs()
+            val moved = legacy.renameTo(dir) || legacy.copyRecursively(dir, overwrite = false).also { copied ->
+                if (copied) legacy.deleteRecursively()
+            }
+            tv.p2160.core.diagnostics.ActionLog.event("torrent", "moved data id=$id legacy->internal: $moved")
+        }
+        return dir
+    }
 
     companion object {
         const val SCHEME = "torrent"

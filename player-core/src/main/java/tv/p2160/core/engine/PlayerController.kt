@@ -2707,7 +2707,8 @@ class PlayerController(
             PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> t["error.not_found"]
             PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> t["error.no_permission"]
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED -> t["error.container"]
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
+                if (isNetworkStall(e)) t["error.network"] else t["error.container"]
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,

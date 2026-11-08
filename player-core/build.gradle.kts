@@ -29,6 +29,8 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
+        // Robolectric-тесты тяжёлые: гоняем классы параллельно.
+        unitTests.all { it.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(2) }
     }
 
     publishing {
@@ -56,17 +58,20 @@ composeCompiler {
 val patchNextlib = tasks.register("patchNextlib") {
     val nextlibVersion = libs.versions.nextlib.get()
     val outDir = layout.buildDirectory.dir("patched-nextlib")
-    inputs.file(layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py"))
+    val scriptFile = layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py")
+    // Резолв на этапе конфигурации: в doLast остаются только File, иначе
+    // configuration cache не сможет сохранить задачу.
+    val aarFile: File = configurations.detachedConfiguration(
+        dependencies.create("io.github.anilbeesetti:nextlib-media3ext:$nextlibVersion"),
+    ).apply { isTransitive = false }.resolve().single { it.extension == "aar" }
     inputs.property("nextlib", nextlibVersion)
+    inputs.file(scriptFile)
+    inputs.file(aarFile)
     outputs.dir(outDir)
     doLast {
         val out = outDir.get().asFile
         out.mkdirs()
-        val nextlibAar = configurations.detachedConfiguration(
-            dependencies.create("io.github.anilbeesetti:nextlib-media3ext:$nextlibVersion"),
-        ).apply { isTransitive = false }.resolve().single { it.extension == "aar" }
-        val script = layout.projectDirectory.file("ffmpeg-map/patch_nextlib.py").asFile.absolutePath
-        val cmd = listOf("python3", script, nextlibAar.absolutePath, out.absolutePath)
+        val cmd = listOf("python3", scriptFile.asFile.absolutePath, aarFile.absolutePath, out.absolutePath)
         val code = ProcessBuilder(cmd).inheritIO().start().waitFor()
         if (code != 0) error("patch nextlib exited $code")
     }

@@ -142,6 +142,7 @@
   "settings.smart_reset": "Forget track habits",
   "settings.smart_reset_done": "Track habits cleared",
   "settings.section_diagnostics": "Diagnostics",
+  "settings.section_torrents": "Torrents",
   "settings.diagnostics": "Test mode (action log)",
   "settings.diagnostics_hint": "Records program and user actions to a file for the developer. Slightly slows the app down.",
   "settings.diagnostics_share": "Share the log",

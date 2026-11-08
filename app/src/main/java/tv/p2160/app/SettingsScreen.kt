@@ -304,6 +304,51 @@ fun SettingsScreen(
             item { ToggleRow(tr("settings.stats_overlay"), tr("settings.stats_overlay_hint"), s.statsOverlay) { v -> update { it.copy(statsOverlay = v) } } }
             item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
 
+            item { SectionTitle(tr("settings.section_torrents")) }
+            item {
+                val context = LocalContext.current
+                val engine = remember { tv.p2160.torrent.TorrentEngine.get(context) }
+                val prefs by engine.settings.state.collectAsStateWithLifecycle()
+                fun <T> next(list: List<T>, current: T): T = list[(list.indexOf(current) + 1).mod(list.size)]
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingRow(
+                        tr("torrent.cache_limit"),
+                        value = if (prefs.cacheLimitGb == 0) tr("torrent.unlimited") else tr("torrent.gb", prefs.cacheLimitGb),
+                    ) { engine.settings.update { it.copy(cacheLimitGb = next(tv.p2160.torrent.TorrentPrefs.CACHE_LIMITS, it.cacheLimitGb)) } }
+                    ToggleRow(tr("torrent.keep_files"), tr("torrent.keep_files_hint"), prefs.keepFiles) { v ->
+                        engine.settings.update { it.copy(keepFiles = v) }
+                    }
+                    SettingRow(tr("torrent.max_age"), value = tr("torrent.days", prefs.maxAgeDays)) {
+                        engine.settings.update { it.copy(maxAgeDays = next(tv.p2160.torrent.TorrentPrefs.MAX_AGE_DAYS, it.maxAgeDays)) }
+                    }
+                    SettingRow(tr("torrent.max_connections"), value = prefs.maxConnections.toString()) {
+                        engine.settings.update { it.copy(maxConnections = next(tv.p2160.torrent.TorrentPrefs.CONNECTIONS, it.maxConnections)) }
+                    }
+                    SettingRow(
+                        tr("torrent.network"),
+                        value = tr("torrent.network_" + prefs.network.name.lowercase()),
+                        hint = tr("torrent.network_" + prefs.network.name.lowercase() + "_hint"),
+                    ) { engine.settings.update { it.copy(network = next(tv.p2160.torrent.NetworkMode.entries, it.network)) } }
+                    SettingRow(
+                        tr("torrent.seed_policy"),
+                        value = tr("torrent.seed_" + prefs.seedPolicy.name.lowercase()),
+                        hint = tr("torrent.seed_policy_hint"),
+                    ) { engine.settings.update { it.copy(seedPolicy = next(tv.p2160.torrent.SeedPolicy.entries, it.seedPolicy)) } }
+                    ToggleRow(tr("torrent.seed_charging"), tr("torrent.seed_charging_hint"), prefs.seedOnlyCharging) { v ->
+                        engine.settings.update { it.copy(seedOnlyCharging = v) }
+                    }
+                    SettingRow(
+                        tr("torrent.mobile_limit"),
+                        value = if (prefs.mobileDownloadLimitKb == 0) tr("torrent.unlimited") else strings.format("torrent.kbps", prefs.mobileDownloadLimitKb),
+                        hint = tr("torrent.mobile_limit_hint"),
+                    ) { engine.settings.update { it.copy(mobileDownloadLimitKb = next(tv.p2160.torrent.TorrentPrefs.MOBILE_DOWNLOAD_LIMITS, it.mobileDownloadLimitKb)) } }
+                    SettingRow(
+                        tr("torrent.upload_limit"),
+                        value = if (prefs.uploadLimitKb == 0) tr("torrent.unlimited") else strings.format("torrent.kbps", prefs.uploadLimitKb),
+                    ) { engine.settings.update { it.copy(uploadLimitKb = next(tv.p2160.torrent.TorrentPrefs.UPLOAD_LIMITS, it.uploadLimitKb)) } }
+                }
+            }
+
             item { SectionTitle(tr("settings.section_minimize")) }
             item { ToggleRow(tr("settings.pip"), tr("settings.pip_hint"), s.pictureInPicture) { v -> update { it.copy(pictureInPicture = v) } } }
             item { ToggleRow(tr("settings.background"), tr("settings.background_hint"), s.backgroundPlayback) { v -> update { it.copy(backgroundPlayback = v) } } }

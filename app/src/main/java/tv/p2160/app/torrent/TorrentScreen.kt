@@ -36,8 +36,6 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Upload
-import tv.p2160.torrent.SeedPolicy
-import tv.p2160.torrent.NetworkMode
 import tv.p2160.torrent.TorrentHold
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -49,7 +47,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -94,7 +91,6 @@ import tv.p2160.torrent.NaturalOrder
 import tv.p2160.torrent.TorrentEngine
 import tv.p2160.torrent.TorrentFile
 import tv.p2160.torrent.TorrentItem
-import tv.p2160.torrent.TorrentPrefs
 import tv.p2160.torrent.TorrentStats
 
 /**
@@ -116,7 +112,6 @@ fun TorrentScreen(
     val scope = rememberCoroutineScope()
     var openedId by rememberSaveable { mutableStateOf<String?>(null) }
     var magnetDialog by remember { mutableStateOf(false) }
-    var settingsDialog by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -170,7 +165,6 @@ fun TorrentScreen(
                     error = strings["torrent.no_file_picker"]
                 }
             },
-            onSettings = { settingsDialog = true },
             onOpen = { openedId = it },
         )
     }
@@ -184,7 +178,6 @@ fun TorrentScreen(
             },
         )
     }
-    if (settingsDialog) TorrentSettingsDialog(engine, onDismiss = { settingsDialog = false })
     consent?.let { action ->
         AlertDialog(
             onDismissRequest = { consent = null },
@@ -236,7 +229,6 @@ private fun TorrentList(
     onBack: () -> Unit,
     onAddMagnet: () -> Unit,
     onOpenFile: () -> Unit,
-    onSettings: () -> Unit,
     onOpen: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -253,7 +245,7 @@ private fun TorrentList(
         Modifier.fillMaxSize().background(colors.background).windowInsetsPadding(WindowInsets.safeDrawing),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Header(tr("torrent.title"), onBack) { IconAction(Icons.Default.Settings, tr("torrent.settings"), onSettings) }
+        Header(tr("torrent.title"), onBack)
         LazyColumn(
             Modifier.readableColumn(),
             contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
@@ -750,99 +742,4 @@ private fun RemoveDialog(engine: TorrentEngine, item: TorrentItem, onDismiss: ()
             }
         },
     )
-}
-
-@Composable
-private fun TorrentSettingsDialog(engine: TorrentEngine, onDismiss: () -> Unit) {
-    val prefs by engine.settings.state.collectAsStateWithLifecycle()
-    val strings = LocalStrings.current
-    fun <T> next(list: List<T>, current: T): T = list[(list.indexOf(current) + 1).mod(list.size)]
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(tr("torrent.settings")) },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    SettingRow(
-                        tr("torrent.cache_limit"),
-                        if (prefs.cacheLimitGb == 0) tr("torrent.unlimited") else tr("torrent.gb", prefs.cacheLimitGb),
-                    ) { engine.settings.update { it.copy(cacheLimitGb = next(TorrentPrefs.CACHE_LIMITS, it.cacheLimitGb)) } }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.keep_files"),
-                        tr(if (prefs.keepFiles) "torrent.on" else "torrent.off"),
-                        hint = tr("torrent.keep_files_hint"),
-                    ) { engine.settings.update { it.copy(keepFiles = !it.keepFiles) } }
-                }
-                item {
-                    SettingRow(tr("torrent.max_age"), tr("torrent.days", prefs.maxAgeDays)) {
-                        engine.settings.update { it.copy(maxAgeDays = next(TorrentPrefs.MAX_AGE_DAYS, it.maxAgeDays)) }
-                    }
-                }
-                item {
-                    SettingRow(tr("torrent.max_connections"), prefs.maxConnections.toString()) {
-                        engine.settings.update { it.copy(maxConnections = next(TorrentPrefs.CONNECTIONS, it.maxConnections)) }
-                    }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.network"),
-                        tr("torrent.network_" + prefs.network.name.lowercase()),
-                        hint = tr("torrent.network_" + prefs.network.name.lowercase() + "_hint"),
-                    ) { engine.settings.update { it.copy(network = next(NetworkMode.entries, it.network)) } }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.seed_policy"),
-                        tr("torrent.seed_" + prefs.seedPolicy.name.lowercase()),
-                        hint = tr("torrent.seed_policy_hint"),
-                    ) { engine.settings.update { it.copy(seedPolicy = next(SeedPolicy.entries, it.seedPolicy)) } }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.seed_charging"),
-                        tr(if (prefs.seedOnlyCharging) "torrent.on" else "torrent.off"),
-                        hint = tr("torrent.seed_charging_hint"),
-                    ) { engine.settings.update { it.copy(seedOnlyCharging = !it.seedOnlyCharging) } }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.mobile_limit"),
-                        if (prefs.mobileDownloadLimitKb == 0) tr("torrent.unlimited") else strings.format("torrent.kbps", prefs.mobileDownloadLimitKb),
-                        hint = tr("torrent.mobile_limit_hint"),
-                    ) { engine.settings.update { it.copy(mobileDownloadLimitKb = next(TorrentPrefs.MOBILE_DOWNLOAD_LIMITS, it.mobileDownloadLimitKb)) } }
-                }
-                item {
-                    SettingRow(
-                        tr("torrent.upload_limit"),
-                        if (prefs.uploadLimitKb == 0) tr("torrent.unlimited") else strings.format("torrent.kbps", prefs.uploadLimitKb),
-                    ) { engine.settings.update { it.copy(uploadLimitKb = next(TorrentPrefs.UPLOAD_LIMITS, it.uploadLimitKb)) } }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("torrent.close")) } },
-    )
-}
-
-/** Строка настройки: нажатие (пульт или палец) переключает на следующее значение. */
-@Composable
-private fun SettingRow(title: String, value: String, hint: String? = null, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    // Длинный заголовок или значение в одной строке сжимают друг друга («Загрузка по мобильному интернету»).
-    val inline = title.length <= 16 && value.length <= 12
-    FocusCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), background = colors.surfaceVariant, mergeDescendants = true) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
-                if (!inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
-                hint?.let { Text(it, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
-            }
-            if (inline) {
-                Spacer(Modifier.width(12.dp))
-                Text(value, color = colors.primary, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-            }
-        }
-    }
 }

@@ -480,7 +480,7 @@ android {
 }
 
 dependencies {
-    implementation("tv.p2160:player-core:0.2.22")
+    implementation("tv.p2160:player-core:0.2.23")
     // Для своего Compose-UI (PlayerScreen, PlayerAction.icon) - Compose-плагин в вашем модуле
     // и при необходимости material-icons-extended.
 }
@@ -2110,8 +2110,12 @@ dependencies {
 ```
 
 ProGuard-правила (`-keep class org.libtorrent4j.** { *; }`) подключаются автоматически.
-Разрешений сверх `INTERNET` не нужно; данные хранятся в `getExternalFilesDir(null)/torrent-data`
-(или `filesDir`), индекс - в `filesDir/torrents`.
+Разрешений сверх `INTERNET` не нужно; данные хранятся во внутренней памяти приложения
+(`filesDir/torrent-data`), индекс - в `filesDir/torrents`. Внутренняя память выбрана намеренно:
+эмулированное хранилище (`/sdcard`) идёт через FUSE MediaProvider, который на части сборок
+Android падает при массовом открытии файлов торрента, после чего система убивает приложение
+с открытыми дескрипторами тома. Данные в прежнем расположении (`getExternalFilesDir(null)/torrent-data`)
+переносятся автоматически при первом обращении.
 
 **Формат URI**
 

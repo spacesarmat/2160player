@@ -1,5 +1,6 @@
 package tv.p2160.core.engine
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +10,44 @@ import org.junit.Test
 import tv.p2160.core.settings.EndAction
 
 class EndPlaybackTest {
+    @Test
+    fun containerParsingErrorWithNetworkStallInsideReadsAsNetwork() {
+        // Экстрактор не прочитал заголовок торрента: 90 с без байтов от пиров.
+        val timeout = androidx.media3.datasource.DataSourceException(
+            java.net.SocketTimeoutException("no data for piece 0"),
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        )
+        val wrapped = PlaybackException(
+            null,
+            timeout,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        )
+        assertTrue(isNetworkStall(wrapped))
+
+        val plainTimeout = PlaybackException(
+            null,
+            java.net.SocketTimeoutException("no data for piece 0"),
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        )
+        assertTrue(isNetworkStall(plainTimeout))
+    }
+
+    @Test
+    fun containerParsingErrorWithoutNetworkCauseStaysContainerError() {
+        val notFound = androidx.media3.datasource.DataSourceException(
+            java.io.FileNotFoundException(),
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+        )
+        val wrapped2 = PlaybackException(
+            null,
+            notFound,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        )
+        assertFalse(isNetworkStall(wrapped2))
+        assertFalse(isNetworkStall(PlaybackException(null, null, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)))
+        assertFalse(isNetworkStall(IllegalStateException("bad box")))
+    }
+
     @Test
     fun nextCountsDownThenEndsThePlaylistOrTheSingleFile() {
         assertTrue(endPlan(EndAction.NEXT, hasNext = true, playlistSize = 3, live = false).countdown)

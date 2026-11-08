@@ -1,5 +1,6 @@
 package tv.p2160.core.engine
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import tv.p2160.core.resume.ResumeStore
 import tv.p2160.core.settings.EndAction
@@ -120,6 +121,28 @@ internal fun prematureRetryRecovered(retryFromMs: Long, lastGoodMs: Long): Boole
 /** Счётчик перед следующим решением. Кадры дальше обрыва обнуляют его, часы без кадров - нет. */
 internal fun stallAttemptAfterProgress(attempts: Int, retryFromMs: Long, lastGoodMs: Long): Int =
     if (attempts > 0 && prematureRetryRecovered(retryFromMs, lastGoodMs)) 0 else attempts
+
+/**
+ * Сетевой застой внутри ошибки парсинга контейнера. Экстрактор читает заголовок через DataSource:
+ * если торрент/сеть не отдали байты, Media3 оборачивает это в «контейнер не опознан»,
+ * хотя файл здоров. Такую ошибку показываем как сетевую, а не «повреждённый контейнер».
+ */
+internal fun isNetworkStall(e: Throwable): Boolean {
+    var cause: Throwable? = e
+    var guard = 0
+    while (cause != null && guard < 10) {
+        when (cause) {
+            is java.net.SocketTimeoutException -> return true
+            is androidx.media3.datasource.DataSourceException ->
+                if (cause.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                    cause.reason == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                ) return true
+        }
+        cause = cause.cause
+        guard++
+    }
+    return false
+}
 
 /**
  * Заставка при паузе копится только на паузе пользователя: `playWhenReady == false` и [Player.STATE_READY].

@@ -230,7 +230,8 @@ private fun playlistRequest(file: File): PlaybackRequest? {
 internal fun resolvePlaylistFile(parent: File?, rawUrl: String): File? {
     val path = rawUrl.trim().replace('\\', '/')
     if (path.isEmpty()) return null
-    val absolute = path.startsWith("/")
+    // isAbsolute, а не startsWith("/"): на Windows JVM-тестах дисковый путь C:/... иначе считается относительным.
+    val absolute = File(path).isAbsolute
     val file = if (absolute) File(path) else File(parent ?: return null, path)
     val resolved = runCatching { file.canonicalFile }.getOrNull() ?: return null
     if (!absolute) {

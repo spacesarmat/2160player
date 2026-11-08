@@ -82,7 +82,8 @@ class ExternalSubtitleTest {
         File(dir, "Tears of Steel.ru.srt").writeText("ru")
         File(dir, "Tears of Steel.en.srt").writeText("en")
         File(dir, "Tears of Steel2.srt").writeText("no")
-        val found = SubtitleSupport.findSidecars(context, Uri.fromFile(video)).map { it.lastPathSegment!! }
+        // lastPathSegment не подходит: Uri.fromFile на Windows даёт путь с \, где сегмент один.
+        val found = SubtitleSupport.findSidecars(context, Uri.fromFile(video)).map { File(it.path!!).name }
         assertEquals(listOf("Tears of Steel.en.srt", "Tears of Steel.ru.srt"), found.sorted())
         assertTrue(SubtitleSupport.findSidecars(context, Uri.parse("content://downloads/document/msf:1")).isEmpty())
     }

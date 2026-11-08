@@ -54,6 +54,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.p2160.core.i18n.I18n
@@ -302,7 +303,6 @@ fun SettingsScreen(
             item { ToggleRow(tr("settings.tunneling"), tr("settings.tunneling_hint"), s.tunneling) { v -> update { it.copy(tunneling = v) } } }
             item { ToggleRow(tr("settings.audio_offload"), tr("settings.audio_offload_hint"), s.audioOffload) { v -> update { it.copy(audioOffload = v) } } }
             item { ToggleRow(tr("settings.stats_overlay"), tr("settings.stats_overlay_hint"), s.statsOverlay) { v -> update { it.copy(statsOverlay = v) } } }
-            item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
 
             item { SectionTitle(tr("settings.section_torrents")) }
             item {
@@ -467,6 +467,7 @@ fun SettingsScreen(
             }
 
             item { SectionTitle(tr("settings.section_about")) }
+            item { SettingRow(tr("app.clear_history"), onClick = onClearHistory) }
             item { SettingRow(tr("settings.faq"), hint = tr("settings.faq_hint"), icon = Icons.AutoMirrored.Filled.HelpOutline, onClick = onOpenFaq) }
             item {
                 val context = LocalContext.current
@@ -568,24 +569,29 @@ private fun SettingRow(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    // Подпись нужна и журналу действий, и TalkBack.
+    // Единый стиль строки: заголовок слева, значение справа в одну строку,
+    // подсказка - строкой ниже на всю ширину. Отступы общие для всех строк настроек.
     FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), mergeDescendants = true, contentDescription = title) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(icon, null, tint = colors.primary)
                 Spacer(Modifier.size(16.dp))
             }
-            // Длинное значение справа сжимает заголовок и подсказку - тогда показываем его под заголовком.
-            // Короткое - у правого края карточки (колонка забирает ширину), как до сужения колонки в 0.2.10.
-            val inline = value != null && value.length <= 14
             Column(Modifier.weight(1f)) {
-                Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
-                if (value != null && !inline) Text(value, color = colors.primary, style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    )
+                    if (value != null) {
+                        Spacer(Modifier.size(16.dp))
+                        Text(
+                            value, color = colors.primary, style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-            if (inline) {
-                Spacer(Modifier.size(16.dp))
-                Text(value!!, color = colors.primary, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
             }
         }
     }
@@ -601,7 +607,7 @@ private fun ToggleRow(title: String, hint: String?, checked: Boolean, onToggle: 
         mergeDescendants = true,
         contentDescription = title,
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, color = colors.onSurface, style = MaterialTheme.typography.bodyLarge)
                 if (hint != null) Text(hint, color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

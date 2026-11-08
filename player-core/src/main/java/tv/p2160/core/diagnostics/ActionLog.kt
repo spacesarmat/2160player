@@ -54,11 +54,11 @@ object ActionLog {
         }
     }
 
-    /** Событие в журнал. При выключенном режиме - только logcat, без файла. */
+    /** Событие в журнал. При выключенном режиме не пишет ни в файл, ни в logcat. */
     fun event(source: String, message: String) {
+        if (!enabled) return
         val line = "${Sink.time()} | $source | $message"
         Log.i(LOG_TAG, line)
-        if (!enabled) return
         val s = sink ?: return
         synchronized(s) { s.write(line) }
     }

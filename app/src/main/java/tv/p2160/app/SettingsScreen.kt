@@ -141,7 +141,7 @@ fun SettingsScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(Modifier.readableColumn().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent) {
+            FocusCard(onClick = onBack, modifier = Modifier.size(48.dp), background = Color.Transparent, contentDescription = tr("player.back")) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("player.back"), tint = colors.onBackground, modifier = Modifier.align(Alignment.Center))
             }
             Spacer(Modifier.size(12.dp))
@@ -523,7 +523,8 @@ private fun SettingRow(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), mergeDescendants = true) {
+    // Подпись нужна и журналу действий, и TalkBack.
+    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), mergeDescendants = true, contentDescription = title) {
         Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(icon, null, tint = colors.primary)
@@ -553,6 +554,7 @@ private fun ToggleRow(title: String, hint: String?, checked: Boolean, onToggle: 
         modifier = Modifier.fillMaxWidth(),
         checked = checked,
         mergeDescendants = true,
+        contentDescription = title,
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {

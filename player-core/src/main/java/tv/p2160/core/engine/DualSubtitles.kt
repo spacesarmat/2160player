@@ -105,6 +105,7 @@ internal class DualTextRenderersFactory(
                 .setEnableFloatOutput(false)
                 .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                 .setAudioProcessors(arrayOf(night))
+                .setAudioOutputProvider(PassthroughAudioOutputProvider(context))
                 .build(),
             passthrough,
         )

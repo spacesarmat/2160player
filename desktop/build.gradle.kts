@@ -121,8 +121,9 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "2160player"
             // jpackage on macOS rejects an app-version whose first number is 0.
-            // The window still shows 0.2.26. The dmg bundle version is 2.26.
-            packageVersion = if (System.getProperty("os.name").lowercase().contains("mac")) "2.26" else appVersion
+            // Compose also checks the MSI format on that machine, so the bundle
+            // version needs three numbers. The window still shows 0.2.26.
+            packageVersion = if (System.getProperty("os.name").lowercase().contains("mac")) "2.26.0" else appVersion
             description = "2160 Player"
             vendor = "2160 Player"
             // jlink не видит часть JDK, без которой HTTPS, JNA и AWT молча ломаются.

@@ -63,12 +63,47 @@ class TorrentByteSource(
     override val length: Long,
     private val openStream: () -> TorrentSession.FileStream,
 ) : ByteSource {
+    private val readers = ReaderSet()
+
     override fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int =
         error("Каждый запрос должен открыть свой поток через openReader")
 
-    override fun openReader(): ByteSource = StreamReader(openStream())
+    override fun openReader(): ByteSource {
+        val reader = StreamReader(openStream())
+        readers.track(reader)
+        return reader
+    }
 
-    override fun close() = Unit
+    override fun close() {
+        readers.close()
+    }
+}
+
+/**
+ * Readers opened for HTTP stay reachable until the published source is closed.
+ * Closing the parent closes them too, which wakes a read blocked on a missing piece.
+ */
+internal class ReaderSet {
+    private val readers = java.util.Collections.synchronizedSet(mutableSetOf<AutoCloseable>())
+    @Volatile private var closed = false
+
+    fun track(reader: AutoCloseable) {
+        val closeNow = synchronized(readers) {
+            if (closed) true else {
+                readers.add(reader)
+                false
+            }
+        }
+        if (closeNow) reader.close()
+    }
+
+    fun close() {
+        val snapshot = synchronized(readers) {
+            closed = true
+            readers.toList().also { readers.clear() }
+        }
+        snapshot.forEach { runCatching { it.close() } }
+    }
 }
 
 private class StreamReader(private val stream: TorrentSession.FileStream) : ByteSource {

@@ -20,6 +20,7 @@ import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Image as SkiaImage
 import tv.p2160.desktop.player.MpvPlayer
 import tv.p2160.desktop.player.VideoFrame
+import tv.p2160.desktop.player.shouldCopyFrame
 
 @Composable
 fun VideoSurface(player: MpvPlayer, modifier: Modifier = Modifier) {
@@ -37,9 +38,10 @@ fun VideoSurface(player: MpvPlayer, modifier: Modifier = Modifier) {
             while (true) {
                 withFrameNanos {
                     val playback = player.state.value
-                    val frameMissing = player.frames.value == null
+                    val hasFrame = player.frames.value != null
                     val moved = playback.positionSec != lastPos
-                    if (!playback.paused || frameMissing || moved) {
+                    val redraw = player.takeRedrawRequest()
+                    if (shouldCopyFrame(playback.paused, hasFrame, moved, redraw)) {
                         player.renderNow()
                         lastPos = player.state.value.positionSec
                     }

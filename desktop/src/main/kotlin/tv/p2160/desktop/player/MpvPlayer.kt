@@ -18,6 +18,10 @@ import kotlin.concurrent.thread
 
 fun loadFileCommand(url: String): List<String> = listOf("loadfile", url, "replace")
 
+/** Копировать кадр, пока идёт воспроизведение, нет картинки, сменилась позиция или libmpv просит перерисовку. */
+fun shouldCopyFrame(paused: Boolean, hasFrame: Boolean, positionChanged: Boolean, redrawRequested: Boolean): Boolean =
+    !paused || !hasFrame || positionChanged || redrawRequested
+
 /** glibc: LC_NUMERIC = 1. macOS and Windows: LC_NUMERIC = 4 (1 there is LC_COLLATE). */
 fun numericLocaleCategory(osName: String): Int {
     val os = osName.lowercase()
@@ -77,7 +81,14 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
     private val _state = MutableStateFlow(PlayState())
     val state: StateFlow<PlayState> = _state.asStateFlow()
 
-    private val callback = RenderUpdate { synchronized(wake) { wake.notifyAll() } }
+    private val frameDirty = AtomicBoolean(false)
+    private val callback = RenderUpdate {
+        frameDirty.set(true)
+        synchronized(wake) { wake.notifyAll() }
+    }
+
+    /** libmpv попросил новый кадр, например после смены субтитров на паузе. */
+    fun takeRedrawRequest(): Boolean = frameDirty.getAndSet(false)
 
     private val eventThread: Thread
     private val pollThread: Thread

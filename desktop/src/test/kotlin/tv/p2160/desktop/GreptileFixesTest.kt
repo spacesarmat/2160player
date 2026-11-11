@@ -8,10 +8,12 @@ import tv.p2160.desktop.media.ByteSource
 import tv.p2160.desktop.media.LibraryStore
 import tv.p2160.desktop.media.RangeServer
 import tv.p2160.desktop.media.SmbSaved
+import tv.p2160.desktop.media.ReaderSet
 import tv.p2160.desktop.media.extractNative
 import tv.p2160.desktop.media.shareListAfterUp
 import tv.p2160.desktop.player.loadFileCommand
 import tv.p2160.desktop.player.numericLocaleCategory
+import tv.p2160.desktop.player.shouldCopyFrame
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
@@ -73,6 +75,28 @@ class GreptileFixesTest {
     }
 
     @Test
+    fun closingTheTorrentSourceClosesItsReaders() {
+        val set = ReaderSet()
+        val first = Flag()
+        val second = Flag()
+        set.track(first)
+        set.track(second)
+        set.close()
+        assertTrue(first.closed)
+        assertTrue(second.closed)
+        val late = Flag()
+        set.track(late)
+        assertTrue(late.closed)
+    }
+
+    @Test
+    fun pausedPlaybackStillCopiesAFrameWhenMpvAsks() {
+        assertFalse(shouldCopyFrame(paused = true, hasFrame = true, positionChanged = false, redrawRequested = false))
+        assertTrue(shouldCopyFrame(paused = true, hasFrame = true, positionChanged = false, redrawRequested = true))
+        assertTrue(shouldCopyFrame(paused = false, hasFrame = true, positionChanged = false, redrawRequested = false))
+    }
+
+    @Test
     fun rangeServerUsesAFreshReaderPerRequest() {
         val server = RangeServer()
         try {
@@ -84,6 +108,13 @@ class GreptileFixesTest {
         } finally {
             server.close()
         }
+    }
+}
+
+private class Flag : AutoCloseable {
+    var closed = false
+    override fun close() {
+        closed = true
     }
 }
 

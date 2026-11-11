@@ -105,6 +105,11 @@ tasks.configureEach {
 compose.desktop {
     application {
         mainClass = "tv.p2160.desktop.MainKt"
+        // Release-упаковка иначе гоняет ProGuard и падает на необязательных
+        // классах Android/IBM внутри smbj, Guava и BouncyCastle.
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "2160player"

@@ -182,7 +182,8 @@ WIN_BIN = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/202
 
 
 def seven_zip() -> str:
-    for name in ("7z", "7za", r"C:\Program Files\7-Zip\7z.exe"):
+    candidates = ["7z", "7za", r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Files (x86)\7-Zip\7z.exe"]
+    for name in candidates:
         if shutil.which(name) or Path(name).exists():
             return name
     sys.exit("7-Zip is required to unpack the Windows libmpv build.")

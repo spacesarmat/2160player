@@ -50,10 +50,19 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install mpv
 
-      - name: Windows WiX 3 and 7-Zip
+      - name: Windows WiX 3
         if: runner.os == 'Windows'
+        shell: pwsh
         working-directory: .
-        run: choco install wixtoolset --version=3.11.2 -y
+        run: |
+          $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3*" -Recurse -Filter candle.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $found) {
+            choco install wixtoolset -y
+            $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3*" -Recurse -Filter candle.exe | Select-Object -First 1
+          }
+          if (-not $found) { throw "candle.exe not found" }
+          "$($found.DirectoryName)" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "WiX candle: $($found.FullName)"
 
       - name: Test
         shell: bash
@@ -72,13 +81,16 @@ jobs:
               python3 scripts/patch-deb-depends.py "$tmp/DEBIAN/control"
               dpkg-deb -b "$tmp" "$deb"
               app=$(find build/compose/binaries -type d -name bin | head -1)
-              tar -C "$(dirname "$app")" -czf "2160player-0.2.26-linux-x64.tar.gz" "$(basename "$(dirname "$app")")"
+              root=$(dirname "$app")
+              tar -C "$(dirname "$root")" -czf "2160player-0.2.26-linux-x64.tar.gz" "$(basename "$root")"
               ;;
             Windows)
-              if [ -d "/c/Program Files (x86)/WiX Toolset v3.11/bin" ]; then
-                echo "/c/Program Files (x86)/WiX Toolset v3.11/bin" >> "$GITHUB_PATH"
-                export PATH="/c/Program Files (x86)/WiX Toolset v3.11/bin:$PATH"
-              fi
+              for d in "/c/Program Files (x86)/WiX Toolset v3.14/bin" "/c/Program Files (x86)/WiX Toolset v3.11/bin"; do
+                if [ -x "$d/candle.exe" ]; then
+                  export PATH="$d:$PATH"
+                fi
+              done
+              command -v candle
               ./gradlew packageReleaseMsi --stacktrace
               ;;
             macOS)

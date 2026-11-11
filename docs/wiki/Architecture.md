@@ -4,6 +4,7 @@
 app                    UI приложения: главный экран, настройки, IPTV, торренты, камера, handoff, обновления
 player-core            библиотека: API, ExoPlayer, Compose-плеер, SMB, DLNA, IPTV, Blu-ray, M2TS, история
 source-torrent         libtorrent4j, схема torrent://
+desktop                отдельное приложение macOS, Windows, Linux: Compose и libmpv. Android-сборку не трогает
 third-party/rtsp-server  RTSP-сервер трансляции (исходники pedroSG94)
 samples/embed-demo     пример хоста
 ```

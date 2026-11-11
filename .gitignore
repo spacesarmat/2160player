@@ -23,6 +23,11 @@ app/release/
 # Локальные данные Claude Code (рабочие копии агентов)
 .claude/
 
+# Нативные библиотеки десктопа качает сборка, в git их нет.
+desktop/natives/
+desktop/packaging/natives/
+desktop/build/
+
 # Промежуточные рендеры логотипа
 design/logo-v2/_shots/
 design/logo-v2/final/_src/

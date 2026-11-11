@@ -24,6 +24,12 @@ APK берётся из [последнего релиза](https://github.com/s
 
 Дальше приложение обновляется само: Настройки → Обновления.
 
+## Десктоп
+
+Сборка для macOS, Windows и Linux лежит в `desktop/` (версия `0.2.26`). Установщики появляются
+артефактами [Desktop CI](.github/workflows/desktop.yml), без тега и без релиза. Как поставить и
+чем управлять: [Десктоп](docs/wiki/Desktop.md).
+
 ## Скриншоты
 
 **Телефон (POCO X5)**
@@ -208,6 +214,7 @@ player-core/            библиотека плеера (tv.p2160.core)
   settings/, resume/, i18n/, subtitle/
   src/main/assets/i18n/core/   языковые пакеты ядра
 source-torrent/         торренты (libtorrent4j), схема torrent://
+desktop/                macOS, Windows, Linux: Compose и libmpv, свой Gradle
 app/                    приложение 2160 Player: главный экран, история, сеть, IPTV, торренты,
                         передача между устройствами (handoff/), автообновление (update/), настройки
 samples/embed-demo/     пример встраивания библиотеки
@@ -244,6 +251,8 @@ Andy_bum - Telegram: [@Andy_bum](https://t.me/Andy_bum). Вопросы, иде�
 (Apache 2.0; RTSP-Server - исходниками с правкой, см. [third-party/rtsp-server/NOTICE.md](third-party/rtsp-server/NOTICE.md)), ZXing (Apache 2.0),
 NDI® SDK (заголовки - MIT; библиотека `libndi` - лицензия NDI SDK, в репозиторий не входит; распространение вместе
 с ней разрешено дополнительным разрешением [LICENSE-NDI-EXCEPTION.md](LICENSE-NDI-EXCEPTION.md)).
+Десктопная сборка дополнительно линкуется с libmpv (GPL) и FFmpeg из поставки ОС или сборки shinchiro.
+NDI на десктоп не входит.
 NDI® is a registered trademark of Vizrt NDI AB - https://ndi.video/
 
 ---
@@ -265,6 +274,8 @@ Grab an APK from the [latest release](https://github.com/spacesarmat/2160player/
 - `universal` covers the rest, including x86.
 
 The app can update itself from GitHub Releases (Settings, Updates). If the API rate-limits the check, the app reads the latest tag from the releases page and says when to retry.
+
+A desktop build for macOS, Windows and Linux lives in `desktop/` (version 0.2.26). Installers are CI artifacts, not a GitHub release. Install and keys: [Desktop](docs/wiki/Desktop.md).
 
 ### What it plays
 

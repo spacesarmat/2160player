@@ -16,6 +16,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
+fun loadFileCommand(url: String): List<String> = listOf("loadfile", url, "replace")
+
+/** glibc: LC_NUMERIC = 1. macOS and Windows: LC_NUMERIC = 4 (1 there is LC_COLLATE). */
+fun numericLocaleCategory(osName: String): Int {
+    val os = osName.lowercase()
+    return when {
+        os.contains("mac") -> 4
+        os.contains("win") -> 4
+        else -> 1
+    }
+}
+
 /** Кадр в формате bgr0: на каждый пиксель B, G, R и неиспользуемый байт. */
 data class VideoFrame(val width: Int, val height: Int, val bgr0: ByteArray)
 
@@ -67,6 +79,9 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
 
     private val callback = RenderUpdate { synchronized(wake) { wake.notifyAll() } }
 
+    private val eventThread: Thread
+    private val pollThread: Thread
+
     init {
         val params = renderParams(2)
         params[0].type = MPV_RENDER_PARAM_API_TYPE
@@ -77,8 +92,8 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
         check(lib.mpv_render_context_create(out, handle, params[0]))
         render = out.value ?: error("mpv_render_context_create returned null")
         lib.mpv_render_context_set_update_callback(render, callback, null)
-        thread(name = "mpv-events", isDaemon = true) { eventLoop() }
-        thread(name = "mpv-poll", isDaemon = true) { pollLoop() }
+        eventThread = thread(name = "mpv-events", isDaemon = true) { eventLoop() }
+        pollThread = thread(name = "mpv-poll", isDaemon = true) { pollLoop() }
     }
 
     fun renderNow() {
@@ -106,8 +121,9 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
         headers.forEach { (key, value) ->
             command("change-list", "http-header-fields", "add", "$key: $value")
         }
-        val options = if (paused) "pause=yes" else "pause=no"
-        if (!command("loadfile", url, "replace", options)) {
+        val optionsPaused = paused
+        setProperty("pause", if (optionsPaused) "yes" else "no")
+        if (!command(*loadFileCommand(url).toTypedArray())) {
             _state.update { it.copy(error = "Не удалось открыть") }
         }
     }
@@ -169,7 +185,8 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
 
     override fun close() {
         if (!running.compareAndSet(true, false)) return
-        synchronized(wake) { wake.notifyAll() }
+        eventThread.join(2_000)
+        pollThread.join(2_000)
         runCatching { lib.mpv_render_context_free(render) }
         runCatching { lib.mpv_terminate_destroy(handle) }
     }
@@ -411,7 +428,7 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
             } else {
                 Native.load("c", CLocale::class.java)
             }
-            val category = if (os.contains("win")) 4 else 1
+            val category = numericLocaleCategory(os)
             libc.setlocale(category, "C")
         }
 

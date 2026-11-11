@@ -72,9 +72,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          dump_jpackage() {
+            local code="$1"
+            if [ "$code" -ne 0 ]; then
+              echo "---- jpackage errors ----"
+              find build/compose/logs -name '*err.txt' -print -exec cat {} \; || true
+            fi
+            return "$code"
+          }
           case "${{ runner.os }}" in
             Linux)
+              set +e
               ./gradlew packageReleaseDeb createReleaseDistributable --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
               deb=$(find build/compose/binaries -name '*.deb' | head -1)
               tmp=$(mktemp -d)
               dpkg-deb -R "$deb" "$tmp"
@@ -91,10 +103,18 @@ jobs:
                 fi
               done
               command -v candle
+              set +e
               ./gradlew packageReleaseMsi --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
               ;;
             macOS)
+              set +e
               ./gradlew packageReleaseDmg --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
               ;;
           esac
 

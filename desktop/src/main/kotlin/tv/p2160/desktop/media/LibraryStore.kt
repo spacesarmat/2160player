@@ -3,6 +3,7 @@ package tv.p2160.desktop.media
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
 
 data class RecentItem(
     val kind: String,
@@ -34,6 +35,7 @@ class LibraryStore(val root: File = defaultDataDir()) {
 
     init {
         root.mkdirs()
+        ownerOnlyDir(root)
         load()
     }
 
@@ -138,16 +140,61 @@ class LibraryStore(val root: File = defaultDataDir()) {
         }
         json.put("smb", smb)
         root.mkdirs()
+        ownerOnlyDir(root)
         val tmp = File(root, "library.json.tmp")
-        ownerOnly(root)
-        tmp.writeText(json.toString(2))
-        ownerOnly(tmp)
+        writePrivate(tmp, json.toString(2))
         if (!tmp.renameTo(file)) {
-            file.writeText(tmp.readText())
+            writePrivate(file, tmp.readText())
             tmp.delete()
         }
-        ownerOnly(file)
     }
+
+    private fun writePrivate(target: File, text: String) {
+        if (target.exists() && !target.delete()) target.writeText("")
+        val path = target.toPath()
+        if (posix()) {
+            val perms = setOf(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            )
+            if (!Files.exists(path)) {
+                Files.createFile(path, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(perms))
+            } else {
+                Files.setPosixFilePermissions(path, perms)
+            }
+            Files.writeString(
+                path,
+                text,
+                java.nio.charset.StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.WRITE,
+                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+            )
+        } else {
+            target.writeText(text)
+            ownerOnly(target)
+        }
+    }
+
+    private fun ownerOnlyDir(dir: File) {
+        if (!dir.isDirectory) return
+        if (posix()) {
+            Files.setPosixFilePermissions(
+                dir.toPath(),
+                setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+                ),
+            )
+        } else {
+            ownerOnly(dir)
+            dir.setExecutable(false, false)
+            dir.setExecutable(true, true)
+        }
+    }
+
+    private fun posix(): Boolean =
+        java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
 
     private fun ownerOnly(target: File) {
         target.setReadable(false, false)

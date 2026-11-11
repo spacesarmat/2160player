@@ -90,13 +90,20 @@ val stagePackagedNatives by tasks.registering(Copy::class) {
         os.contains("mac") -> if (arch.contains("aarch64") || arch.contains("arm")) "macos-arm64" else "macos-x64"
         else -> "linux-x64"
     }
+    val osId = when {
+        os.contains("win") -> "windows"
+        os.contains("mac") -> "macos"
+        else -> "linux"
+    }
+    // Compose copies only packaging/<os>/ and packaging/common into the image.
     from(layout.projectDirectory.dir("natives/$folder"))
-    into(layout.projectDirectory.dir("packaging/natives"))
+    into(layout.projectDirectory.dir("packaging/$osId/natives"))
 }
 
 tasks.configureEach {
-    if (name == "run" || name == "runRelease" || name.startsWith("package") ||
-        name.startsWith("createDistributable") || name.startsWith("createRelease")
+    if (name == "run" || name == "runRelease" || name == "prepareAppResources" ||
+        name.startsWith("package") || name.startsWith("createDistributable") ||
+        name.startsWith("createRelease")
     ) {
         dependsOn(stagePackagedNatives)
     }
@@ -120,6 +127,7 @@ compose.desktop {
             modules(
                 "jdk.unsupported",
                 "jdk.crypto.ec",
+                "jdk.httpserver",
                 "java.instrument",
                 "java.management",
                 "java.naming",
@@ -134,6 +142,8 @@ compose.desktop {
             val linuxIcon = rootProject.projectDir.resolve("../design/logo-v2/final/play_store_icon.png")
             val windowsIcon = rootProject.projectDir.resolve("icons/2160player.ico")
             linux {
+                // Debian package names must start with a letter. The app name stays 2160player.
+                packageName = "p2160player"
                 if (linuxIcon.exists()) iconFile.set(linuxIcon)
                 shortcut = true
             }

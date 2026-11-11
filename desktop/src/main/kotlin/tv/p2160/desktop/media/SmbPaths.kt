@@ -6,3 +6,10 @@ object SmbPaths {
         return if (base.isEmpty()) name else "$base\\$name"
     }
 }
+
+/**
+ * At the share root, Up returns to the list captured at connect time.
+ * Inside a folder the caller reloads the parent and this returns null.
+ */
+fun shareListAfterUp(path: String, knownShares: List<String>): List<String>? =
+    if (path.isEmpty()) knownShares else null

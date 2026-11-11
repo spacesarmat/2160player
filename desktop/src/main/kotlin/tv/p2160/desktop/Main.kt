@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -156,21 +157,23 @@ fun main(args: Array<String>) {
                                     onTyping = {},
                                 )
                             } else {
-                                PlayerScreen(
-                                    player = engine,
-                                    title = route.request.title,
-                                    resumeSec = route.request.resumeSec,
-                                    live = route.request.live,
-                                    onBack = app::back,
-                                    onSavePosition = { app.savePosition(route.request, it) },
-                                    onSaveVolume = app::noteVolume,
-                                    onAddSubtitle = {
-                                        pickFile(window, media = false)?.let { engine.addSubtitle(it.absolutePath) }
-                                    },
-                                    onAddAudio = {
-                                        pickFile(window, media = false)?.let { engine.addAudio(it.absolutePath) }
-                                    },
-                                )
+                                key(route.request.key) {
+                                    PlayerScreen(
+                                        player = engine,
+                                        title = route.request.title,
+                                        resumeSec = route.request.resumeSec,
+                                        live = route.request.live,
+                                        onBack = app::back,
+                                        onSavePosition = { app.savePosition(route.request, it) },
+                                        onSaveVolume = app::noteVolume,
+                                        onAddSubtitle = {
+                                            pickFile(window, media = false)?.let { engine.addSubtitle(it.absolutePath) }
+                                        },
+                                        onAddAudio = {
+                                            pickFile(window, media = false)?.let { engine.addAudio(it.absolutePath) }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }

@@ -43,8 +43,14 @@ internal object NativeLibs {
             System.getProperty("compose.application.resources.dir")?.let { add(File(it, "natives")) }
             System.getProperty("p2160.natives")?.let { add(File(it)) }
             add(File("packaging/natives"))
+            add(File("packaging/linux/natives"))
+            add(File("packaging/macos/natives"))
+            add(File("packaging/windows/natives"))
             add(File("natives/${platformFolder()}"))
             add(File("desktop/packaging/natives"))
+            add(File("desktop/packaging/linux/natives"))
+            add(File("desktop/packaging/macos/natives"))
+            add(File("desktop/packaging/windows/natives"))
             add(File("desktop/natives/${platformFolder()}"))
         }
         return candidates.firstOrNull { dir ->

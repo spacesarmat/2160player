@@ -94,7 +94,7 @@ def linux_dest() -> Path:
                 consider(Path(right))
 
     consider(so)
-    (dest / "libmpv.so").symlink_to("libmpv.so.2")
+    shutil.copy2(dest / "libmpv.so.2", dest / "libmpv.so")
     for lib in dest.iterdir():
         if lib.is_symlink() or not lib.is_file():
             continue
@@ -160,7 +160,7 @@ def macos_dest() -> Path:
         shutil.copy2(os.path.realpath(path), dest / name)
     if not (dest / "libmpv.dylib").exists():
         link_from = next(p.name for p in dest.glob("libmpv*.dylib"))
-        (dest / "libmpv.dylib").symlink_to(link_from)
+        shutil.copy2(dest / link_from, dest / "libmpv.dylib")
     for lib in list(dest.glob("*.dylib")):
         if lib.is_symlink():
             continue

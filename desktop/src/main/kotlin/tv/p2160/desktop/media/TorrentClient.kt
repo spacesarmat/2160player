@@ -44,7 +44,9 @@ class TorrentClient(private val saveDir: File) : AutoCloseable {
 
     fun open(id: String, fileIndex: Int): TorrentByteSource {
         session.select(id, fileIndex, true)
-        return TorrentByteSource(session.openStream(id, fileIndex))
+        val known = session.files(id)?.firstOrNull { it.index == fileIndex }?.size
+        val length = known ?: session.openStream(id, fileIndex).use { it.size }
+        return TorrentByteSource(length) { session.openStream(id, fileIndex) }
     }
 
     override fun close() {
@@ -52,13 +54,28 @@ class TorrentClient(private val saveDir: File) : AutoCloseable {
     }
 }
 
-class TorrentByteSource(private val stream: TorrentSession.FileStream) : ByteSource {
-    override val length: Long = stream.size
-    private val lock = Any()
+/**
+ * Each HTTP request gets its own libtorrent stream. One shared lock around
+ * [TorrentSession.FileStream.read] would stall every other Range request,
+ * including a seek, for as long as the first piece takes to arrive.
+ */
+class TorrentByteSource(
+    override val length: Long,
+    private val openStream: () -> TorrentSession.FileStream,
+) : ByteSource {
+    override fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int =
+        error("Каждый запрос должен открыть свой поток через openReader")
 
-    override fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int = synchronized(lock) {
+    override fun openReader(): ByteSource = StreamReader(openStream())
+
+    override fun close() = Unit
+}
+
+private class StreamReader(private val stream: TorrentSession.FileStream) : ByteSource {
+    override val length: Long = stream.size
+
+    override fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int =
         stream.read(offset, dst, dstOff, len, 120_000)
-    }
 
     override fun close() {
         stream.close()

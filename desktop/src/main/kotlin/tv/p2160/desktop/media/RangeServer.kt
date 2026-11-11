@@ -13,6 +13,12 @@ interface ByteSource : AutoCloseable {
     val length: Long
     /** -1, если смещение за концом. Может блокироваться, пока данные не появятся. */
     fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int
+
+    /**
+     * Поток на один HTTP-запрос. Реализация по умолчанию отдаёт этот же объект,
+     * и сервер его не закрывает. Торрент возвращает отдельный поток.
+     */
+    fun openReader(): ByteSource = this
 }
 
 /**
@@ -63,40 +69,46 @@ class RangeServer : AutoCloseable {
             exchange.close()
             return
         }
-        val length = source.length
-        val range = exchange.requestHeaders.getFirst("Range")
-        val span = parseRange(range, length)
-        if (span == null) {
-            exchange.sendResponseHeaders(416, -1)
-            exchange.close()
-            return
-        }
-        val (start, end) = span
-        val count = end - start
-        val partial = range != null
-        exchange.responseHeaders.add("Accept-Ranges", "bytes")
-        exchange.responseHeaders.add("Content-Type", "application/octet-stream")
-        if (partial) {
-            exchange.responseHeaders.add("Content-Range", "bytes $start-${end - 1}/$length")
-            exchange.sendResponseHeaders(206, count)
-        } else {
-            exchange.sendResponseHeaders(200, count)
-        }
-        if (exchange.requestMethod.equals("HEAD", true)) {
-            exchange.close()
-            return
-        }
-        exchange.responseBody.use { out ->
-            val buf = ByteArray(256 * 1024)
-            var pos = start
-            while (pos < end) {
-                val want = minOf(buf.size.toLong(), end - pos).toInt()
-                val n = source.read(pos, buf, 0, want)
-                if (n < 0) break
-                if (n == 0) throw IOException("empty read at $pos")
-                out.write(buf, 0, n)
-                pos += n
+        val reader = source.openReader()
+        val owned = reader !== source
+        try {
+            val length = reader.length
+            val range = exchange.requestHeaders.getFirst("Range")
+            val span = parseRange(range, length)
+            if (span == null) {
+                exchange.sendResponseHeaders(416, -1)
+                exchange.close()
+                return
             }
+            val (start, end) = span
+            val count = end - start
+            val partial = range != null
+            exchange.responseHeaders.add("Accept-Ranges", "bytes")
+            exchange.responseHeaders.add("Content-Type", "application/octet-stream")
+            if (partial) {
+                exchange.responseHeaders.add("Content-Range", "bytes $start-${end - 1}/$length")
+                exchange.sendResponseHeaders(206, count)
+            } else {
+                exchange.sendResponseHeaders(200, count)
+            }
+            if (exchange.requestMethod.equals("HEAD", true)) {
+                exchange.close()
+                return
+            }
+            exchange.responseBody.use { out ->
+                val buf = ByteArray(256 * 1024)
+                var pos = start
+                while (pos < end) {
+                    val want = minOf(buf.size.toLong(), end - pos).toInt()
+                    val n = reader.read(pos, buf, 0, want)
+                    if (n < 0) break
+                    if (n == 0) throw IOException("empty read at $pos")
+                    out.write(buf, 0, n)
+                    pos += n
+                }
+            }
+        } finally {
+            if (owned) runCatching { reader.close() }
         }
     }
 

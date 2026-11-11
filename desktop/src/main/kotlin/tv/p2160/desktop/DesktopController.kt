@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.p2160.core.iptv.IptvChannel
@@ -27,6 +28,7 @@ import tv.p2160.desktop.media.SmbEntry
 import tv.p2160.desktop.media.SmbSaved
 import tv.p2160.desktop.media.TorrentClient
 import tv.p2160.desktop.media.isMediaFile
+import tv.p2160.desktop.media.shareListAfterUp
 import tv.p2160.desktop.media.subtitleSidecars
 import tv.p2160.desktop.player.MpvPlayer
 import tv.p2160.desktop.ui.TorrentRow
@@ -79,6 +81,9 @@ class DesktopController(
     private var smbServer: SmbSaved? = null
     private var smbShare = ""
     private var smbPath = ""
+    private var knownShares: List<String> = emptyList()
+    private var subtitleJob: Job? = null
+    @Volatile private var playbackGeneration = 0
 
     var dlnaServers by mutableStateOf<List<DlnaServer>>(emptyList())
     var dlnaObjects by mutableStateOf<List<DlnaObject>>(emptyList())
@@ -108,6 +113,8 @@ class DesktopController(
     private suspend fun onUi(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
 
     fun back() {
+        subtitleJob?.cancel()
+        playbackGeneration++
         val current = route
         if (current is Route.Player) {
             player?.let { engine ->
@@ -192,6 +199,7 @@ class DesktopController(
             onUi { smbBusy = false }
             result.onSuccess {
                 onUi {
+                    knownShares = it
                     smbShares = it
                     smbEntries = emptyList()
                     smbLabel = "\\\\${server.host}"
@@ -218,8 +226,10 @@ class DesktopController(
     }
 
     fun smbUp() {
-        if (smbPath.isEmpty()) {
+        val restored = shareListAfterUp(smbPath, knownShares)
+        if (restored != null) {
             smbShare = ""
+            smbShares = restored
             smbEntries = emptyList()
             smbLabel = smbServer?.let { "\\\\${it.host}" }.orEmpty()
             return
@@ -489,6 +499,8 @@ class DesktopController(
         proxy: String?,
     ) {
         val engine = player ?: return
+        subtitleJob?.cancel()
+        val generation = ++playbackGeneration
         proxyUrl?.let { ranges.unpublish(it) }
         proxyUrl = proxy
         val resume = if (live) null else library.position(key)?.takeIf { it >= 10.0 }
@@ -496,11 +508,13 @@ class DesktopController(
         engine.open(url, title, paused = resume != null, headers = headers)
         stack = stack.filterNot { it is Route.Player } + Route.Player(request)
         if (subtitles.isNotEmpty()) {
-            scope.launch {
+            subtitleJob = scope.launch {
                 repeat(50) {
+                    if (generation != playbackGeneration) return@launch
                     if (engine.state.value.fileLoaded) return@repeat
                     delay(100)
                 }
+                if (generation != playbackGeneration) return@launch
                 subtitles.forEach { path -> runCatching { engine.addSubtitle(path) } }
             }
         }

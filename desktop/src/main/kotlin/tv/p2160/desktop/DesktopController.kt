@@ -527,6 +527,15 @@ class DesktopController(
     fun noteVolume(volume: Int) = library.rememberVolume(volume)
 
     override fun close() {
+        val current = route
+        if (current is Route.Player) {
+            player?.let { engine ->
+                if (!current.request.live) {
+                    library.rememberPosition(current.request.key, engine.state.value.positionSec)
+                }
+            }
+            library.flush()
+        }
         proxyUrl?.let { ranges.unpublish(it) }
         player?.close()
         ranges.close()

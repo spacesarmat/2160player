@@ -50,11 +50,17 @@ fun PlayerScreen(
     var showAudio by remember { mutableStateOf(false) }
     var showSubs by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.fileLoaded, state.durationSec, resumeSec, live) {
+    LaunchedEffect(state.fileLoaded, resumeSec, live) {
         if (askedResume || live || !state.fileLoaded || resumeSec == null) return@LaunchedEffect
-        if (state.durationSec <= 0) return@LaunchedEffect
+        var ticks = 0
+        while (player.state.value.durationSec <= 0 && ticks < 15) {
+            delay(100)
+            ticks++
+        }
+        if (askedResume) return@LaunchedEffect
         askedResume = true
-        if (shouldOfferResume(resumeSec, state.durationSec)) player.setPaused(true) else player.setPaused(false)
+        val duration = player.state.value.durationSec
+        if (shouldOfferResume(resumeSec, duration)) player.setPaused(true) else player.setPaused(false)
     }
     val offer = askedResume && state.paused && resumeSec != null && !state.ended &&
         (state.durationSec <= 0 || shouldOfferResume(resumeSec, state.durationSec)) &&

@@ -32,10 +32,17 @@ fun VideoSurface(player: MpvPlayer, modifier: Modifier = Modifier) {
             val h = with(density) { maxHeight.roundToPx() }
             player.setSurfaceSize(w, h)
         }
-        LaunchedEffect(player) {
+        LaunchedEffect(player, maxWidth, maxHeight) {
+            var lastPos = Double.NaN
             while (true) {
                 withFrameNanos {
-                    player.renderNow()
+                    val playback = player.state.value
+                    val frameMissing = player.frames.value == null
+                    val moved = playback.positionSec != lastPos
+                    if (!playback.paused || frameMissing || moved) {
+                        player.renderNow()
+                        lastPos = player.state.value.positionSec
+                    }
                 }
             }
         }

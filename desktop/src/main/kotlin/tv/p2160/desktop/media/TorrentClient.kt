@@ -12,6 +12,7 @@ import java.io.File
  * отдаётся плееру через локальный HTTP. Так ролик идёт, не дожидаясь всего файла.
  */
 class TorrentClient(private val saveDir: File) : AutoCloseable {
+    @Volatile private var active = false
     private val session: TorrentSession by lazy {
         TorrentNatives.ensureLoaded()
         TorrentSession(SessionConfig(userAgent = "2160Player/0.2.26 libtorrent/2.0"))
@@ -20,9 +21,10 @@ class TorrentClient(private val saveDir: File) : AutoCloseable {
     fun start() {
         saveDir.mkdirs()
         session.start()
+        active = true
     }
 
-    val running: Boolean get() = session.isRunning
+    val running: Boolean get() = active
 
     fun addMagnet(magnet: String): String = session.addMagnet(magnet, saveDir)
 

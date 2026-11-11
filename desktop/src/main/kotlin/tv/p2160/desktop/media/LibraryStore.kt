@@ -37,13 +37,21 @@ class LibraryStore(val root: File = defaultDataDir()) {
         load()
     }
 
+    private var lastSaveMs = 0L
+
     fun position(key: String): Double? = synchronized(this) { positions[key] }
 
     fun rememberPosition(key: String, seconds: Double) = synchronized(this) {
         if (seconds < 1.0) return
         positions[key] = seconds
-        save()
+        val now = System.currentTimeMillis()
+        if (lastSaveMs == 0L || now - lastSaveMs >= 5_000) {
+            lastSaveMs = now
+            save()
+        }
     }
+
+    fun flush() = synchronized(this) { save() }
 
     fun forgetPosition(key: String) = synchronized(this) {
         if (positions.remove(key) != null) save()
@@ -131,15 +139,21 @@ class LibraryStore(val root: File = defaultDataDir()) {
         json.put("smb", smb)
         root.mkdirs()
         val tmp = File(root, "library.json.tmp")
+        ownerOnly(root)
         tmp.writeText(json.toString(2))
+        ownerOnly(tmp)
         if (!tmp.renameTo(file)) {
             file.writeText(tmp.readText())
             tmp.delete()
         }
-        file.setReadable(false, false)
-        file.setReadable(true, true)
-        file.setWritable(false, false)
-        file.setWritable(true, true)
+        ownerOnly(file)
+    }
+
+    private fun ownerOnly(target: File) {
+        target.setReadable(false, false)
+        target.setReadable(true, true)
+        target.setWritable(false, false)
+        target.setWritable(true, true)
     }
 }
 

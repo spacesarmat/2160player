@@ -52,7 +52,7 @@ fun HomeScreen(
             AccentButton("Торренты", onTorrent)
         }
         Text(
-            "Пробел: пауза. Влево и вправо: 10 с. Вверх и вниз: громкость. F: полный экран. M: без звука. Esc: назад. O: открыть файл.",
+            "Пробел: пауза. Влево и вправо: 10 с. Вверх и вниз: громкость. F: полный экран. M: без звука. Esc: назад.",
             color = P2160Colors.muted,
             style = MaterialTheme.typography.bodySmall,
         )

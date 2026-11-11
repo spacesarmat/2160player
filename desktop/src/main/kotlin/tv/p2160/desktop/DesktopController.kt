@@ -98,10 +98,9 @@ class DesktopController(
     init {
         player?.setVolume(library.volume)
         scope.launch {
-            runCatching { torrents.start() }.onFailure { onUi { torrentError = it.message ?: "Торрент" } }
             while (true) {
                 delay(1000)
-                runCatching { refreshTorrents() }
+                if (torrents.running) runCatching { refreshTorrents() }
             }
         }
     }
@@ -109,6 +108,16 @@ class DesktopController(
     private suspend fun onUi(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
 
     fun back() {
+        val current = route
+        if (current is Route.Player) {
+            player?.let { engine ->
+                if (!current.request.live) library.rememberPosition(current.request.key, engine.state.value.positionSec)
+                engine.stop()
+            }
+            library.flush()
+            proxyUrl?.let { ranges.unpublish(it) }
+            proxyUrl = null
+        }
         if (stack.size > 1) stack = stack.dropLast(1)
     }
 
@@ -119,7 +128,12 @@ class DesktopController(
     fun openSmb() { stack = stack + Route.Smb }
     fun openDlna() { stack = stack + Route.Dlna }
     fun openIptv() { stack = stack + Route.Iptv }
-    fun openTorrent() { stack = stack + Route.Torrent }
+    fun openTorrent() {
+        scope.launch {
+            runCatching { torrents.start() }.onFailure { onUi { torrentError = it.message ?: "Торрент" } }
+        }
+        stack = stack + Route.Torrent
+    }
 
     fun openFile(file: File) {
         if (!file.isFile) return
@@ -132,7 +146,7 @@ class DesktopController(
     fun openUrl(url: String, title: String = url, live: Boolean = false, headers: Map<String, String> = emptyMap(), kind: String = "url") {
         val clean = url.trim()
         if (clean.isEmpty()) return
-        library.rememberRecent(RecentItem(kind, title, clean, clean))
+        library.rememberRecent(RecentItem(kind, title, clean, if (kind == "iptv") iptvPayload(clean, headers) else clean))
         play(clean, title, clean, live, headers)
     }
 
@@ -151,7 +165,16 @@ class DesktopController(
                 val parts = item.payload.split('\n')
                 if (parts.size >= 2) reopenTorrent(parts[0], parts[1].toIntOrNull() ?: 0, item.title)
             }
-            else -> openUrl(item.payload, item.title, live = item.kind == "iptv", kind = item.kind)
+            "iptv" -> {
+                val lines = item.payload.lines()
+                val url = lines.first()
+                val headers = lines.drop(1).mapNotNull { line ->
+                    val eq = line.indexOf('=')
+                    if (eq <= 0) null else line.substring(0, eq) to line.substring(eq + 1)
+                }.toMap()
+                openUrl(url, item.title, live = true, headers = headers, kind = "iptv")
+            }
+            else -> openUrl(item.payload, item.title, live = false, kind = item.kind)
         }
     }
 
@@ -343,14 +366,16 @@ class DesktopController(
     private fun applyPlaylist(text: String, base: String) {
         val playlist = M3uParser.parse(text, base)
         if (playlistOpensAsStream(text, base)) {
-            openUrl(base, base.substringAfterLast('/'), live = true, kind = "iptv")
+            val headers = playlist.channels.firstOrNull()?.httpHeaders().orEmpty()
+            openUrl(base, base.substringAfterLast('/'), live = true, headers = headers, kind = "iptv")
         } else {
             scope.launch { onUi { iptvChannels = playlist.channels } }
         }
     }
 
     fun playChannel(channel: IptvChannel) {
-        library.rememberRecent(RecentItem("iptv", channel.name, channel.url, channel.url))
+        val payload = iptvPayload(channel.url, channel.httpHeaders())
+        library.rememberRecent(RecentItem("iptv", channel.name, channel.url, payload))
         play(channel.url, channel.name, channel.url, live = true, headers = channel.httpHeaders())
     }
 
@@ -359,6 +384,7 @@ class DesktopController(
         if (value.isEmpty()) return
         scope.launch {
             val result = runCatching {
+                torrents.start()
                 if (value.startsWith("magnet:", true)) {
                     torrents.addMagnet(value) to value
                 } else {
@@ -374,7 +400,10 @@ class DesktopController(
 
     fun addTorrentFile(file: File) {
         scope.launch {
-            val result = runCatching { torrents.addTorrentFile(file.readBytes()) }
+            val result = runCatching {
+                torrents.start()
+                torrents.addTorrentFile(file.readBytes())
+            }
             result.onSuccess {
                 torrentSources[it] = file.absolutePath
                 refreshTorrents()
@@ -406,7 +435,11 @@ class DesktopController(
         scope.launch {
             val existing = torrentSources.entries.firstOrNull { it.value == source }?.key
             val id = existing ?: runCatching {
-                if (source.startsWith("magnet:", true)) torrents.addMagnet(source) else torrents.addTorrentFile(File(source).readBytes())
+                torrents.start()
+                if (source.startsWith("magnet:", true)) torrents.addMagnet(source)
+                else if (source.startsWith("http://", true) || source.startsWith("https://", true)) {
+                    torrents.addTorrentFile(httpGetBytes(source))
+                } else torrents.addTorrentFile(File(source).readBytes())
             }.getOrElse {
                 onUi { torrentError = it.message }
                 return@launch
@@ -487,6 +520,9 @@ class DesktopController(
         torrents.close()
     }
 }
+
+private fun iptvPayload(url: String, headers: Map<String, String>): String =
+    if (headers.isEmpty()) url else url + "\n" + headers.entries.joinToString("\n") { "${it.key}=${it.value}" }
 
 private fun httpGetBytes(url: String): ByteArray {
     val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {

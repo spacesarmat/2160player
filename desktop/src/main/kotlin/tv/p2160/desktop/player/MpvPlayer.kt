@@ -10,6 +10,7 @@ import tv.p2160.desktop.media.nextTrackId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -106,11 +107,17 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
             command("change-list", "http-header-fields", "add", "$key: $value")
         }
         val options = if (paused) "pause=yes" else "pause=no"
-        check(command("loadfile", url, "replace", options))
+        if (!command("loadfile", url, "replace", options)) {
+            _state.update { it.copy(error = "Не удалось открыть") }
+        }
     }
 
     fun setPaused(paused: Boolean) {
         setProperty("pause", if (paused) "yes" else "no")
+    }
+
+    fun stop() {
+        command("stop")
     }
 
     fun togglePause() {
@@ -178,14 +185,14 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
                     val text = message.text?.trim().orEmpty()
                     if (text.isNotEmpty()) log("mpv ${message.level}: $text")
                 }
-                MPV_EVENT_FILE_LOADED -> _state.value = _state.value.copy(fileLoaded = true, error = null)
+                MPV_EVENT_FILE_LOADED -> _state.update { it.copy(fileLoaded = true, error = null) }
                 MPV_EVENT_END_FILE -> event.data?.let { pointer ->
                     val end = MpvEndFile(pointer)
                     if (end.reason == MPV_END_FILE_REASON_ERROR) {
                         val text = lib.mpv_error_string(end.error) ?: "error ${end.error}"
-                        _state.value = _state.value.copy(error = "Воспроизведение остановилось: $text", ended = true)
+                        _state.update { it.copy(error = "Воспроизведение остановилось: $text", ended = true) }
                     } else if (end.reason == 0) {
-                        _state.value = _state.value.copy(ended = true, paused = true)
+                        _state.update { it.copy(ended = true, paused = true) }
                     }
                 }
             }
@@ -203,17 +210,18 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
             val muted = property("mute") == "yes"
             val buffering = property("paused-for-cache") == "yes"
             val tracks = if (ticks % 4 == 0) readTracks() else null
-            val current = _state.value
-            _state.value = current.copy(
-                positionSec = position,
-                durationSec = duration,
-                paused = paused,
-                volume = volume,
-                muted = muted,
-                buffering = buffering,
-                audio = tracks?.first ?: current.audio,
-                subs = tracks?.second ?: current.subs,
-            )
+            _state.update { current ->
+                current.copy(
+                    positionSec = position,
+                    durationSec = duration,
+                    paused = paused,
+                    volume = volume,
+                    muted = muted,
+                    buffering = buffering,
+                    audio = tracks?.first ?: current.audio,
+                    subs = tracks?.second ?: current.subs,
+                )
+            }
             Thread.sleep(250)
         }
     }
@@ -342,7 +350,7 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
             option("user-agent", "2160Player/0.2.26")
             option("cache", "yes")
             option("demuxer-readahead-secs", "8")
-            option("ao", "pulse,alsa,null")
+            option("network-timeout", "120")
             option("sub-auto", "no")
             option("audio-file-auto", "no")
             check(lib.mpv_initialize(handle))
@@ -398,6 +406,7 @@ class MpvPlayer private constructor(private val lib: MpvLib, private val handle:
             // libmpv отказывается создаваться, если LC_NUMERIC не "C".
             val os = System.getProperty("os.name").lowercase()
             val libc = if (os.contains("win")) {
+                runCatching { Native.load("ucrtbase", CLocale::class.java).setlocale(4, "C") }
                 Native.load("msvcrt", CLocale::class.java)
             } else {
                 Native.load("c", CLocale::class.java)

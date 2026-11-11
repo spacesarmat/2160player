@@ -5,6 +5,7 @@ import tv.p2160.torrent.TorrentFile
 import tv.p2160.torrent.TorrentSession
 import tv.p2160.torrent.TorrentStats
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Тонкая обёртка над [TorrentSession] из модуля source-torrent.
@@ -69,7 +70,7 @@ class TorrentByteSource(
         error("Каждый запрос должен открыть свой поток через openReader")
 
     override fun openReader(): ByteSource {
-        val reader = StreamReader(openStream())
+        val reader = StreamReader(openStream()) { readers.release(it) }
         readers.track(reader)
         return reader
     }
@@ -80,8 +81,9 @@ class TorrentByteSource(
 }
 
 /**
- * Readers opened for HTTP stay reachable until the published source is closed.
- * Closing the parent closes them too, which wakes a read blocked on a missing piece.
+ * Active HTTP readers stay reachable so closing the published source can cancel them.
+ * A reader that finishes on its own leaves the set. Closing the parent still wakes
+ * a read blocked on a missing piece.
  */
 internal class ReaderSet {
     private val readers = java.util.Collections.synchronizedSet(mutableSetOf<AutoCloseable>())
@@ -97,6 +99,12 @@ internal class ReaderSet {
         if (closeNow) reader.close()
     }
 
+    fun release(reader: AutoCloseable) {
+        synchronized(readers) { readers.remove(reader) }
+    }
+
+    fun size(): Int = synchronized(readers) { readers.size }
+
     fun close() {
         val snapshot = synchronized(readers) {
             closed = true
@@ -106,13 +114,19 @@ internal class ReaderSet {
     }
 }
 
-private class StreamReader(private val stream: TorrentSession.FileStream) : ByteSource {
+private class StreamReader(
+    private val stream: TorrentSession.FileStream,
+    private val onClose: (StreamReader) -> Unit,
+) : ByteSource {
+    private val closed = AtomicBoolean(false)
     override val length: Long = stream.size
 
     override fun read(offset: Long, dst: ByteArray, dstOff: Int, len: Int): Int =
         stream.read(offset, dst, dstOff, len, 120_000)
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        onClose(this)
         stream.close()
     }
 }

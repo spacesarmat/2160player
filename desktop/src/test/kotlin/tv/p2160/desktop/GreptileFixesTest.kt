@@ -90,6 +90,21 @@ class GreptileFixesTest {
     }
 
     @Test
+    fun finishedReaderLeavesTheSet() {
+        val set = ReaderSet()
+        val done = Flag()
+        val active = Flag()
+        set.track(done)
+        set.track(active)
+        done.close()
+        set.release(done)
+        assertEquals(1, set.size())
+        set.close()
+        assertTrue(active.closed)
+        assertEquals(0, set.size())
+    }
+
+    @Test
     fun pausedPlaybackStillCopiesAFrameWhenMpvAsks() {
         assertFalse(shouldCopyFrame(paused = true, hasFrame = true, positionChanged = false, redrawRequested = false))
         assertTrue(shouldCopyFrame(paused = true, hasFrame = true, positionChanged = false, redrawRequested = true))

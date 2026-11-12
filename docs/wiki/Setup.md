@@ -75,3 +75,11 @@ adb install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 
 Запуск из кода библиотеки: `Player2160.play(context, PlaybackRequest.single(uri, title))`.
 Без библиотеки - [Intent API](Intent-API.md).
+
+## Десктоп
+
+Каталог `desktop/`, свой Gradle, JDK 21. Команды, установщики и ограничения: [Десктоп](Desktop.md).
+
+```sh
+cd desktop && ./gradlew test
+```

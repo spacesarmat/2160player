@@ -1,0 +1,148 @@
+name: Desktop CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+      - "docs/plans/desktop.md"
+      - "docs/wiki/Desktop.md"
+      - "docs/releases/next.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Linux libmpv
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libmpv-dev patchelf fakeroot
+
+      - name: macOS libmpv
+        if: runner.os == 'macOS'
+        run: brew install mpv
+
+      - name: Windows WiX 3
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: .
+        run: |
+          $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3*" -Recurse -Filter candle.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $found) {
+            choco install wixtoolset -y
+            $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3*" -Recurse -Filter candle.exe | Select-Object -First 1
+          }
+          if (-not $found) { throw "candle.exe not found" }
+          "$($found.DirectoryName)" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "WiX candle: $($found.FullName)"
+
+      - name: Test
+        shell: bash
+        run: ./gradlew test --stacktrace
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          dump_jpackage() {
+            local code="$1"
+            if [ "$code" -ne 0 ]; then
+              echo "---- jpackage errors ----"
+              find build/compose/logs -name '*err.txt' -print -exec cat {} \; || true
+            fi
+            return "$code"
+          }
+          case "${{ runner.os }}" in
+            Linux)
+              set +e
+              ./gradlew packageReleaseDeb createReleaseDistributable --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
+              deb=$(find build/compose/binaries -name '*.deb' | head -1)
+              tmp=$(mktemp -d)
+              dpkg-deb -R "$deb" "$tmp"
+              python3 scripts/patch-deb-depends.py "$tmp/DEBIAN/control"
+              dpkg-deb -b "$tmp" "$deb"
+              app=$(find build/compose/binaries -type d -name bin | head -1)
+              root=$(dirname "$app")
+              tar -C "$(dirname "$root")" -czf "2160player-0.2.26-linux-x64.tar.gz" "$(basename "$root")"
+              ;;
+            Windows)
+              for d in "/c/Program Files (x86)/WiX Toolset v3.14/bin" "/c/Program Files (x86)/WiX Toolset v3.11/bin"; do
+                if [ -x "$d/candle.exe" ]; then
+                  export PATH="$d:$PATH"
+                fi
+              done
+              command -v candle
+              set +e
+              ./gradlew packageReleaseMsi --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
+              ;;
+            macOS)
+              set +e
+              ./gradlew packageReleaseDmg --stacktrace
+              code=$?
+              set -e
+              dump_jpackage "$code"
+              ;;
+          esac
+
+      - name: Upload Linux
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2160player-linux
+          path: |
+            desktop/**/*.deb
+            desktop/2160player-0.2.26-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2160player-windows
+          path: desktop/**/*.msi
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload macOS
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2160player-macos
+          path: desktop/**/*.dmg
+          if-no-files-found: error
+          retention-days: 14

@@ -2,8 +2,11 @@ package tv.p2160.core.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
@@ -459,15 +462,11 @@ class TransportTickTest {
                 LocalDensity provides Density(density = base.density, fontScale = fontScale.value),
             ) {
                 MaterialTheme {
-                    val side = with(LocalDensity.current) {
-                        symmetricHorizontalInsetPx(
-                            startInset.value.roundToPx(),
-                            endInset.value.roundToPx(),
-                            controlsSideGutterDp.dp.roundToPx(),
-                        ).toDp()
+                    val safe = with(LocalDensity.current) {
+                        WindowInsets(startInset.value.roundToPx(), 0, endInset.value.roundToPx(), 0)
                     }
                     Box(Modifier.width(width.value).testTag("frame")) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = side)) {
+                        Column(Modifier.fillMaxWidth().withSymmetricControlsInsets(safe)) {
                             TransportReadout(
                                 clock = TransportClock(position.value, 0L),
                                 state = PlayerUiState(
@@ -575,6 +574,31 @@ class TransportTickTest {
         assertEquals(0, rule.onAllNodesWithTag("seek-bar").fetchSemanticsNodes().size)
         assertEquals(0, rule.onAllNodesWithTag("time-remaining", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(1, rule.onAllNodesWithTag("live-badge", useUnmergedTree = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun parentThatAlreadyConsumedTheCutoutDoesNotPadTheBarAgain() {
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                val safe = WindowInsets(0, 0, 64, 0)
+                Box(
+                    Modifier
+                        .width(400.dp)
+                        .consumeWindowInsets(safe)
+                        .testTag("frame"),
+                ) {
+                    Box(Modifier.fillMaxSize().withSymmetricControlsInsets(safe)) {
+                        Box(Modifier.fillMaxWidth().height(10.dp).testTag("seek-bar"))
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        val frame = rule.onNodeWithTag("frame").getUnclippedBoundsInRoot()
+        val bar = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot()
+        assertEquals(16f, (bar.left - frame.left).value, 1f)
+        assertEquals(16f, (frame.right - bar.right).value, 1f)
+        assertEquals((frame.right - frame.left).value - 32f, (bar.right - bar.left).value, 1f)
     }
 
     private fun description(tag: String): String =

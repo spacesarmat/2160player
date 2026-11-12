@@ -82,3 +82,19 @@ internal fun symmetricHorizontalInsetPx(startInsetPx: Int, endInsetPx: Int, gutt
     val cutout = if (start > end) start else end
     return if (cutout > gutter) cutout else gutter
 }
+
+/**
+ * То же поле, но без отступа, который родитель уже забрал (`safeDrawingPadding` у хоста).
+ * Иначе вырез 48 dp добавляется второй раз с обеих сторон.
+ */
+internal fun symmetricHorizontalInsetPx(
+    safeStartPx: Int,
+    safeEndPx: Int,
+    consumedStartPx: Int,
+    consumedEndPx: Int,
+    gutterPx: Int,
+): Int = symmetricHorizontalInsetPx(
+    safeStartPx - consumedStartPx,
+    safeEndPx - consumedEndPx,
+    gutterPx,
+)

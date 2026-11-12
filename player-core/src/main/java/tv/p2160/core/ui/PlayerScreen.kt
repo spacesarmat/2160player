@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.onConsumedWindowInsetsChanged
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -1397,6 +1398,37 @@ private fun BoxScope.ParkedPanel(
     }
 }
 
+/**
+ * Поле кнопок и полосы. По горизонтали одно и то же число с двух сторон.
+ * Отступ, который родитель уже забрал через `safeDrawingPadding`, не добавляется снова.
+ */
+@Composable
+internal fun Modifier.withSymmetricControlsInsets(
+    safe: WindowInsets = WindowInsets.safeDrawing,
+): Modifier {
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val consumed = remember { mutableStateOf(0 to 0) }
+    val side = with(density) {
+        val (consumedStart, consumedEnd) = consumed.value
+        symmetricHorizontalInsetPx(
+            safe.getLeft(this, direction),
+            safe.getRight(this, direction),
+            consumedStart,
+            consumedEnd,
+            controlsSideGutterDp.dp.roundToPx(),
+        ).toDp()
+    }
+    return this
+        .onConsumedWindowInsetsChanged { next ->
+            val start = next.getLeft(density, direction)
+            val end = next.getRight(density, direction)
+            if (consumed.value != start to end) consumed.value = start to end
+        }
+        .windowInsetsPadding(safe.only(WindowInsetsSides.Vertical))
+        .padding(horizontal = side, vertical = 8.dp)
+}
+
 @Composable
 private fun Controls(
     controller: PlayerController,
@@ -1428,21 +1460,7 @@ private fun Controls(
         Box(Modifier.fillMaxWidth().size(height = 140.dp, width = 0.dp).align(Alignment.TopCenter).background(topScrim))
         Box(Modifier.fillMaxWidth().size(height = 200.dp, width = 0.dp).align(Alignment.BottomCenter).background(bottomScrim))
 
-        val density = LocalDensity.current
-        val layoutDirection = LocalLayoutDirection.current
-        val safe = WindowInsets.safeDrawing
-        val side = with(density) {
-            symmetricHorizontalInsetPx(
-                safe.getLeft(this, layoutDirection),
-                safe.getRight(this, layoutDirection),
-                controlsSideGutterDp.dp.roundToPx(),
-            ).toDp()
-        }
-        Column(
-            Modifier.fillMaxSize()
-                .windowInsetsPadding(safe.only(WindowInsetsSides.Vertical))
-                .padding(horizontal = side, vertical = 8.dp),
-        ) {
+        Column(Modifier.fillMaxSize().withSymmetricControlsInsets()) {
             // Телефон в портрете: кнопки не помещаются рядом с названием - второй ряд, размер по ширине.
             val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
             val extraActions by PlayerExtensions.actions.collectAsStateWithLifecycle()

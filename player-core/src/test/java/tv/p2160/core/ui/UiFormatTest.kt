@@ -103,5 +103,11 @@ class UiFormatTest {
         assertEquals(16, symmetricHorizontalInsetPx(-4, 0, 16))
         assertEquals(0, symmetricHorizontalInsetPx(0, 0, 0))
         assertEquals(0, symmetricHorizontalInsetPx(-8, -8, -3))
+        // Родитель уже забрал правый вырез: второй раз его не добавляем, остаётся поле.
+        assertEquals(16, symmetricHorizontalInsetPx(0, 64, consumedStartPx = 0, consumedEndPx = 64, gutterPx = 16))
+        assertEquals(64, symmetricHorizontalInsetPx(0, 64, consumedStartPx = 0, consumedEndPx = 0, gutterPx = 16))
+        assertEquals(16, symmetricHorizontalInsetPx(48, 48, consumedStartPx = 48, consumedEndPx = 48, gutterPx = 16))
+        assertEquals(40, symmetricHorizontalInsetPx(40, 80, consumedStartPx = 0, consumedEndPx = 40, gutterPx = 16))
+        assertEquals(16, symmetricHorizontalInsetPx(10, 12, consumedStartPx = 30, consumedEndPx = 30, gutterPx = 16))
     }
 }

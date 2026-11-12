@@ -27,6 +27,10 @@ internal fun transportShowsLiveBadge(
     return durationMs > 0 || playbackReady
 }
 
-/** Остаток и полная длительность. Пока длительность неизвестна, строку прячем. */
-internal fun transportShowsRemaining(isLive: Boolean, durationMs: Long): Boolean =
-    !isLive && durationMs > 0
+/**
+ * Строка остатка под полосой. У эфира её нет: там плашка.
+ * Неизвестная длина (0 и отрицательная) строку не прячет: справа тот же плейсхолдер, что слева,
+ * и появление длительности не сдвигает полосу.
+ */
+@Suppress("UNUSED_PARAMETER") // durationMs не прячет строку: плейсхолдер есть и при неизвестной длине.
+internal fun transportShowsRemaining(isLive: Boolean, durationMs: Long): Boolean = !isLive

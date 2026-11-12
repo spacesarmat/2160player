@@ -74,6 +74,10 @@ class UiFormatTest {
         assertEquals(listOf("88:88"), elapsedBoxSamples(10 * 60_000L))
         assertEquals(listOf("8:88:88"), elapsedBoxSamples(60 * 60_000L))
         assertEquals(listOf("88:88:88"), elapsedBoxSamples(10 * 60 * 60_000L))
+        assertEquals(listOf("--:--"), remainingBoxSamples(0L))
+        assertEquals(listOf("--:--"), remainingBoxSamples(-1L))
+        assertEquals(listOf("\u22128:88 / 8:88"), remainingBoxSamples(5 * 60_000L))
+        assertEquals(listOf("\u22128:88:88 / 8:88:88"), remainingBoxSamples(60 * 60_000L))
     }
 
     @Test
@@ -86,5 +90,18 @@ class UiFormatTest {
     @Test
     fun openPanelLeavesAGapBeforeTheTimeLabel() {
         assertEquals(12f, sidePanelTransportGapDp, 0.01f)
+    }
+
+    @Test
+    fun horizontalInsetIsTheLargerSideAndNeverUnderTheGutter() {
+        // Вырез только справа: поле слева догоняет его, а не остаётся нулевым.
+        assertEquals(64, symmetricHorizontalInsetPx(0, 64, 16))
+        assertEquals(48, symmetricHorizontalInsetPx(48, 0, 16))
+        assertEquals(16, symmetricHorizontalInsetPx(0, 0, 16))
+        assertEquals(16, symmetricHorizontalInsetPx(10, 12, 16))
+        assertEquals(20, symmetricHorizontalInsetPx(20, 20, 16))
+        assertEquals(16, symmetricHorizontalInsetPx(-4, 0, 16))
+        assertEquals(0, symmetricHorizontalInsetPx(0, 0, 0))
+        assertEquals(0, symmetricHorizontalInsetPx(-8, -8, -3))
     }
 }

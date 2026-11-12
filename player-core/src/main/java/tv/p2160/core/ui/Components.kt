@@ -69,6 +69,7 @@ import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.invalidateSemantics
 import androidx.compose.ui.node.observeReads
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -113,12 +114,13 @@ fun ControlButton(
     val scale by animateFloatAsState(if (focused) 1.12f else 1f, label = "btnScale")
     val target = if (compact) size else size.coerceAtLeast(48.dp)
     val gate = LocalInteractionGate.current
+    val face = controlFace(focused, busy)
     Box(
         modifier = modifier
             .size(target)
             .scale(scale)
             .clip(CircleShape)
-            .background(if (focused) accent else Color.Transparent)
+            .background(Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = {
                 if (gate.open) onClick()
             })
@@ -128,6 +130,18 @@ fun ControlButton(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Залитый круг только у обычной кнопки в фокусе. Пока идёт буферизация,
+        // на его месте спиннер: дуга поверх жёлтого круга читается как смайл.
+        if (face == ControlFace.FilledIcon) {
+            Box(Modifier.matchParentSize().background(accent).testTag("control-fill"))
+        }
+        if (face == ControlFace.SpinnerRing) {
+            Box(
+                Modifier.matchParentSize()
+                    .border(2.dp, Color.White, CircleShape)
+                    .testTag("control-focus-ring"),
+            )
+        }
         // Иконка остаётся в дереве и при спиннере: смена ребёнка на буферизации
         // не должна пересобирать фокусируемый узел.
         Icon(
@@ -140,10 +154,11 @@ fun ControlButton(
             },
             modifier = Modifier.size(target * 0.58f),
         )
-        if (busy) {
+        if (face == ControlFace.Spinner || face == ControlFace.SpinnerRing) {
             CircularProgressIndicator(
-                modifier = Modifier.size(target * 0.72f),
-                color = if (focused) MaterialTheme.colorScheme.onPrimary else accent,
+                modifier = Modifier.size(target * 0.72f).testTag("control-spinner"),
+                color = accent,
+                trackColor = Color.Transparent,
                 strokeWidth = 4.dp,
             )
         }
@@ -651,8 +666,28 @@ fun PanelRow(
     }
 }
 
+/** Что рисует [ControlButton]: иконка, залитый круг, спиннер или спиннер с кольцом фокуса. */
+internal enum class ControlFace { Icon, FilledIcon, Spinner, SpinnerRing }
+
+/** Буферизация заменяет play. Фокус пульта в этот момент - кольцо, не залитый круг под дугой. */
+internal fun controlFace(focused: Boolean, busy: Boolean): ControlFace = when {
+    busy && focused -> ControlFace.SpinnerRing
+    busy -> ControlFace.Spinner
+    focused -> ControlFace.FilledIcon
+    else -> ControlFace.Icon
+}
+
 /** Пока длина файла неизвестна и воспроизведение ещё не сдвинулось с нуля. */
 internal const val UNKNOWN_TIME = "--:--"
+
+/** Остаток. Пока длина неизвестна, тот же плейсхолдер, что у прошедшего, а не пустое место. */
+internal fun transportRemainingText(durationKnown: Boolean, positionMs: Long, durationMs: Long): String =
+    if (!durationKnown) UNKNOWN_TIME
+    else "\u2212${formatTime(durationMs - positionMs)} / ${formatTime(durationMs)}"
+
+/** Строки, по которым меряется коробка остатка. Не на каждый тик. */
+internal fun remainingBoxSamples(durationMs: Long): List<String> =
+    if (durationMs > 0L) listOf(remainingTimeSample(durationMs)) else listOf(UNKNOWN_TIME)
 
 /** Прошедшее время. Неизвестная длина и нулевая позиция - не «0:00» и не «ЭФИР». */
 internal fun transportElapsedText(durationKnown: Boolean, positionMs: Long): String =

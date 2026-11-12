@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -84,6 +86,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -1425,8 +1428,20 @@ private fun Controls(
         Box(Modifier.fillMaxWidth().size(height = 140.dp, width = 0.dp).align(Alignment.TopCenter).background(topScrim))
         Box(Modifier.fillMaxWidth().size(height = 200.dp, width = 0.dp).align(Alignment.BottomCenter).background(bottomScrim))
 
+        val density = LocalDensity.current
+        val layoutDirection = LocalLayoutDirection.current
+        val safe = WindowInsets.safeDrawing
+        val side = with(density) {
+            symmetricHorizontalInsetPx(
+                safe.getLeft(this, layoutDirection),
+                safe.getRight(this, layoutDirection),
+                controlsSideGutterDp.dp.roundToPx(),
+            ).toDp()
+        }
         Column(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(safe.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = side, vertical = 8.dp),
         ) {
             // Телефон в портрете: кнопки не помещаются рядом с названием - второй ряд, размер по ширине.
             val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
@@ -1704,18 +1719,16 @@ internal fun TransportReadout(
             LiveBadge()
         } else if (transportShowsRemaining(isLive = false, durationMs = state.durationMs)) {
             val durationMs = state.durationMs
+            val durationKnown = durationMs > 0L
             FixedTickText(
                 clock = clock,
-                samples = listOf(remainingTimeSample(durationMs)),
+                samples = remainingBoxSamples(durationMs),
                 style = timeStyle,
                 color = Color.White.copy(alpha = 0.85f),
                 textKey = durationMs,
                 alignEnd = true,
                 modifier = Modifier.testTag("time-remaining"),
-                label = { tick ->
-                    val positionMs = tick.shownMs()
-                    "−${formatTime(durationMs - positionMs)} / ${formatTime(durationMs)}"
-                },
+                label = { tick -> transportRemainingText(durationKnown, tick.shownMs(), durationMs) },
             )
         }
     }
@@ -1751,7 +1764,7 @@ private fun StatsLayer(controller: PlayerController, show: Boolean, modifier: Mo
 @Composable
 private fun LiveBadge() {
     Row(
-        Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFD32F2F)).padding(horizontal = 8.dp, vertical = 2.dp),
+        Modifier.testTag("live-badge").clip(RoundedCornerShape(6.dp)).background(Color(0xFFD32F2F)).padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))

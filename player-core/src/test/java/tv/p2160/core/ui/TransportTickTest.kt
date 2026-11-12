@@ -2,7 +2,11 @@ package tv.p2160.core.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
@@ -148,7 +152,7 @@ class TransportTickTest {
     }
 
     @Test
-    fun unknownDurationShowsPlaceholderInsteadOfLive() {
+    fun unknownDurationShowsPlaceholdersInsteadOfLive() {
         rule.setContent {
             MaterialTheme {
                 Column(Modifier.width(400.dp)) {
@@ -167,7 +171,8 @@ class TransportTickTest {
         }
         rule.waitForIdle()
         assertEquals(UNKNOWN_TIME, description("time-elapsed"))
-        assertEquals(0, rule.onAllNodesWithTag("time-remaining", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals("--:--", description("time-remaining"))
+        assertEquals(0, rule.onAllNodesWithTag("live-badge", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 
     @Test
@@ -438,6 +443,162 @@ class TransportTickTest {
         rule.waitForIdle()
         assertEquals(before, measures[0])
         assertEquals("3:57", description("time-elapsed"))
+    }
+
+    @Test
+    fun seekBarMatchesTheFrameMinusEqualInsetsAndTimeSitsUnderIt() {
+        val width = mutableStateOf(800.dp)
+        val startInset = mutableStateOf(0.dp)
+        val endInset = mutableStateOf(64.dp)
+        val fontScale = mutableStateOf(1f)
+        val duration = mutableStateOf(0L)
+        val position = mutableStateOf(0L)
+        val chapters = mutableStateOf<List<Chapter>>(emptyList())
+        val live = mutableStateOf(false)
+        val liveTv = mutableStateOf(false)
+        rule.setContent {
+            val base = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = base.density, fontScale = fontScale.value),
+            ) {
+                MaterialTheme {
+                    val safe = with(LocalDensity.current) {
+                        WindowInsets(startInset.value.roundToPx(), 0, endInset.value.roundToPx(), 0)
+                    }
+                    Box(Modifier.width(width.value).testTag("frame")) {
+                        Column(Modifier.fillMaxWidth().withSymmetricControlsInsets(safe)) {
+                            TransportReadout(
+                                clock = TransportClock(position.value, 0L),
+                                state = PlayerUiState(
+                                    durationMs = duration.value,
+                                    isBuffering = duration.value <= 0L,
+                                    isLive = live.value,
+                                    liveTv = liveTv.value,
+                                    chapters = chapters.value,
+                                    chapterIndex = if (chapters.value.isEmpty()) -1 else 0,
+                                ),
+                                theme = PlayerThemes.Cinema,
+                                stepMs = 10_000L,
+                                onSeek = {},
+                                onInteraction = {},
+                                onScrub = {},
+                                onGoTo = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        fun assertSpan(label: String, wantGap: Float) {
+            rule.waitForIdle()
+            val frame = rule.onNodeWithTag("frame").getUnclippedBoundsInRoot()
+            val bar = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot()
+            val elapsed = rule.onNodeWithTag("time-elapsed", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val remaining = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            assertEquals("$label left gap", wantGap, (bar.left - frame.left).value, 1f)
+            assertEquals("$label right gap", wantGap, (frame.right - bar.right).value, 1f)
+            assertEquals("$label bar width", (frame.right - frame.left).value - wantGap * 2, (bar.right - bar.left).value, 1f)
+            assertEquals("$label elapsed flush", bar.left.value, elapsed.left.value, 1f)
+            assertEquals("$label remaining flush", bar.right.value, remaining.right.value, 1f)
+            assertTrue("$label elapsed is under the bar", elapsed.top.value + 1f >= bar.bottom.value)
+            assertTrue("$label remaining is under the bar", remaining.top.value + 1f >= bar.bottom.value)
+            assertTrue("$label remaining is not beside the bar", remaining.top.value + 1f >= bar.top.value + (bar.bottom - bar.top).value * 0.5f)
+        }
+        assertEquals(1, rule.onAllNodesWithTag("time-remaining", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals("--:--", description("time-elapsed"))
+        assertEquals("--:--", description("time-remaining"))
+        assertSpan("landscape, cutout on the right", 64f)
+        val landscapeLeft = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().left.value
+        val landscapeRight = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().right.value
+        position.value = 209_000L
+        rule.waitForIdle()
+        assertEquals("3:29", description("time-elapsed"))
+        assertEquals("--:--", description("time-remaining"))
+        assertSpan("landscape, buffering with a position", 64f)
+        assertEquals(landscapeLeft, rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().left.value, 0.5f)
+        assertEquals(landscapeRight, rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().right.value, 0.5f)
+        duration.value = 9_391_000L
+        position.value = 236_000L
+        chapters.value = listOf(Chapter("Chapter 01", 0L, 9_391_000L))
+        rule.waitForIdle()
+        assertEquals("3:56", description("time-elapsed"))
+        assertEquals("\u22122:32:35 / 2:36:31", description("time-remaining"))
+        assertSpan("landscape, duration and chapter", 64f)
+        assertEquals(landscapeLeft, rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().left.value, 0.5f)
+        assertEquals(landscapeRight, rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot().right.value, 0.5f)
+        val title = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val elapsed = rule.onNodeWithTag("time-elapsed", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val remaining = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(title.left.value >= elapsed.right.value - 1f)
+        assertTrue(title.right.value <= remaining.left.value + 1f)
+
+        width.value = 360.dp
+        startInset.value = 48.dp
+        endInset.value = 0.dp
+        fontScale.value = 1.3f
+        duration.value = 0L
+        position.value = 0L
+        chapters.value = emptyList()
+        assertSpan("portrait, cutout on the left, font 1.3", 48f)
+        assertEquals("--:--", description("time-elapsed"))
+        assertEquals("--:--", description("time-remaining"))
+        duration.value = 9_391_000L
+        position.value = 236_000L
+        chapters.value = listOf(Chapter("Очень длинное название главы ".repeat(12), 0L, 9_391_000L))
+        assertSpan("portrait, chapter, font 1.3", 48f)
+        val narrowTitle = rule.onNodeWithTag("chapter-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val narrowElapsed = rule.onNodeWithTag("time-elapsed", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val narrowRemaining = rule.onNodeWithTag("time-remaining", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertTrue(narrowTitle.left.value >= narrowElapsed.right.value - 1f)
+        assertTrue(narrowTitle.right.value <= narrowRemaining.left.value + 1f)
+
+        width.value = 1920.dp
+        startInset.value = 0.dp
+        endInset.value = 0.dp
+        fontScale.value = 1f
+        duration.value = 0L
+        position.value = 0L
+        chapters.value = emptyList()
+        assertSpan("tv 1080p, no cutout", 16f)
+        assertEquals("--:--", description("time-elapsed"))
+        assertEquals("--:--", description("time-remaining"))
+
+        width.value = 800.dp
+        startInset.value = 10.dp
+        endInset.value = 12.dp
+        assertSpan("insets smaller than the gutter", 16f)
+
+        live.value = true
+        liveTv.value = true
+        rule.waitForIdle()
+        assertEquals(0, rule.onAllNodesWithTag("seek-bar").fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithTag("time-remaining", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(1, rule.onAllNodesWithTag("live-badge", useUnmergedTree = true).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun parentThatAlreadyConsumedTheCutoutDoesNotPadTheBarAgain() {
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                val safe = WindowInsets(0, 0, 64, 0)
+                Box(
+                    Modifier
+                        .width(400.dp)
+                        .consumeWindowInsets(safe)
+                        .testTag("frame"),
+                ) {
+                    Box(Modifier.fillMaxSize().withSymmetricControlsInsets(safe)) {
+                        Box(Modifier.fillMaxWidth().height(10.dp).testTag("seek-bar"))
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        val frame = rule.onNodeWithTag("frame").getUnclippedBoundsInRoot()
+        val bar = rule.onNodeWithTag("seek-bar").getUnclippedBoundsInRoot()
+        assertEquals(16f, (bar.left - frame.left).value, 1f)
+        assertEquals(16f, (frame.right - bar.right).value, 1f)
+        assertEquals((frame.right - frame.left).value - 32f, (bar.right - bar.left).value, 1f)
     }
 
     private fun description(tag: String): String =

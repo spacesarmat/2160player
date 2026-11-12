@@ -63,3 +63,38 @@ fun sidePanelTopClearanceDp(narrow: Boolean): Float = if (narrow) 112f else 64f
 
 /** Зазор между временем у полосы перемотки и краем открытой панели, dp. */
 const val sidePanelTransportGapDp = 12f
+
+/**
+ * Поле кнопок и полосы, dp, когда выреза и системных панелей по бокам нет.
+ * Слева и справа одно и то же число.
+ */
+const val controlsSideGutterDp = 16f
+
+/**
+ * Горизонтальный отступ полосы, px. Одинаковый слева и справа: больший из боковых
+ * safe-отступов (вырез, системная панель) и поля [gutterPx]. Полоса занимает
+ * ширину контейнера минус два таких отступа и не оставляет пустой слот под остаток.
+ */
+internal fun symmetricHorizontalInsetPx(startInsetPx: Int, endInsetPx: Int, gutterPx: Int): Int {
+    val start = startInsetPx.coerceAtLeast(0)
+    val end = endInsetPx.coerceAtLeast(0)
+    val gutter = gutterPx.coerceAtLeast(0)
+    val cutout = if (start > end) start else end
+    return if (cutout > gutter) cutout else gutter
+}
+
+/**
+ * То же поле, но без отступа, который родитель уже забрал (`safeDrawingPadding` у хоста).
+ * Иначе вырез 48 dp добавляется второй раз с обеих сторон.
+ */
+internal fun symmetricHorizontalInsetPx(
+    safeStartPx: Int,
+    safeEndPx: Int,
+    consumedStartPx: Int,
+    consumedEndPx: Int,
+    gutterPx: Int,
+): Int = symmetricHorizontalInsetPx(
+    safeStartPx - consumedStartPx,
+    safeEndPx - consumedEndPx,
+    gutterPx,
+)

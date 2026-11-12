@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.p2160.core.ui.UNKNOWN_TIME
 import tv.p2160.core.ui.transportElapsedText
+import tv.p2160.core.ui.transportRemainingText
 
 class TransportLiveTest {
     @Test
@@ -21,14 +22,20 @@ class TransportLiveTest {
     }
 
     @Test
-    fun unknownDurationHidesRemainingAndDoesNotLookLikeLive() {
-        assertFalse(transportShowsRemaining(isLive = false, durationMs = 0))
+    fun unknownDurationKeepsARemainingPlaceholderAndDoesNotLookLikeLive() {
+        assertTrue(transportShowsRemaining(isLive = false, durationMs = 0))
+        assertTrue(transportShowsRemaining(isLive = false, durationMs = -1))
         assertFalse(transportShowsRemaining(isLive = true, durationMs = 0))
         assertFalse(transportShowsRemaining(isLive = true, durationMs = 60_000))
         assertTrue(transportShowsRemaining(isLive = false, durationMs = 60_000))
         assertEquals(UNKNOWN_TIME, transportElapsedText(durationKnown = false, positionMs = 0))
         assertEquals("0:05", transportElapsedText(durationKnown = false, positionMs = 5_000))
         assertEquals("0:00", transportElapsedText(durationKnown = true, positionMs = 0))
+        assertEquals("--:--", transportRemainingText(durationKnown = false, positionMs = 0, durationMs = 0))
+        assertEquals("--:--", transportRemainingText(durationKnown = false, positionMs = 209_000, durationMs = -1))
+        assertEquals("\u22120:30 / 1:00", transportRemainingText(durationKnown = true, positionMs = 30_000, durationMs = 60_000))
+        assertEquals("\u22122:32:35 / 2:36:31", transportRemainingText(durationKnown = true, positionMs = 236_000, durationMs = 9_391_000))
         assertFalse(UNKNOWN_TIME.contains('\u2014'))
+        assertFalse(transportRemainingText(durationKnown = false, positionMs = 0, durationMs = 0).contains('\u2013'))
     }
 }
